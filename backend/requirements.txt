@@ -1,0 +1,12 @@
+# OCR to Excel Backend Dependencies
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+PyMuPDF>=1.24.0
+Pillow>=10.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+google-generativeai>=0.8.0
+python-multipart>=0.0.9
+requests>=2.31.0
+flask>=3.0.0

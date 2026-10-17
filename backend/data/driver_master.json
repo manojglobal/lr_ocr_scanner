@@ -1,0 +1,130 @@
+{
+  "KA23B5235": {
+    "vehicle_no": "KA23B5235",
+    "driver_name": "DHANAJI S PATIL",
+    "mobile_no": "9739443101",
+    "license_no": "KA23 20000044025",
+    "valid_upto": "11/04/2030",
+    "vehicle_category": "MARKET"
+  },
+  "BR29GA2038": {
+    "vehicle_no": "BR29GA2038",
+    "driver_name": "AKHILESH KUMAR",
+    "mobile_no": "9876543210",
+    "license_no": "BR01 20230017384",
+    "valid_upto": "15/08/2036",
+    "vehicle_category": "MARKET"
+  },
+  "WB11K3735": {
+    "vehicle_no": "WB11K3735",
+    "driver_name": "Rajesh Verma",
+    "mobile_no": "9820011223",
+    "license_no": "DL-0420180098765",
+    "valid_upto": "15/08/2029",
+    "vehicle_category": "MARKET"
+  },
+  "UP30T1517": {
+    "vehicle_no": "UP30T1517",
+    "driver_name": "Ramesh Kumar",
+    "mobile_no": "7309691052",
+    "license_no": "DL-1420110012345",
+    "valid_upto": "31/12/2028",
+    "vehicle_category": "MARKET"
+  },
+  "UP32SN5433": {
+    "vehicle_no": "UP32SN5433",
+    "driver_name": "CHANDRA KESH SINGH",
+    "mobile_no": "9876543210",
+    "license_no": "UP32 20190045123",
+    "valid_upto": "20/05/2031",
+    "vehicle_category": "Market"
+  },
+  "TN39BV8413": {
+    "vehicle_no": "TN39BV8413",
+    "driver_name": "THANGARASU C.",
+    "mobile_no": "",
+    "license_no": "TN28 19960002822",
+    "valid_upto": "12-06-2025",
+    "vehicle_category": "GOODS CARRIER"
+  },
+  "MH12ZE0536": {
+    "vehicle_no": "MH12ZE0536",
+    "driver_name": "TULSIRAM VAVHALE",
+    "mobile_no": "",
+    "license_no": "MH38 20100004760",
+    "valid_upto": "08-08-2030",
+    "vehicle_category": "MARKET"
+  },
+  "HR65A5507": {
+    "vehicle_no": "HR65A5507",
+    "driver_name": "ANOOP KUMAR",
+    "mobile_no": "7016235178",
+    "license_no": "HR-2120160116071",
+    "valid_upto": "01-Feb-2029",
+    "vehicle_category": "Market"
+  },
+  "TN88U9459": {
+    "vehicle_no": "TN88U9459",
+    "driver_name": "MANI T",
+    "mobile_no": "",
+    "license_no": "TN48Z20150003341",
+    "valid_upto": "26-10-2035",
+    "vehicle_category": "MARKET"
+  },
+  "MP13ZW5189": {
+    "vehicle_no": "MP13ZW5189",
+    "driver_name": "SATISH PARMAR",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "",
+    "vehicle_category": "MARKET"
+  },
+  "MH40DC2203": {
+    "vehicle_no": "MH40DC2203",
+    "driver_name": "RITIK SRIVASTAV",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "",
+    "vehicle_category": "Market"
+  },
+  "MH04AB5678": {
+    "vehicle_no": "MH04AB5678",
+    "driver_name": "Suresh Yadav",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "",
+    "vehicle_category": "MARKET"
+  },
+  "KA52C0504": {
+    "vehicle_no": "KA52C0504",
+    "driver_name": "VENKATESHA",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "28/04/2036",
+    "vehicle_category": "Market"
+  },
+  "MH04AB1234": {
+    "vehicle_no": "MH04AB1234",
+    "driver_name": "Raju Sharma",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "",
+    "vehicle_category": "MARKET"
+  },
+  "TN09CD5678": {
+    "vehicle_no": "TN09CD5678",
+    "driver_name": "Suresh Kumar",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "",
+    "vehicle_category": "MARKET"
+  },
+  "RJ32GC5386": {
+    "vehicle_no": "RJ32GC5386",
+    "driver_name": "SATISH PARMAR",
+    "mobile_no": "8209435149",
+    "license_no": "",
+    "valid_upto": "",
+    "vehicle_category": "Market"
+  }
+}
