@@ -342,8 +342,11 @@
         <div class="flex items-center justify-between pb-2.5 border-b border-slate-100 shrink-0">
           <div class="flex items-center space-x-2">
             <h3 class="text-base font-bold text-slate-800">LR Image Preview</h3>
-            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-50 text-sky-700 border border-sky-200">Live Document</span>
-            <span id="lrPreviewPageBadge" class="hidden text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">Page 1 of 1</span>
+            <div class="flex items-center space-x-1">
+              <button type="button" id="btnLrPagePrev" onclick="changeLrDocPage(-1)" class="hidden w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200" title="Previous Page (Up)">&uarr;</button>
+              <span id="lrPreviewPageBadge" class="hidden text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">Page 1 of 1</span>
+              <button type="button" id="btnLrPageNext" onclick="changeLrDocPage(1)" class="hidden w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200" title="Next Page (Down)">&darr;</button>
+            </div>
           </div>
           <div class="flex items-center space-x-1">
             <button type="button" onclick="zoomLrPreview(0.833)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-sm font-semibold" title="Zoom Out (-)">
@@ -378,10 +381,7 @@
           <!-- Card Header with Top Operation Buttons (Zero-Scroll Navigation) -->
           <div class="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
             <div>
-              <div class="flex items-center space-x-2">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800">Step 2 • LR Verification</span>
-                <span id="editTabIndicatorBadge" class="text-xs text-slate-500 font-medium">Tab 1 of 4: Basic Details</span>
-              </div>
+              <span id="editTabIndicatorBadge" class="hidden"></span>
               <h2 class="text-base sm:text-lg font-bold text-slate-800">Verify & Edit LR Data</h2>
             </div>
             <div class="flex items-center space-x-2">
@@ -550,8 +550,11 @@
           <div class="flex items-center justify-between pb-2.5 border-b border-slate-100 shrink-0">
             <div class="flex items-center space-x-2">
               <h3 class="text-base font-bold text-slate-800">LR Image Preview</h3>
-              <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-50 text-sky-700 border border-sky-200">Live Document</span>
-              <span id="lrPreviewPageBadge_custom" class="hidden text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">Page 1 of 1</span>
+                <div class="flex items-center space-x-1">
+                <button type="button" id="btnLrPagePrev_custom" onclick="changeLrDocPage(-1)" class="hidden w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200" title="Previous Page (Up)">&uarr;</button>
+                <span id="lrPreviewPageBadge_custom" class="hidden text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">Page 1 of 1</span>
+                <button type="button" id="btnLrPageNext_custom" onclick="changeLrDocPage(1)" class="hidden w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200" title="Next Page (Down)">&darr;</button>
+              </div>
             </div>
             <div class="flex items-center space-x-1">
               <button type="button" onclick="zoomLrPreview(0.833)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-sm font-semibold" title="Zoom Out (-)">
@@ -585,9 +588,6 @@
           <div class="shrink-0 pb-2 border-b border-slate-100">
             <div class="flex items-center justify-between">
               <div>
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 mb-0.5">
-                  Step 2 • Master Data Verification
-                </span>
                 <h2 class="text-base sm:text-lg font-bold text-slate-800">Customer, Department & Driver Details</h2>
                 <p class="text-xs text-slate-500">Verify customer, department, counter, and driver details.</p>
               </div>
@@ -3222,6 +3222,13 @@
             previewPagesList = [highResPreviewImage];
           }
 
+          // Generate compact thumbnail for PDF if not generated earlier
+          if (!compactThumb && highResPreviewImage && typeof createCompactThumbnail === 'function') {
+            try {
+              compactThumb = await createCompactThumbnail(highResPreviewImage);
+            } catch (_) {}
+          }
+
           const item = {
             id: 'lr_' + Date.now() + '_' + i,
             filename: file.name,
@@ -3530,13 +3537,7 @@
       if (btnNextTop) btnNextTop.className = "px-4 py-1.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm transition flex items-center space-x-1.5";
 
       if (tabBadge) {
-        const labels = {
-          'basic': 'Tab 1 of 4: Basic Details',
-          'parties': 'Tab 2 of 4: Consignor / Consignee',
-          'goods': 'Tab 3 of 4: Cargo Details',
-          'other': 'Tab 4 of 4: Other Details'
-        };
-        tabBadge.innerText = labels[tabId] || '';
+        tabBadge.innerText = '';
       }
 
       lucide.createIcons();
@@ -3668,6 +3669,35 @@
         } else {
           badge.textContent = `Page 1 of 1`;
           badge.classList.add('hidden');
+        }
+      });
+
+      const prevBtns = [
+        document.getElementById('btnLrPagePrev'),
+        document.getElementById('btnLrPagePrev_custom')
+      ];
+      const nextBtns = [
+        document.getElementById('btnLrPageNext'),
+        document.getElementById('btnLrPageNext_custom')
+      ];
+
+      prevBtns.forEach(btn => {
+        if (!btn) return;
+        if (total > 1) {
+          btn.classList.remove('hidden');
+          btn.disabled = (current <= 1);
+        } else {
+          btn.classList.add('hidden');
+        }
+      });
+
+      nextBtns.forEach(btn => {
+        if (!btn) return;
+        if (total > 1) {
+          btn.classList.remove('hidden');
+          btn.disabled = (current >= total);
+        } else {
+          btn.classList.add('hidden');
         }
       });
     }
@@ -4595,13 +4625,20 @@
         }
 
         // Ensure full high-resolution image and PDF are securely stored in IndexedDB and memory
-        storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc);
+        storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
 
         // Lightweight record for localStorage (never store giant blobs in localStorage)
+        const compactPreview = (item.thumbnail_image && item.thumbnail_image.length <= 60000)
+          ? item.thumbnail_image
+          : ((item.preview_image && item.preview_image.length <= 60000)
+              ? item.preview_image
+              : null);
+
         const record = {
           id: item.id || 'rec_' + Date.now(),
           filename: item.filename || 'LR Document',
-          preview_image: (item.preview_image && item.preview_image.length <= 60000) ? item.preview_image : null,
+          preview_image: compactPreview,
+          preview_url: item.preview_url || null,
           data: Object.assign({}, item.data || {}),
           createdAt: item.createdAt || new Date().toISOString(),
           isPdf: (item.filename && item.filename.toLowerCase().endsWith('.pdf')) ||
@@ -4641,10 +4678,16 @@
           if (!b || !b.filename || isDummyLRItem(b)) return;
           const exists = recents.some(r => r.filename === b.filename || r.id === b.id);
           if (!exists) {
+            const bCompact = (b.thumbnail_image && b.thumbnail_image.length <= 60000)
+              ? b.thumbnail_image
+              : ((b.preview_image && b.preview_image.length <= 60000)
+                  ? b.preview_image
+                  : null);
             recents.unshift({
               id: b.id,
               filename: b.filename,
-              preview_image: (b.preview_image && b.preview_image.length <= 60000) ? b.preview_image : null,
+              preview_image: bCompact,
+              preview_url: b.preview_url || null,
               data: b.data || {},
               createdAt: b.createdAt || new Date().toISOString(),
               isPdf: (b.filename && b.filename.toLowerCase().endsWith('.pdf')) ||
@@ -4672,15 +4715,16 @@
         const lrNo = d['grno'] || d['LR No *'] || d['BNF LR No'] || r.filename || '—';
         const isPdf = r.isPdf || (r.filename && r.filename.toLowerCase().endsWith('.pdf'));
         const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        const thumbSrc = r.preview_image;
+        const thumbSrc = r.preview_image || r.preview_url;
 
-        const mediaPreview = (isPdf || !thumbSrc)
-          ? `<div id="thumb_box_${idx}" class="w-full h-24 ${isPdf ? 'bg-red-950/20 text-red-600' : 'bg-slate-100 text-slate-500'} flex flex-col items-center justify-center rounded-lg border border-slate-200">
+        const mediaPreview = thumbSrc
+          ? `<div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
+               <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
+               ${isPdf ? `<span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-sm pointer-events-none">PDF</span>` : ''}
+             </div>`
+          : `<div id="thumb_box_${idx}" class="w-full h-24 ${isPdf ? 'bg-red-950/20 text-red-600' : 'bg-slate-100 text-slate-500'} flex flex-col items-center justify-center rounded-lg border border-slate-200">
                <i data-lucide="${isPdf ? 'file-text' : 'file'}" class="w-8 h-8"></i>
                <span class="text-[10px] font-bold mt-1">${isPdf ? 'PDF Document' : 'Scanned Image'}</span>
-             </div>`
-          : `<div id="thumb_box_${idx}" class="w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
-               <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
              </div>`;
 
         return `
@@ -4705,14 +4749,17 @@
 
       // Asynchronously hydrate missing thumbnails from IndexedDB in the background
       recents.forEach(async (r, idx) => {
-        if (!r.preview_image && !r.isPdf) {
+        const boxEl = document.getElementById(`thumb_box_${idx}`);
+        if (boxEl && !boxEl.querySelector('img')) {
           const cached = await loadDocImageAsync(r.id, r.filename);
-          if (cached && (cached.preview_image || cached.imageSrc)) {
-            const thumb = cached.preview_image || cached.imageSrc;
-            const boxEl = document.getElementById(`thumb_box_${idx}`);
-            if (boxEl) {
-              boxEl.className = 'w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200';
-              boxEl.innerHTML = `<img src="${thumb}" alt="${r.filename}" class="w-full h-full object-cover" />`;
+          if (cached && (cached.preview_image || cached.imageSrc || cached.preview_url)) {
+            const thumb = cached.preview_image || cached.preview_url || (!r.isPdf ? cached.imageSrc : null);
+            if (thumb && !thumb.startsWith('data:application/pdf')) {
+              boxEl.className = 'relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200';
+              boxEl.innerHTML = `
+                <img src="${thumb}" alt="${r.filename}" class="w-full h-full object-cover" />
+                ${r.isPdf ? `<span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-sm pointer-events-none">PDF</span>` : ''}
+              `;
             }
           }
         }

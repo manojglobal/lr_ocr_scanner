@@ -115,6 +115,17 @@ class GeminiBackendService {
         data[k.toString()] = v?.toString() ?? '';
       });
 
+      // Retain preview_image, preview_url, and file_url for UI thumbnail and document viewing
+      if (jsonResponse['preview_image'] != null && jsonResponse['preview_image'].toString().isNotEmpty) {
+        data['preview_image'] = jsonResponse['preview_image'].toString();
+      }
+      if (jsonResponse['preview_url'] != null && jsonResponse['preview_url'].toString().isNotEmpty) {
+        data['preview_url'] = jsonResponse['preview_url'].toString();
+      }
+      if (jsonResponse['file_url'] != null && jsonResponse['file_url'].toString().isNotEmpty) {
+        data['file_url'] = jsonResponse['file_url'].toString();
+      }
+
       // Check if data contains multi-person or multi-row structure
       final tableInfo = _detectTableOrColumns(data, documentTitle);
 

@@ -11,11 +11,17 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EXPORT_DIR = os.path.join(BASE_DIR, "export")
+UPLOAD_LR_DIR = os.path.join(EXPORT_DIR, "upload_LR")
+SNAPSHOTS_EXCEL_DIR = os.path.join(EXPORT_DIR, "snapshots_excel")
+AUDIT_LOG_FILE = os.path.join(EXPORT_DIR, "export_audit_log.json")
+
+os.makedirs(UPLOAD_LR_DIR, exist_ok=True)
+os.makedirs(SNAPSHOTS_EXCEL_DIR, exist_ok=True)
+
+# Legacy compatibility fallback directories
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 SNAPSHOTS_DIR = os.path.join(EXPORTS_DIR, "snapshots")
-AUDIT_LOG_FILE = os.path.join(EXPORTS_DIR, "export_audit_log.json")
-
-os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
 
 # -------------------------------------------------------------
 # SNAPSHOTS STORAGE IN SNAPSHOTS_DIR
@@ -80,10 +86,30 @@ def save_uploaded_lr_document(file_bytes: bytes, original_filename: str = "", lr
     clean_orig_part = f"_{clean_orig}" if clean_orig else ""
 
     filename = f"LR_{timestamp}_{uid}{lr_tag}{clean_orig_part}{orig_ext}"
-    target_path = os.path.join(SNAPSHOTS_DIR, filename)
+    target_path = os.path.join(UPLOAD_LR_DIR, filename)
 
     safe_atomic_write(target_path, file_bytes)
     return filename, target_path
+
+
+def save_snapshot_excel(
+    audit_bytes: bytes,
+    export_id: str,
+    lr_count: int = 1,
+    lr_tag: str = "",
+    prefix: str = "GR_Import_BNF"
+) -> tuple[str, str]:
+    """
+    Saves the backend snapshot audit Excel file into backend/export/snapshots_excel/
+    using unique, descriptive filenames with matching timestamp and ID.
+    Never overwrites historical files. Easily searchable in CMD/PowerShell.
+    Returns (audit_filename, audit_path).
+    """
+    exp_tag = export_id if export_id.startswith("EXP_") else f"EXP_{export_id}"
+    audit_filename = f"AUDIT_EXPORT_{prefix}_{exp_tag}{lr_tag}_{lr_count}LRs.xlsx"
+    audit_path = os.path.join(SNAPSHOTS_EXCEL_DIR, audit_filename)
+    safe_atomic_write(audit_path, audit_bytes)
+    return audit_filename, audit_path
 
 
 def save_dual_exports(
@@ -95,57 +121,71 @@ def save_dual_exports(
     prefix: str = "GR_Import_BNF"
 ) -> tuple[str, str, str, str]:
     """
-    Saves every user-downloaded clean Excel and backend audit Excel into SNAPSHOTS_DIR
-    using unique, descriptive filenames with matching timestamps and IDs.
-    Never overwrites historical files. Easily searchable in CMD/PowerShell:
-      - USER_EXPORT_* : Clean business exports
-      - AUDIT_EXPORT_* : Backend audit copies
-      - *<export_id>* : Both files paired together
-    Returns (user_filename, user_path, audit_filename, audit_path).
+    Saves backend audit snapshot copy into backend/export/snapshots_excel/.
+    Does NOT save user_bytes to disk on backend (streamed dynamically to user).
+    Returns (user_filename, "", audit_filename, audit_path).
     """
-    now_dt = datetime.now()
-    timestamp = now_dt.strftime("%Y%m%d_%H%M%S")
     exp_tag = export_id if export_id.startswith("EXP_") else f"EXP_{export_id}"
-
     user_filename = f"USER_EXPORT_{prefix}_{exp_tag}{lr_tag}_{lr_count}LRs.xlsx"
-    audit_filename = f"AUDIT_EXPORT_{prefix}_{exp_tag}{lr_tag}_{lr_count}LRs.xlsx"
-
-    user_path = os.path.join(SNAPSHOTS_DIR, user_filename)
-    audit_path = os.path.join(SNAPSHOTS_DIR, audit_filename)
-
-    safe_atomic_write(user_path, user_bytes)
-    safe_atomic_write(audit_path, audit_bytes)
-
-    return user_filename, user_path, audit_filename, audit_path
+    audit_filename, audit_path = save_snapshot_excel(
+        audit_bytes=audit_bytes,
+        export_id=export_id,
+        lr_count=lr_count,
+        lr_tag=lr_tag,
+        prefix=prefix
+    )
+    # User-downloaded Excel is NOT saved to disk in backend as requested
+    return user_filename, "", audit_filename, audit_path
 
 
 def resolve_file_path(filename: str) -> str | None:
     """
     Resolves the absolute path for an exported file or LR document by searching
-    SNAPSHOTS_DIR first, then EXPORTS_DIR, with intelligent prefix and id matching.
+    backend/export/upload_LR, backend/export/snapshots_excel, and legacy folders.
     """
     if not filename:
         return None
     safe_name = os.path.basename(filename)
 
-    # 1. Direct path in SNAPSHOTS_DIR
+    # 1. Direct path in upload_LR
+    p_lr = os.path.join(UPLOAD_LR_DIR, safe_name)
+    if os.path.isfile(p_lr):
+        return p_lr
+
+    # 2. Direct path in snapshots_excel
+    p_snap = os.path.join(SNAPSHOTS_EXCEL_DIR, safe_name)
+    if os.path.isfile(p_snap):
+        return p_snap
+
+    # 3. Direct path in legacy SNAPSHOTS_DIR
     p1 = os.path.join(SNAPSHOTS_DIR, safe_name)
     if os.path.isfile(p1):
         return p1
 
-    # 2. Direct path in EXPORTS_DIR
+    # 4. Direct path in legacy EXPORTS_DIR
     p2 = os.path.join(EXPORTS_DIR, safe_name)
     if os.path.isfile(p2):
         return p2
 
-    # 3. Search in SNAPSHOTS_DIR by partial match or ID
-    if os.path.isdir(SNAPSHOTS_DIR):
-        for fn in os.listdir(SNAPSHOTS_DIR):
+    # 5. Direct path in legacy uploads
+    p3 = os.path.join(BASE_DIR, "uploads", safe_name)
+    if os.path.isfile(p3):
+        return p3
+
+    # 6. Search in snapshots_excel by export ID
+    if os.path.isdir(SNAPSHOTS_EXCEL_DIR):
+        for fn in os.listdir(SNAPSHOTS_EXCEL_DIR):
             if fn == safe_name:
-                return os.path.join(SNAPSHOTS_DIR, fn)
-            # If safe_name is contained in fn (e.g. searching by export_id)
-            if safe_name.replace(".xlsx", "") in fn:
-                return os.path.join(SNAPSHOTS_DIR, fn)
+                return os.path.join(SNAPSHOTS_EXCEL_DIR, fn)
+            clean_id = safe_name.replace(".xlsx", "").replace("USER_EXPORT_", "").replace("AUDIT_EXPORT_", "")
+            if clean_id and clean_id in fn:
+                return os.path.join(SNAPSHOTS_EXCEL_DIR, fn)
+
+    # 7. Search in upload_LR by exact name
+    if os.path.isdir(UPLOAD_LR_DIR):
+        for fn in os.listdir(UPLOAD_LR_DIR):
+            if fn == safe_name:
+                return os.path.join(UPLOAD_LR_DIR, fn)
 
     return None
 
@@ -296,7 +336,7 @@ def generate_lightweight_snapshot(
         "download_url": f"/api/download-export/{u_fn}",
         "audit_download_url": f"/api/download-audit-export/{a_fn}",
         "snapshot_filename": a_fn,
-        "snapshot_path": os.path.join(SNAPSHOTS_DIR, a_fn),
+        "snapshot_path": os.path.join(SNAPSHOTS_EXCEL_DIR, a_fn),
         "snapshot_url": f"/api/download-audit-export/{a_fn}",
         "snapshot_base64": None,
         "snapshot_size_kb": None,
@@ -355,27 +395,29 @@ def purge_exports_older_than(days: int = 30) -> list[str]:
                     is_expired = True
 
             if is_expired:
-                # 1. Delete Excel file
-                fname = entry.get("filename") or entry.get("file_name")
-                if fname:
-                    fpath = os.path.join(EXPORTS_DIR, fname)
-                    if os.path.isfile(fpath):
-                        try:
-                            os.remove(fpath)
-                            purged.append(fname)
-                        except Exception:
-                            pass
+                # 1. Delete Snapshot Excel file from snapshots_excel
+                a_fname = entry.get("audit_filename") or entry.get("audit_export_filename") or entry.get("filename")
+                if a_fname:
+                    for folder in (SNAPSHOTS_EXCEL_DIR, EXPORTS_DIR):
+                        fpath = os.path.join(folder, a_fname)
+                        if os.path.isfile(fpath):
+                            try:
+                                os.remove(fpath)
+                                purged.append(a_fname)
+                            except Exception:
+                                pass
 
-                # 2. Delete Snapshot image
-                sname = entry.get("snapshot_filename")
+                # 2. Delete source LR document from upload_LR
+                sname = entry.get("snapshot_filename") or entry.get("lr_document_filename")
                 if sname:
-                    spath = os.path.join(SNAPSHOTS_DIR, sname)
-                    if os.path.isfile(spath):
-                        try:
-                            os.remove(spath)
-                            purged.append(sname)
-                        except Exception:
-                            pass
+                    for folder in (UPLOAD_LR_DIR, SNAPSHOTS_DIR):
+                        spath = os.path.join(folder, sname)
+                        if os.path.isfile(spath):
+                            try:
+                                os.remove(spath)
+                                purged.append(sname)
+                            except Exception:
+                                pass
             else:
                 kept_logs.append(entry)
 
@@ -447,6 +489,8 @@ def get_user_audit_history(user_mobile: str | None = None, limit: int = 100) -> 
         target_mobile = _clean_mobile(user_mobile) if user_mobile else ""
         user_logs = []
         available_files = []
+        if os.path.isdir(SNAPSHOTS_EXCEL_DIR):
+            available_files.extend([f for f in os.listdir(SNAPSHOTS_EXCEL_DIR) if f.lower().endswith(".xlsx")])
         if os.path.isdir(SNAPSHOTS_DIR):
             available_files.extend([f for f in os.listdir(SNAPSHOTS_DIR) if f.lower().endswith(".xlsx")])
         if os.path.isdir(EXPORTS_DIR):

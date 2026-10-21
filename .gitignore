@@ -54,7 +54,6 @@ app.*.map.json
 # Secrets and environment files
 .env
 .env.*
-!.env.example
 
 # Service account credentials
 credentials.json

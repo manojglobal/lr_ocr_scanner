@@ -24,11 +24,49 @@ import audit_snapshot
 import file_lifecycle_service
 
 # Configuration
+def _load_env_file():
+    # 1. Try python-dotenv if installed
+    try:
+        from dotenv import load_dotenv
+        for p in [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
+        ]:
+            if os.path.isfile(p):
+                load_dotenv(p, override=False)
+    except Exception:
+        pass
 
+    # 2. Built-in zero-dependency fallback parser
+    for p in [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
+    ]:
+        if os.path.isfile(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+            except Exception as e:
+                print(f"[Warning] Failed reading {p}: {e}")
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("GEMINI_API_KEY environment variable is not set")
+_load_env_file()
+
+API_KEY = os.getenv("GEMINI_API_KEY", "")
+if not API_KEY or API_KEY.strip() in ("", "YOUR_GEMINI_API_KEY_HERE", "your_gemini_api_key_here"):
+    print("=" * 70)
+    print("  [CONFIGURATION NEEDED] GEMINI_API_KEY is not configured!")
+    print("  Please open backend/.env and add your Google Gemini API key:")
+    print("  GEMINI_API_KEY=AIzaSy...")
+    print("=" * 70)
+    raise RuntimeError("GEMINI_API_KEY is not set. Please add your API key to backend/.env")
 
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
@@ -59,8 +97,16 @@ def _resolve_project_file(*subpaths: str) -> str:
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 SAMPLE_IMAGES_DIR = os.path.join(STATIC_DIR, "sample_images")
 APK_PATH = _resolve_project_file("releases", "ocr_to_excel.apk")
-UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+EXPORT_DIR = os.path.join(BASE_DIR, "export")
+UPLOAD_LR_DIR = getattr(audit_snapshot, "UPLOAD_LR_DIR", os.path.join(EXPORT_DIR, "upload_LR"))
+SNAPSHOTS_EXCEL_DIR = getattr(audit_snapshot, "SNAPSHOTS_EXCEL_DIR", os.path.join(EXPORT_DIR, "snapshots_excel"))
+os.makedirs(UPLOAD_LR_DIR, exist_ok=True)
+os.makedirs(SNAPSHOTS_EXCEL_DIR, exist_ok=True)
+
+# Backward compatibility aliases
+UPLOADS_DIR = UPLOAD_LR_DIR
+LEGACY_UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(LEGACY_UPLOADS_DIR, exist_ok=True)
 
 print(f"[Init] Configuring Gemini API with model: {MODEL_NAME}...")
 genai.configure(api_key=API_KEY)
@@ -84,11 +130,15 @@ if os.path.isdir(STATIC_DIR):
 if os.path.isdir(SAMPLE_IMAGES_DIR):
     app.mount("/sample_images", StaticFiles(directory=SAMPLE_IMAGES_DIR), name="sample_images")
 
-if os.path.isdir(UPLOADS_DIR):
+if os.path.isdir(UPLOAD_LR_DIR):
+    app.mount("/export/upload_LR", StaticFiles(directory=UPLOAD_LR_DIR), name="export_upload_lr")
+    # Route /uploads and /snapshots to UPLOAD_LR_DIR for full backward compatibility
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_LR_DIR), name="uploads")
+    app.mount("/snapshots", StaticFiles(directory=UPLOAD_LR_DIR), name="snapshots")
+elif os.path.isdir(UPLOADS_DIR):
     app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
-
-if os.path.isdir(audit_snapshot.SNAPSHOTS_DIR):
-    app.mount("/snapshots", StaticFiles(directory=audit_snapshot.SNAPSHOTS_DIR), name="snapshots")
+    if os.path.isdir(audit_snapshot.SNAPSHOTS_DIR):
+        app.mount("/snapshots", StaticFiles(directory=audit_snapshot.SNAPSHOTS_DIR), name="snapshots")
 
 # =========================================================================
 # Standard Logistics Goods Receipt (GR / LR / Bilty) Export Column Schemas
@@ -1053,28 +1103,19 @@ async def extract_handwriting(
         clean_name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', orig_name_part)[:35]
 
         unique_filename = f"{upload_id}{lr_tag}_{clean_name}{orig_ext}"
-        saved_file_path = os.path.join(UPLOADS_DIR, unique_filename)
 
         # Bytes to save: use original bytes
         bytes_to_save = raw_upload_bytes if raw_upload_bytes else image_bytes
 
-        # 1. Save directly into SNAPSHOTS_DIR with unique descriptive timestamped filename (never overwritten)
+        # 1. Save directly into backend/export/upload_LR/ with unique descriptive timestamped filename (never overwritten)
         snapshot_lr_filename, snapshot_lr_path = audit_snapshot.save_uploaded_lr_document(
             file_bytes=bytes_to_save,
             original_filename=file.filename,
             lr_no=lr_clean
         )
-        print(f"[Snapshot Vault] Successfully saved LR document to {snapshot_lr_path}")
+        print(f"[Upload Vault] Successfully saved LR document to {snapshot_lr_path}")
 
-        # 2. Also keep a copy in UPLOADS_DIR for legacy compatibility
-        try:
-            with open(saved_file_path, "wb") as f_out:
-                f_out.write(bytes_to_save)
-            print(f"[Upload Vault] Successfully saved LR file to {saved_file_path}")
-        except Exception as save_err:
-            print(f"[Upload Vault Error] Failed to save {unique_filename}: {save_err}")
-
-        # If document is a PDF, persist all rendered 300 DPI preview pages
+        # If document is a PDF, persist all rendered 300 DPI preview pages directly into backend/export/upload_LR/
         preview_saved_url = None
         preview_pages_urls = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
@@ -1082,7 +1123,7 @@ async def extract_handwriting(
                 # Page 1 preview uses original naming for backward compatibility
                 page_suffix = "_preview.jpg" if p_idx == 0 else f"_page_{p_idx + 1}.jpg"
                 p_filename = f"{upload_id}{lr_tag}_{clean_name}{page_suffix}"
-                p_file_path = os.path.join(UPLOADS_DIR, p_filename)
+                p_file_path = os.path.join(UPLOAD_LR_DIR, p_filename)
                 try:
                     with open(p_file_path, "wb") as f_prev:
                         f_prev.write(p_bytes)
@@ -1977,8 +2018,9 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False
     )
 
-    # 3. Save both into SNAPSHOTS_DIR with unique, descriptive filenames with timestamps & IDs (never overwritten)
-    user_filename, user_file_path, audit_filename, backend_audit_path = audit_snapshot.save_dual_exports(
+    # 3. Save backend snapshot audit copy into backend/export/snapshots_excel/
+    # (Do NOT save user-downloaded Excel file to backend disk)
+    user_filename, _, audit_filename, backend_audit_path = audit_snapshot.save_dual_exports(
         user_bytes=user_bytes,
         audit_bytes=audit_bytes,
         export_id=export_id,
@@ -1987,29 +2029,13 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         prefix="GR_Import_BNF"
     )
 
-    # Also save copies in EXPORTS_DIR for backward compatibility
-    os.makedirs(audit_snapshot.EXPORTS_DIR, exist_ok=True)
-    try:
-        with open(os.path.join(audit_snapshot.EXPORTS_DIR, user_filename), "wb") as f:
-            f.write(user_bytes)
-        with open(os.path.join(audit_snapshot.EXPORTS_DIR, audit_filename), "wb") as f:
-            f.write(audit_bytes)
-        with open(os.path.join(audit_snapshot.EXPORTS_DIR, f"audit_{user_filename}"), "wb") as f:
-            f.write(audit_bytes)
-        with open(os.path.join(audit_snapshot.EXPORTS_DIR, raw_filename), "wb") as f:
-            f.write(user_bytes)
-        with open(os.path.join(audit_snapshot.EXPORTS_DIR, f"audit_{raw_filename}"), "wb") as f:
-            f.write(audit_bytes)
-    except Exception as e_copy:
-        print(f"[Exports Directory Sync Notice] {e_copy}")
-
-    # 4. Register Excel file in lifecycle tracker with unified export_id
+    # 4. Register Excel metadata in lifecycle tracker with unified export_id
     excel_meta = file_lifecycle_service.record_file_creation(
-        file_path=user_file_path,
+        file_path=os.path.join(UPLOAD_LR_DIR, user_filename),
         file_type="excel",
         user_name=user_name,
         user_mobile=user_mobile,
-        file_bytes=user_bytes,
+        file_bytes=None,
         file_id=export_id,
         custom_meta={
             "total_records": len(docs),
@@ -2091,18 +2117,17 @@ async def download_exported_file(
     authorization: str | None = Header(default=None)
 ):
     safe_name = os.path.basename(filename)
+    actor_name = user_name or "Logistics User"
+    if authorization:
+        session_user = auth_service.get_session_user(authorization)
+        if session_user:
+            actor_name = session_user.get("name") or actor_name
+
+    # 1. If an existing physical file exists on disk (e.g. legacy exports), serve directly
     file_path = audit_snapshot.resolve_file_path(safe_name)
     if not file_path:
         file_path = os.path.join(audit_snapshot.EXPORTS_DIR, safe_name)
-    if file_path and os.path.exists(file_path):
-        # Resolve user name for tracking
-        actor_name = user_name or "Logistics User"
-        if authorization:
-            session_user = auth_service.get_session_user(authorization)
-            if session_user:
-                actor_name = session_user.get("name") or actor_name
-
-        # Update Exported At & downloaded-by timestamp in lifecycle tracker
+    if file_path and os.path.isfile(file_path):
         try:
             file_lifecycle_service.record_file_export(
                 file_id_or_path=safe_name,
@@ -2124,6 +2149,62 @@ async def download_exported_file(
                 "Expires": "0"
             }
         )
+
+    # 2. When user-downloaded Excel is not stored on backend disk:
+    # Resolve matching backend snapshot audit copy from backend/export/snapshots_excel/
+    audit_name = safe_name.replace("USER_EXPORT_", "AUDIT_EXPORT_") if "USER_EXPORT_" in safe_name else (safe_name if safe_name.startswith("AUDIT_") else f"AUDIT_EXPORT_{safe_name}")
+    snap_path = audit_snapshot.resolve_file_path(audit_name)
+    if not snap_path:
+        # Search by export ID in filename
+        exp_match = re.search(r'EXP_[0-9]+_[a-f0-9]+', safe_name)
+        if exp_match:
+            exp_id = exp_match.group(0)
+            if os.path.isdir(audit_snapshot.SNAPSHOTS_EXCEL_DIR):
+                for fn in os.listdir(audit_snapshot.SNAPSHOTS_EXCEL_DIR):
+                    if exp_id in fn and fn.endswith(".xlsx"):
+                        snap_path = os.path.join(audit_snapshot.SNAPSHOTS_EXCEL_DIR, fn)
+                        break
+
+    if snap_path and os.path.isfile(snap_path):
+        # Generate clean user-facing Excel workbook in-memory without saving to disk
+        try:
+            wb = openpyxl.load_workbook(snap_path)
+            if "History" in wb.sheetnames:
+                wb.remove(wb["History"])
+            ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
+            # Remove top audit metadata rows so Row 1 is headers and Rows 2+ are data
+            while ws.max_row > 1 and ws.cell(1, 1).value and str(ws.cell(1, 1).value).strip().startswith(("User Name:", "Export Date:", "Export Time:", "Exported At:")):
+                ws.delete_rows(1, 1)
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            clean_bytes = buf.getvalue()
+
+            try:
+                file_lifecycle_service.record_file_export(
+                    file_id_or_path=safe_name,
+                    user_name=actor_name,
+                    destination="device_download"
+                )
+            except Exception:
+                pass
+
+            return StreamingResponse(
+                io.BytesIO(clean_bytes),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{safe_name}"',
+                    "Access-Control-Expose-Headers": "Content-Disposition",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+        except Exception as e_stream:
+            print(f"[Export Download Stream Error] {e_stream}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate download workbook: {e_stream}")
+
     raise HTTPException(status_code=404, detail="Exported Excel file not found.")
 
 

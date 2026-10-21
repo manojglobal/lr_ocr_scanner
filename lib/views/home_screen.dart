@@ -199,6 +199,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveRecentUploads(List<BatchItem> currentItems) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      Directory? docsDir;
+      try {
+        docsDir = await getApplicationDocumentsDirectory();
+      } catch (_) {}
+
       final list = <Map<String, dynamic>>[];
       for (final item in currentItems) {
         final lr = (item.record['LR No *'] ?? item.record['grno'] ?? item.record['BNF LR No'] ?? '').toLowerCase();
@@ -207,6 +212,22 @@ class _HomeScreenState extends State<HomeScreen> {
             lr.contains('nloiad273')) {
           continue;
         }
+
+        String previewPath = item.record['preview_path'] ?? '';
+        final previewImg = item.record['preview_image'] ?? '';
+        if (previewPath.isEmpty && docsDir != null && previewImg.startsWith('data:image/') && previewImg.contains('base64,')) {
+          try {
+            final targetDir = Directory('${docsDir.path}/lr_documents');
+            if (!targetDir.existsSync()) targetDir.createSync(recursive: true);
+            final pFile = File('${targetDir.path}/${item.fileName}_preview.jpg');
+            if (!pFile.existsSync()) {
+              final b64 = previewImg.split('base64,').last;
+              pFile.writeAsBytesSync(base64Decode(b64));
+            }
+            previewPath = pFile.path;
+          } catch (_) {}
+        }
+
         list.add({
           'id': item.id,
           'fileName': item.fileName,
@@ -215,6 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
           'isPdf': item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf'),
           'createdAt': item.createdAt.toIso8601String(),
           'status': item.status.name,
+          'preview_url': item.record['preview_url'] ?? '',
+          'preview_path': previewPath,
           'record': item.record,
         });
       }
@@ -447,6 +470,133 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildRecentItemThumbnail({
+    required bool isPdf,
+    required String imagePath,
+    required String fileName,
+    required String previewImage,
+    required String previewPath,
+    required String previewUrl,
+  }) {
+    // 1. Try saved/resolved preview path on local disk
+    if (previewPath.isNotEmpty && File(previewPath).existsSync()) {
+      return Image.file(
+        File(previewPath),
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+      );
+    }
+
+    // 2. For PDFs, try conventional local preview file in lr_documents folder
+    if (isPdf && (fileName.isNotEmpty || imagePath.isNotEmpty)) {
+      try {
+        final clean = _normalizeFilePath(imagePath);
+        if (clean.isNotEmpty) {
+          final candPreview = File(clean.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '_preview.jpg'));
+          if (candPreview.existsSync()) {
+            return Image.file(
+              candPreview,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+            );
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. For images, try local image file
+    if (!isPdf && imagePath.isNotEmpty) {
+      final clean = _normalizeFilePath(imagePath);
+      if (clean.isNotEmpty && File(clean).existsSync()) {
+        return Image.file(
+          File(clean),
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+        );
+      }
+    }
+
+    // 4. Try base64 decoded bytes from previewImage
+    if (previewImage.startsWith('data:image/') && previewImage.contains('base64,')) {
+      try {
+        final b64 = previewImage.split('base64,').last;
+        final bytes = base64Decode(b64);
+        return Image.memory(
+          bytes,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+        );
+      } catch (_) {}
+    }
+
+    // 5. Try network URL if valid
+    if (previewUrl.isNotEmpty) {
+      String fullUrl = previewUrl;
+      if (fullUrl.startsWith('/') && widget.controller.geminiService.serverUrl.isNotEmpty) {
+        fullUrl = '${widget.controller.geminiService.serverUrl}$fullUrl';
+      }
+      if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+        return Image.network(
+          fullUrl,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+        );
+      }
+    }
+
+    // 6. Fallback icon
+    return _buildFallbackIcon(isPdf);
+  }
+
+  String _normalizeFilePath(String raw) {
+    String clean = raw.trim();
+    if (clean.startsWith('file://')) {
+      try {
+        clean = Uri.parse(clean).toFilePath();
+      } catch (_) {
+        clean = clean.substring(7);
+      }
+    }
+    return clean;
+  }
+
+  Widget _buildFallbackIcon(bool isPdf) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: isPdf ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isPdf ? Icons.picture_as_pdf : Icons.image,
+            size: 28,
+            color: isPdf ? Colors.red.shade600 : const Color(0xFF0284C7),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            isPdf ? 'PDF' : 'IMAGE',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: isPdf ? Colors.red.shade700 : const Color(0xFF0369A1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const brandNavy = Color(0xFF0F172A);
@@ -475,6 +625,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   'isPdf': i.fileName.toLowerCase().endsWith('.pdf') || i.imagePath.toLowerCase().endsWith('.pdf'),
                   'createdAt': i.createdAt.toIso8601String(),
                   'status': i.status.name,
+                  'preview_image': i.record['preview_image'] ?? '',
+                  'preview_url': i.record['preview_url'] ?? '',
+                  'preview_path': i.record['preview_path'] ?? '',
                   'item': i,
                 }).toList()
             : _persistedRecentLrs
@@ -777,7 +930,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 8),
                         SizedBox(
-                          height: 104,
+                          height: 140,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: displayRecent.length,
@@ -790,6 +943,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               final imagePath = itmData['imagePath']?.toString() ?? '';
                               final isVerified = itmData['status']?.toString() == 'completed';
                               final dt = DateTime.tryParse(itmData['createdAt']?.toString() ?? '') ?? DateTime.now();
+                              final previewImg = (itmData['preview_image'] ?? itmData['record']?['preview_image'])?.toString() ?? '';
+                              final previewPath = (itmData['preview_path'] ?? itmData['record']?['preview_path'])?.toString() ?? '';
+                              final previewUrl = (itmData['preview_url'] ?? itmData['record']?['preview_url'])?.toString() ?? '';
 
                               return InkWell(
                                 onTap: () async {
@@ -827,6 +983,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                     if (lrNo.isNotEmpty && !recordMap.containsKey('LR No *')) {
                                       recordMap['LR No *'] = lrNo;
                                     }
+                                    if (previewImg.isNotEmpty && !recordMap.containsKey('preview_image')) {
+                                      recordMap['preview_image'] = previewImg;
+                                    }
+                                    if (previewUrl.isNotEmpty && !recordMap.containsKey('preview_url')) {
+                                      recordMap['preview_url'] = previewUrl;
+                                    }
+                                    if (previewPath.isNotEmpty && !recordMap.containsKey('preview_path')) {
+                                      recordMap['preview_path'] = previewPath;
+                                    }
                                     final batchItem = BatchItem(
                                       id: itmData['id']?.toString() ?? 'prev_$idx',
                                       imagePath: cleanPath,
@@ -841,52 +1006,113 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
                                   width: 140,
-                                  padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            isPdf ? Icons.picture_as_pdf : Icons.image,
-                                            size: 18,
-                                            color: isPdf ? Colors.red : brandBlue,
-                                          ),
-                                          const Spacer(),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              isVerified ? 'Verified' : 'Uploaded',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold,
-                                                color: isVerified ? const Color(0xFF16A34A) : const Color(0xFFB45309),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const Spacer(),
-                                      Text(
-                                        lrNo.isNotEmpty ? 'LR: $lrNo' : fileName,
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: brandNavy),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}',
-                                        style: const TextStyle(fontSize: 9, color: Colors.grey),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x0A000000),
+                                        blurRadius: 4,
+                                        offset: Offset(0, 2),
                                       ),
                                     ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Top Visual Thumbnail Section (72px)
+                                        SizedBox(
+                                          height: 72,
+                                          width: double.infinity,
+                                          child: Stack(
+                                            children: [
+                                              Positioned.fill(
+                                                child: _buildRecentItemThumbnail(
+                                                  isPdf: isPdf,
+                                                  imagePath: imagePath,
+                                                  fileName: fileName,
+                                                  previewImage: previewImg,
+                                                  previewPath: previewPath,
+                                                  previewUrl: previewUrl,
+                                                ),
+                                              ),
+                                              // Status Badge (Top-Right)
+                                              Positioned(
+                                                top: 4,
+                                                right: 4,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  decoration: BoxDecoration(
+                                                    color: (isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7)).withAlpha(240),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    border: Border.all(
+                                                      color: isVerified ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
+                                                      width: 0.8,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    isVerified ? 'Verified' : 'Uploaded',
+                                                    style: TextStyle(
+                                                      fontSize: 8.5,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isVerified ? const Color(0xFF16A34A) : const Color(0xFFB45309),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              // PDF indicator badge if PDF
+                                              if (isPdf)
+                                                Positioned(
+                                                  top: 4,
+                                                  left: 4,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red.shade700.withAlpha(235),
+                                                      borderRadius: BorderRadius.circular(3),
+                                                    ),
+                                                    child: const Text(
+                                                      'PDF',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 8,
+                                                        fontWeight: FontWeight.bold,
+                                                        letterSpacing: 0.3,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        // Bottom Metadata Section
+                                        Expanded(
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  lrNo.isNotEmpty ? 'LR: $lrNo' : fileName,
+                                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: brandNavy),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}',
+                                                  style: const TextStyle(fontSize: 8.5, color: Colors.grey),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );

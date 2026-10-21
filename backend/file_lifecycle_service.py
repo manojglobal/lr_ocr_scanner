@@ -9,13 +9,20 @@ from datetime import datetime
 from typing import Any, Optional
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
-METADATA_DIR = os.path.join(EXPORTS_DIR, "metadata")
-SNAPSHOTS_DIR = os.path.join(EXPORTS_DIR, "snapshots")
+EXPORT_DIR = os.path.join(BASE_DIR, "export")
+UPLOAD_LR_DIR = os.path.join(EXPORT_DIR, "upload_LR")
+SNAPSHOTS_DIR = os.path.join(EXPORT_DIR, "snapshots_excel")
+METADATA_DIR = os.path.join(EXPORT_DIR, "metadata")
 REGISTRY_FILE = os.path.join(METADATA_DIR, "file_metadata_registry.json")
 
-os.makedirs(METADATA_DIR, exist_ok=True)
+# Legacy compatibility fallback directories
+EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
+LEGACY_METADATA_DIR = os.path.join(EXPORTS_DIR, "metadata")
+LEGACY_REGISTRY_FILE = os.path.join(LEGACY_METADATA_DIR, "file_metadata_registry.json")
+
+os.makedirs(UPLOAD_LR_DIR, exist_ok=True)
 os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
+os.makedirs(METADATA_DIR, exist_ok=True)
 
 _lock = threading.Lock()
 
@@ -44,10 +51,11 @@ def compute_sha256(file_path_or_bytes: Any) -> str:
 
 def _load_registry() -> dict[str, dict[str, Any]]:
     """Loads file registry from disk (must be called with _lock held)."""
-    if not os.path.exists(REGISTRY_FILE):
+    target = REGISTRY_FILE if os.path.exists(REGISTRY_FILE) else LEGACY_REGISTRY_FILE
+    if not os.path.exists(target):
         return {}
     try:
-        with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
+        with open(target, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
@@ -129,8 +137,14 @@ def record_file_creation(
 
         # Create Version 1 snapshot reference
         data_to_store = initial_data or (custom_meta.get("data") if custom_meta else None)
-        if os.path.abspath(os.path.dirname(os.path.abspath(file_path))) == os.path.abspath(SNAPSHOTS_DIR):
-            snapshot_filename = f"snapshots/{filename}"
+        parent_dir = os.path.abspath(os.path.dirname(os.path.abspath(file_path)))
+        if parent_dir == os.path.abspath(SNAPSHOTS_DIR):
+            snapshot_filename = f"snapshots_excel/{filename}"
+        elif parent_dir == os.path.abspath(UPLOAD_LR_DIR):
+            snapshot_filename = f"upload_LR/{filename}"
+        elif file_type == "excel":
+            # Clean user download Excel is not stored on backend disk
+            snapshot_filename = None
         else:
             vault_dir = _get_item_snapshot_dir(fid)
             snapshot_filename = None

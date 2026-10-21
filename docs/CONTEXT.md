@@ -1,81 +1,59 @@
 # OCR to Excel: Project Context & Complete System Guide
+> **Latest System Update: October 2026** — Comprehensive specification covering Dual-Component Parity, Master Data Integration, Driver Master Registry, Multi-Page Document Scraping, File Lifecycle Registry, and Production Deployment.
 
 ---
 
 ## 1. Project Overview & Philosophy
 
-**OCR to Excel** is a high-accuracy, intelligent dual-component logistics extraction and audit system built for **Box N Freight (BNF)**. It processes physical, printed, and handwritten consignment notes (bilty documents), extracts all logistics data into a standardized **50-column Microsoft Excel format (`.xlsx`)**, maintains an immutable audit lifecycle trail with visual snapshots, and supports soft deletion with a dedicated recycle bin.
+**OCR to Excel** is an enterprise-grade, high-accuracy intelligent dual-component logistics extraction and audit platform engineered for **Box N Freight (BNF)**. It automates the ingestion of physical, scanned, photographed, and digital consignment notes (bilty documents), extracts all logistics data into a standardized **50-column Microsoft Excel format (`.xlsx`)**, maintains an immutable audit lifecycle trail with visual snapshots, and supports soft deletion with a dedicated recycle bin.
 
 ### Dedicated Component Documentation
-* **Web Component Guide**: [`web_context.md`](file:///D:/AndroidDev/Projects/ocr_to_excel/web_context.md) — Comprehensive guide to the browser-based single-page portal, SheetJS integration, and web APIs.
-* **Android Mobile App Guide**: [`android_context.md`](file:///D:/AndroidDev/Projects/ocr_to_excel/android_context.md) — Comprehensive guide to the native Flutter app, dual-engine ML Kit fallback, and Android release builds.
+* **Web Component Guide**: [`web_context.md`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/web_context.md) — Browser-based single-page portal, SheetJS integration, and responsive web workflows.
+* **Android Mobile App Guide**: [`android_context.md`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/android_context.md) — Native Flutter mobile application, dual-engine ML Kit fallback, and release builds.
+* **Original Implementation Roadmap**: [`IMPLEMENTATION_PLAN.md`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/IMPLEMENTATION_PLAN.md) — 4-layer architecture, Dart service interfaces, and test plans.
 
-### Core Philosophy
-* **Dual-Component 100% Parity**: A web-based single-page portal ([`static/index.html`](file:///D:/AndroidDev/Projects/ocr_to_excel/static/index.html)) and a cross-platform Android mobile app ([`lib/`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/)) share identical user flows, validations, 9-screen user journey, actions, button placements, and Excel outputs.
-* **Intelligent Rule-Based BNF Extraction**: Automated color classification of consignment images:
-  * **Orange/Yellow handwritten bilties**: Extract only the `LR No`; do *not* populate `BNF LR No`.
-  * **White printed pages**: Extract handwritten/pencil numbers near top-left or top-right as `BNF LR No` (e.g., "33196"); if absent, strictly leave blank.
-* **Hybrid Server + On-Device ML OCR Fallback**: Primary extraction via Google Gemini 3.5 Flash Lite on FastAPI backend (`POST /extract-handwriting` / `POST /api/extract-handwriting`). If the server is unreachable, seamless automatic fallback to client-side ML OCR (Google ML Kit on Android, Tesseract.js on Web) with user notification.
-* **Complete Audit Trail & Visual Snapshot Certificate**: Every create, edit, and delete action records user name, mobile number, ISO timestamp, version number, and exact field-level diffs. The final generated Excel file contains:
-  * **Sheet 1**: `gr_bnf_49` — 50-column standardized logistics import format.
-  * **Sheet 2**: `Audit & Lifecycle` — Immutable audit log for regulatory compliance, verification, and file download history.
-* **30-Day Auto-Purge & User Data Isolation**: Exported Excel files and related history records are automatically deleted 30 days after export. Each authenticated user only views and downloads their own export history.
+### Core Philosophy & Architectural Pillars
+1. **Dual-Component 100% Parity**: A web-based single-page portal ([`backend/static/index.html`](file:///D:/AndroidDev/Projects/ocr_to_excel/backend/static/index.html)) and a cross-platform Android mobile app ([`lib/`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/)) share identical user flows, validations, 9-screen user journey, actions, button placements, and Excel outputs.
+2. **Intelligent Rule-Based BNF Extraction**: Automated color classification of consignment images:
+   * **Orange/Yellow handwritten bilties**: Extract only the `LR No *`; do *not* populate `BNF LR No` (strictly preserved as blank).
+   * **White printed pages**: Extract handwritten/pencil numbers near top-left or top-right as `BNF LR No` (e.g., "33196"); if absent, strictly leave blank.
+3. **Hybrid Server + On-Device ML OCR Fallback**: Primary extraction via Google Gemini 3.5 Flash Lite on FastAPI backend (`POST /extract-handwriting`). If the server is unreachable, seamless automatic fallback to client-side ML OCR (Google ML Kit on Android, Tesseract.js on Web) with user notification.
+4. **Master Data & Customer Integration**: Real logistics master datasets imported from [`ManiFest.xlsx`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/ManiFest.xlsx) (46 customer/department mappings with GSTINs) and [`BookingCounterMast.xlsx`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/BookingCounterMast.xlsx) (31 booking counters across India).
+5. **Driver Master Registry & Auto-Fetch**: Instant vehicle registration plate lookup (`KA23B5235`, `BR29GA2038`, etc.) auto-populating driver name, phone number, driving license, and license validity from [`backend/data/driver_master.json`](file:///D:/AndroidDev/Projects/ocr_to_excel/backend/data/driver_master.json) and client-side [`MasterDataService`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/master_data_service.dart).
+6. **Multi-Page & Compliance Document Scraping**: Ingests multi-page PDFs or multi-image packets combining the consignment note with vehicle Registration Certificate (RC Form 23A), Goods Permits, Pollution Under Control (PUC) certificates, and Driving Licences.
+7. **Complete Audit Trail & Visual Certificate**: Every create, edit, and delete action records user name, mobile number, ISO timestamp, version number, and exact field-level diffs (`old` $\rightarrow$ `new`). The final generated Excel file contains:
+   * **Sheet 1**: `gr_bnf_49` — 50-column standardized logistics import format.
+   * **Sheet 2**: `Audit & Lifecycle` — Immutable audit log for regulatory compliance, verification, and file download history.
+8. **30-Day Auto-Purge & User Data Isolation**: Exported Excel files and related history records are automatically deleted 30 days after export. Each authenticated user only views and downloads their own export history.
 
 ---
 
-## 2. System Architecture
+## 2. End-to-End System Architecture
 
-```text
-                     [ Camera / Phone Gallery / Web Drag & Drop ]
-                                        │
-                                        ▼
-                  ┌──────────────────────────────────────────┐
-                  │          Authentication Gate             │
-                  │   10-digit Mobile + Name + 6-digit OTP   │
-                  │        (Session Token Issued)            │
-                  └─────────────────────┬────────────────────┘
-                                        │
-                                        ▼
-                  ┌──────────────────────────────────────────┐
-                  │       Image Color Classifier             │
-                  │   RGB/HSV Chroma & Warm Hue Ratio Test   │
-                  │   (is_orange_yellow_image / isOrangeYellow)│
-                  └─────────────────────┬────────────────────┘
-                                        │
-                                        ▼
-                        Primary Extraction (FastAPI Backend)
-                         POST /api/extract-handwriting (Gemini)
-                                        │
-                         ┌──────────────┴──────────────┐
-                         ▼                             ▼
-                  [ Server Online ]             [ Server Offline ]
-                         │                             │
-                         ▼                             ▼
-                 Gemini 3.5 Flash           Automatic ML OCR Fallback
-                 High-accuracy JSON        (Google ML Kit / Tesseract)
-                         │                             │
-                         └──────────────┬──────────────┘
-                                        │
-                                        ▼
-                  ┌──────────────────────────────────────────┐
-                  │         50-Column BNF Schema Mapping     │
-                  │   Col 6: "LR No *" | Col 7: "BNF LR No"   │
-                  └─────────────────────┬────────────────────┘
-                                        │
-                                        ▼
-                  ┌──────────────────────────────────────────┐
-                  │     File Lifecycle & Audit Service       │
-                  │   Version increments (v1, v2...), diffs, │
-                  │   timestamps, and soft-delete/restore    │
-                  └─────────────────────┬────────────────────┘
-                                        │
-                                        ▼
-                  ┌──────────────────────────────────────────┐
-                  │             Excel Service                │
-                  │  Sheet 1: 50-Column BNF Logistics Data   │
-                  │  Sheet 2: Audit & Export History Trail   │
-                  │  Visual Certificate & SHA256 Audit Hash  │
-                  └──────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Intake: Camera / Gallery / PDF / Web Drag & Drop"] --> B["Authentication Gate: Mobile + Name + OTP"]
+    B --> C{"Color Classifier: is_orange_yellow_image()"}
+    
+    C -- "Orange/Yellow" --> D1["Extract LR No * | BNF LR No = Blank"]
+    C -- "White Printed" --> D2["Extract LR No * | Check Top Corners for BNF LR No"]
+    
+    D1 --> E{"Backend Reachable?"}
+    D2 --> E
+    
+    E -- "Yes (Online)" --> F1["Gemini 3.5 Flash Lite API (FastAPI Backend)"]
+    E -- "No (Offline)" --> F2["Local On-Device ML OCR (ML Kit / Tesseract)"]
+    
+    F1 --> G["Master Data & Driver Registry Auto-Lookup"]
+    F2 --> G
+    
+    G --> H["Standard 50-Column BNF Schema Mapping"]
+    H --> I["File Lifecycle & Version Vault (SHA-256 Diffs)"]
+    
+    I --> J["Excel Workbook Generation"]
+    J --> K1["Sheet 1: 50-Col Logistics Data"]
+    J --> K2["Sheet 2: Audit & Export History Trail"]
+    J --> K3["Visual Certificate & Metadata Snapshot"]
 ```
 
 ---
@@ -101,7 +79,7 @@ Both the Web portal and Android application follow the exact 9-screen flow, inte
 
 ## 4. Standard 50-Column BNF Logistics Schema Specification
 
-The standardized Microsoft Excel workbook strictly defines **50 columns** in the following sequence:
+The standardized Microsoft Excel workbook strictly defines **50 columns** derived directly from [`BNF file Modify.xlsx`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/BNF%20file%20Modify.xlsx):
 
 | Index | Column Header | Data Source / OCR Mapping | Validation & Notes |
 |:---:|:---|:---|:---|
@@ -152,7 +130,7 @@ The standardized Microsoft Excel workbook strictly defines **50 columns** in the
 | 44 | `grtype(Don’t know)` | GR / Consignment Category | Standard / Special |
 | 45 | `Vehicle No *` | Transport Vehicle Registration No | Indian vehicle plate format (e.g., `MH 04 AB 1234`) |
 | 46 | `Vehicle Type *` | Vehicle Body Type | e.g., `32FT MXL`, `14FT`, `CANTER`, `CONTAINER` |
-| 47 | `Driver Name *` | Vehicle Driver Name | As declared on bilty |
+| 47 | `Driver Name *` | Vehicle Driver Name | As declared on bilty or Driver Registry |
 | 48 | `Mobile no   *` | Driver / Operator Contact Number | 10-digit mobile number |
 | 49 | `Liscense No *` | Driver Commercial Driving License | Alphanumeric license number |
 | 50 | `valgoods` | Declared Value of Goods (INR) | Value in Indian Rupees |
@@ -160,117 +138,180 @@ The standardized Microsoft Excel workbook strictly defines **50 columns** in the
 
 ---
 
-## 5. BNF LR No Extraction & Image Classification Rules
+## 5. Master Data Integration & Driver Registry
 
-```mermaid
-flowchart TD
-    A["Image Intake (Upload / Camera)"] --> B{"Color Classifier: is_orange_yellow_image()"}
-    B -- "Warm Yellow/Orange Chroma Ratio > Threshold" --> C["Image Type: Orange/Yellow Handwritten Bilty"]
-    B -- "Chroma Ratio <= Threshold" --> D["Image Type: White Printed Consignment Page"]
-    
-    C --> E["Extract LR No * (Primary Bilty Number)"]
-    E --> F["Force BNF LR No = Blank / Skip"]
-    
-    D --> G{"Handwritten / Penciled Number at Top-Left or Top-Right?"}
-    G -- "Yes (e.g. '33196')" --> H["Set BNF LR No = Extracted Value"]
-    G -- "No / Unclear" --> I["Set BNF LR No = Blank / Skip"]
-    
-    F --> J["Map Extracted Record to 50-Column Schema"]
-    H --> J
-    I --> J
+### A. Customer & Department Manifest (`ManiFest.xlsx`)
+The system integrates 46 real logistics accounts from [`docs/ManiFest.xlsx`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/ManiFest.xlsx):
+* **Himalaya Wellness Company**: Departments across Siliguri, Raipur, Bhiwandi, Ranchi, Nagpur, Indore, Patna, Chennai, Zirakpur, Jaipur, Ahmedabad, Delhi, Vijayawada, Tumkur, Hyderabad, Kolkata, Bangalore.
+* **Patanjali Parivahan Private Limited**: Departments across Hyderabad, Karanpura, Indore, Jalna, Bhopal, Delhi.
+* **Other Accounts**: Global Marketing, Indra Hosiery Mills, Vesco Cycle, Monte Carlo Fashions, UM Orthotics, Shree Ciment, etc.
+* **GSTIN Validation**: Each department contains pre-verified state GST numbers enabling automatic validation and autofill during OCR post-processing.
+
+### B. Booking Counters Master (`BookingCounterMast.xlsx`)
+The system provides auto-completion against 31 official BNF booking hubs from [`docs/BookingCounterMast.xlsx`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/BookingCounterMast.xlsx):
+* Hubs: `DELHI`, `KOL` (Kolkata), `MUMBAI 01`, `BANG-01` (Bangalore), `BEL` (Belgaum), `BHOPAL`, `HYDERABAD`, `LUDHIANA`, `JALNA`, `CHENNAI`, `INDORE-1`, `TUMKUR`, `VIJAYWADA`, `GURUGRAM_HUB`, etc.
+
+### C. Driver Master Registry & Automatic Vehicle Resolution
+* **Driver Database**: Stored on backend in [`backend/data/driver_master.json`](file:///D:/AndroidDev/Projects/ocr_to_excel/backend/data/driver_master.json) and cached locally on client devices via [`MasterDataService`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/master_data_service.dart).
+* **Automatic Fetch Cascade**:
+  1. **Local Memory/Cache**: Checked instantly on vehicle plate entry (e.g. `KA23B5235`).
+  2. **Active Queue Fallback**: Checks other consignments in the current batch for the same vehicle plate.
+  3. **Backend API Lookup**: Asynchronously queries `GET /api/master/driver?vehicle_no={veh}`.
+  4. **Auto-Registration**: Any new driver and vehicle details entered during edit are registered via `POST /api/master/register-driver` and persisted to disk.
+
+---
+
+## 6. Multi-Page PDF & Compliance Document Scraping
+
+The OCR engine processes both single-image bilties and multi-page document packets:
+1. **Decomposition**: PDFs uploaded to `/extract-handwriting` are split into high-resolution page images:
+   * Preview image (`..._preview.jpg`) for UI cards and thumbnails.
+   * Page images (`..._page_1.jpg`, `..._page_2.jpg`, etc.) for OCR parsing.
+2. **Multi-Document Ingestion**:
+   * **Page 1 (Consignment Note / Bilty)**: Ingests LR No, Customer, Route, Packages, Weight, Declared Value, E-Way Bill.
+   * **Pages 2+ (RC / Permit / PUC / Driving Licence)**:
+     * Vehicle RC (Form 23A): Extracts official Vehicle Registration Number, Chassis/Engine numbers, Maker/Model.
+     * Goods Carriage Permit: Extracts valid states, permit expiry date (`Valid Up to *`).
+     * Driving Licence: Extracts official Driver Name, License Number, and validity date.
+3. **Safety Filters**: Gemini API calls configure `BLOCK_NONE` across harassment, hate speech, sexual content, and dangerous content to ensure government compliance credentials (licences, permits) are never blocked.
+
+---
+
+## 7. Standardized File Naming & Metadata Registry
+
+### File Naming Standard
+Both uploaded bilties and exported workbooks use deterministic, searchable filenames:
+* **Uploads / Scans**:
+  ```text
+  LR_YYYYMMDD_HHMMSS_{hex}_{LR_No}_{Vehicle_No}_{preview|page_N|original}.{ext}
+  Example: LR_20261019_151349_e55e48_LR_32849_AP16TG9309_lr_no_32849_vijayawada.pdf
+  ```
+* **Excel Exports**:
+  ```text
+  GR_Import_BNF_EXP_YYYYMMDD_HHMMSS_{hex}_LR_{lr1}_{lr2}_{N}LRs.xlsx
+  Example: GR_Import_BNF_EXP_20261019_151531_ee04dd_LR_33119_32849_2LRs.xlsx
+  ```
+* **Audit Workbooks & Snapshots**:
+  ```text
+  AUDIT_EXPORT_GR_Import_BNF_EXP_YYYYMMDD_HHMMSS_{hex}_{N}LRs.xlsx
+  ```
+
+### File Metadata Registry (`backend/exports/metadata/file_metadata_registry.json`)
+Maintains an immutable JSON registry of every file processed:
+* `file_id`: Unique timestamped ID (`fl_YYYYMMDDHHMMSS_{hex}`).
+* `sha256`: Cryptographic integrity hash of the raw upload.
+* `current_version`: Integer version tracking (`v1`, `v2`, ...).
+* `versions`: Full chronological history containing timestamps, user details, action types (`create`, `edit`, `delete`, `restore`), and field-level diffs (`old` $\rightarrow$ `new`).
+* `is_deleted`: Soft-delete status flag enabling immediate restoration from the Recycle Bin.
+
+---
+
+## 8. Complete FastAPI Backend Endpoints Reference (`backend/main.py`)
+
+| Endpoint | Method | Parameters / Body | Description |
+|---|:---:|---|---|
+| `/` & `/web` | `GET` | None | Serves the web component single-page portal. |
+| `/api/health` | `GET` | None | Healthcheck endpoint reporting service status and API version. |
+| `/download-apk` | `GET` | None | Direct download link streaming `releases/ocr_to_excel.apk`. |
+| `/extract-handwriting` | `POST` | `multipart/form-data`: `file`, `use_gemini` | Color classification, Gemini Flash OCR, and 50-field mapping. |
+| `/generate-excel` | `POST` | JSON batch data | Direct Excel generation endpoint. |
+| `/api/auth/login` | `POST` | `{"mobile": "...", "password": "..."}` | Operator credential login. |
+| `/api/auth/send-otp` | `POST` | `{"mobile": "...", "name": "..."}` | Generates 6-digit OTP code with 30s resend cooldown. |
+| `/api/auth/verify-otp` | `POST` | `{"mobile": "...", "otp": "...", "name": "..."}` | Verifies OTP and issues authenticated session token. |
+| `/api/auth/me` | `GET` | Header: `Authorization: Bearer <token>` | Returns current active user profile. |
+| `/api/auth/logout` | `POST` | Header: `Authorization: Bearer <token>` | Invalidates active user session. |
+| `/api/master/manifest` | `GET` | Query: `?customer=...` | Returns customer departments and GSTINs from `ManiFest.xlsx`. |
+| `/api/master/parties` | `GET` | None | Returns list of all master customer account names. |
+| `/api/master/counters` | `GET` | None | Returns list of 31 booking counters from `BookingCounterMast.xlsx`. |
+| `/api/master/driver` | `GET` | Query: `?vehicle_no=...` | Looks up driver record by vehicle registration number. |
+| `/api/master/register-driver`| `POST` | JSON: `{"vehicle_no", "driver_name", ...}` | Registers/updates driver master entry in `driver_master.json`. |
+| `/api/export-excel-meta` | `POST` | JSON: batch data + audit log | Generates Sheet 1 + Sheet 2, visual snapshot, and download URL. |
+| `/api/download-export/{filename}` | `GET` | Path variable `filename` | Binary `.xlsx` download of user export workbook. |
+| `/api/download-audit-export/{filename}` | `GET` | Path variable `filename` | Binary `.xlsx` download of compliance audit workbook. |
+| `/api/export-audit/snapshot/{export_id}` | `GET` | Path variable `export_id` | Streams visual base64 snapshot image of the export. |
+| `/api/export-audit/history` | `GET` | Query: `?mobile=...&session_token=...` | Returns user's personal export history within 30-day window. |
+| `/api/export-audit/download-all` | `GET` | Query: `?mobile=...&session_token=...` | Consolidated single workbook containing all past exported LRs. |
+| `/api/export-audit/cleanup-expired` | `POST` | None | Auto-purges files and export records older than 30 days. |
+| `/api/files/metadata` | `GET` | Query: `?file_id=...` | Queries file lifecycle metadata registry. |
+| `/api/files/deleted` | `GET` | None | Queries soft-deleted consignments currently in the Recycle Bin. |
+| `/api/files/restore-deleted`| `POST` | JSON: `{"file_id": "..."}` | Restores a soft-deleted consignment to the active batch. |
+| `/api/files/restore-version`| `POST` | JSON: `{"file_id": "...", "version": N}` | Reverts a consignment's data to an earlier revision. |
+
+---
+
+## 9. Key Project Directories & Files
+
+```text
+ocr_to_excel/
+│
+├── 📱 FLUTTER MOBILE APP (Root Workspace)
+│   ├── lib/
+│   │   ├── config/document_schema.dart       # 50-column BNF schema & field definitions
+│   │   ├── models/batch_item.dart            # Bilty model, lifecycle history, versioning
+│   │   ├── services/
+│   │   │   ├── gemini_backend_service.dart   # Backend API client (/extract-handwriting, auth)
+│   │   │   ├── excel_service.dart            # Client-side 50-col Excel builder (.xlsx)
+│   │   │   ├── master_data_service.dart      # ManiFest & BookingCounter cache & driver lookup
+│   │   │   ├── file_lifecycle_service.dart   # Local disk persistence & version diff tracking
+│   │   │   ├── image_preprocessor.dart       # HSV color classifier & image downsampling
+│   │   │   ├── ocr_service.dart              # On-device Google ML Kit fallback engine
+│   │   │   └── permission_service.dart       # Android 13+ media/camera permission handling
+│   │   ├── state/batch_controller.dart       # Central reactive state ChangeNotifier
+│   │   └── views/                            # 9 production UI screens & widgets
+│   ├── test/                                 # Unit, widget, and accuracy benchmark tests
+│   ├── pubspec.yaml & pubspec.lock           # Flutter dependencies manifest
+│   └── android/app/build.gradle.kts          # minSdk = 29, targetSdk = 37, Kotlin DSL
+│
+├── ⚙️ BACKEND API & OCR ENGINE (backend/)
+│   ├── backend/
+│   │   ├── main.py                           # FastAPI application & Gemini OCR pipeline
+│   │   ├── auth_service.py                   # User session tokens, OTP generation & dev OTP
+│   │   ├── file_lifecycle_service.py         # SHA-256 version vault & diff calculation
+│   │   ├── audit_snapshot.py                 # Visual snapshot rendering & purge engine
+│   │   ├── network_server.py                 # LAN IP resolution & mobile pairing bridge
+│   │   ├── static/                           # Web component portal (HTML5, Tailwind, JS)
+│   │   ├── data/
+│   │   │   ├── driver_master.json            # Master vehicle-to-driver mappings
+│   │   │   └── users.json                    # Authenticated user profiles & roles
+│   │   ├── uploads/                          # Staging area for uploaded images and PDFs
+│   │   └── exports/                          # Generated Excel workbooks & snapshots
+│   ├── main.py (Root Shim)                   # Backward-compatible launcher forwarding to backend
+│   ├── run_server.py (Root Utility)          # Cross-platform runner displaying network IPs
+│   └── run_server.bat (Windows)              # 1-click Windows backend runner
+│
+├── 📚 DOCUMENTATION & SPECIFICATIONS (docs/)
+│   ├── docs/
+│   │   ├── CONTEXT.md                        # Master system blueprint & operational context
+│   │   ├── android_context.md                # Mobile UI screens, widgets & ML Kit guide
+│   │   ├── web_context.md                    # Single-page web portal & SheetJS architecture
+│   │   ├── IMPLEMENTATION_PLAN.md            # Original 4-layer engineering roadmap
+│   │   ├── BNF file Modify.xlsx              # Canonical 50-column BNF logistics schema master
+│   │   ├── BookingCounterMast.xlsx           # 31 booking counters & branch hub master
+│   │   ├── ManiFest.xlsx                     # 46 enterprise customer & department records
+│   │   └── README.md                         # Quickstart guide & CLI search instructions
+│
+├── 📦 RELEASES & BINARIES (releases/)
+│   └── releases/ocr_to_excel.apk             # Android release APK (~99.1 MB)
+│
+└── 🛠️ UTILITY SCRIPTS (scripts/)
+    ├── scripts/search_files.py               # CLI tool to search files by LR # or Unique ID
+    └── scripts/sync_exports.ps1              # Export directory synchronization script
 ```
-
-### Classification Implementation
-* **Python Backend** ([`main.py`](file:///D:/AndroidDev/Projects/ocr_to_excel/main.py)): Function `is_orange_yellow_image(img)` converts image to HSV, computes the proportion of pixels within yellow-orange hue range (`15°–45°`) with saturation $> 0.25$ and value $> 0.35$.
-* **Web Frontend** ([`static/index.html`](file:///D:/AndroidDev/Projects/ocr_to_excel/static/index.html)): Function `isOrangeYellowImageWeb(file)` draws the image on an offscreen HTML5 canvas and evaluates red-to-blue channel dominance.
-* **Android Service** ([`lib/services/image_preprocessor.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/image_preprocessor.dart)): Method `isOrangeYellowImage(bytes)` processes pixels in an isolate and detects warm hue density.
-
----
-
-## 6. Key Project Files & Directories
-
-### Flutter Android Application (`lib/`)
-* [`lib/main.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/main.dart): Application entry point, theme configuration, initialization of SharedPreferences and batch controller.
-* [`lib/config/document_schema.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/config/document_schema.dart): Definition of `grBnf` 50-column schema with labels, validation types, and mandatory flags.
-* [`lib/models/batch_item.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/models/batch_item.dart): Model for consignment notes holding image paths, OCR records, timestamps, version numbers, and audit edit histories.
-* [`lib/state/batch_controller.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/state/batch_controller.dart): Central state management handling camera/gallery intake, OCR pipeline triggers, active user sessions, and soft-delete/restore operations.
-* [`lib/services/gemini_backend_service.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/gemini_backend_service.dart): HTTP client connecting to FastAPI backend (`/extract-handwriting`, `/api/auth/*`, `/api/export-excel-meta`, `/api/audit/*`).
-* [`lib/services/excel_service.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/excel_service.dart): On-device Excel generator producing workbooks with auto-column sizing and public Downloads folder integration.
-* [`lib/services/file_lifecycle_service.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/file_lifecycle_service.dart): Local disk persistence for audit diffs, version increments, and 30-day auto-purge policy.
-* [`lib/services/image_preprocessor.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/image_preprocessor.dart): Isolate-based image enhancement and yellow/orange color classifier.
-* [`lib/views/login_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/login_screen.dart): **Screen 1** — Mobile + OTP verification, countdown timer, dev auto-fill, and server IP settings modal.
-* [`lib/views/home_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/home_screen.dart): **Screen 2** — Upload LR intake, camera/gallery picker, user profile, server status toggle.
-* [`lib/views/widgets/ocr_processing_dialog.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/widgets/ocr_processing_dialog.dart): **Screen 3** — 5-step animated extraction checklist.
-* [`lib/views/screens/edit_bilty_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/screens/edit_bilty_screen.dart): **Screen 4** — 3-tab consignment editor with diff recording and thumbnail preview.
-* [`lib/views/screens/verified_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/screens/verified_screen.dart): **Screen 5** — Confirmation screen with 8-field summary card and 4 action buttons.
-* [`lib/views/widgets/billing_image_viewer.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/widgets/billing_image_viewer.dart): **Screen 6** — Multi-image viewer with pinch-zoom, 90° rotation, 50-col spreadsheet toggle, and thumbnail carousel.
-* [`lib/views/screens/batch_queue_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/screens/batch_queue_screen.dart): **Screen 7** — Batch queue list with live search, version badges, delete action, and Excel export buttons.
-* [`lib/views/screens/excel_preview_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/screens/excel_preview_screen.dart): **Screen 8** — Dual-sheet preview (Sheet 1: 50-col BNF; Sheet 2: Export history & downloads) with bottom action bar ("Add More LR" left, "Generate Excel" right).
-* [`lib/views/screens/excel_generated_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/screens/excel_generated_screen.dart): **Screen 9** — Audit certificate, SHA256 hash, visual snapshot toggle, plain-header table, and download/share actions.
-* [`lib/views/screens/file_history_screen.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/screens/file_history_screen.dart): **Modal** — Dual tabs for Version History (diffs) and Recycle Bin (restore).
-* [`lib/views/widgets/step_indicator_bar.dart`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/widgets/step_indicator_bar.dart): Persistent sticky bottom step flow bar (1–9) with active/completed styling and click navigation.
-
-### Web Component & FastAPI Backend
-* [`main.py`](file:///D:/AndroidDev/Projects/ocr_to_excel/main.py): FastAPI backend providing Gemini 3.5 Flash Lite handwriting extraction, OTP verification, server-side Excel snapshot generation, export history endpoints, 30-day retention purge, and static file serving.
-* [`static/index.html`](file:///D:/AndroidDev/Projects/ocr_to_excel/static/index.html): Complete standalone web portal matching all 9 screens with SheetJS, Tesseract.js client fallback, Lucide icons, and Tailwind styling.
-
----
-
-## 7. FastAPI Backend Endpoints Reference (`main.py`)
-
-| Endpoint | Method | Payload / Params | Response | Description |
-|---|:---:|---|---|---|
-| `/health` | `GET` | None | `{"status": "ok", "service": "ocr_to_excel"}` | Healthcheck endpoint used by apps to verify connectivity. |
-| `/api/auth/send-otp` | `POST` | `{"mobile": "...", "name": "..."}` | `{"success": true, "resend_cooldown": 30, "dev_otp": "..."}` | Generates 6-digit OTP code and sets 30-second resend cooldown. |
-| `/api/auth/verify-otp` | `POST` | `{"mobile": "...", "otp": "...", "name": "..."}` | `{"success": true, "token": "...", "user": {...}}` | Validates submitted OTP and issues authenticated session token. |
-| `/extract-handwriting` | `POST` | `multipart/form-data` (`file`) | `{"status": "completed", "data": {...}, "created_at": "..."}` | Uploads consignment image, classifies color, runs Gemini Flash Lite, and maps 50 BNF fields. |
-| `/api/export-excel-meta` | `POST` | JSON document batch + audit logs | `{"success": true, "filename": "...", "download_url": "...", "snapshot_base64": "..."}` | Compiles Sheet 1 (50 cols) + Sheet 2 (Audit Log), creates visual PNG snapshot, logs history, and generates download link. |
-| `/download-excel/{filename}` | `GET` | Path variable `filename` | Binary `.xlsx` stream | Streams generated Excel file to browser or mobile download directory. |
-| `/api/audit/export-history` | `GET` | `?mobile=...&session_token=...` | `{"success": true, "exports": [...]}` | Retrieves authenticated user's historical Excel exports (30-day retention). |
-| `/api/audit/download-all-lrs` | `GET` | `?mobile=...&session_token=...` | Binary `.xlsx` stream | Combines all historical LR records for the user into a single consolidated workbook. |
-| `/api/audit/purge-30d` | `POST` | None | `{"success": true, "purged_count": N}` | Automated cleanup purging Excel files and audit logs older than 30 days. |
-
----
-
-## 8. Android Build & Deployment
-
-### Production Android Release APK
-* **File Path**: [`D:\AndroidDev\Projects\ocr_to_excel\build\app\outputs\flutter-apk\app-release.apk`](file:///D:/AndroidDev/Projects/ocr_to_excel/build/app/outputs/flutter-apk/app-release.apk)
-* **Build Target**: Release mode with tree-shaken icons and ProGuard optimization.
-* **Binary Size**: ~99.1 MB (`103,863,580 bytes`).
-* **Android Target Platform**: Android SDK 37 (Android 15+), minimum SDK 29 (Android 10+).
-
-### Build Command
-```powershell
-Push-Location "D:\AndroidDev\Projects\ocr_to_excel"
-flutter build apk --release
-Pop-Location
-```
-
----
-
-## 9. Historical Problems Solved Across Iterations
-
-1. **Android Runtime Permissions (Android 13+)**: Resolved startup crashes by separating `READ_MEDIA_IMAGES` and `READ_EXTERNAL_STORAGE` and implementing proactive rationale dialogs in [`PermissionService`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/permission_service.dart).
-2. **High-Resolution Camera OOM Crashes**: High-megapixel camera sensors (48MP–108MP) caused memory exhaustion in ML Kit. Solved by processing image scaling and contrast stretching inside an isolate (`compute()`).
-3. **Lossy Compression Before OCR**: Fixed `ImagePicker` downsampling from `maxWidth: 1920` and `imageQuality: 80` to lossless full-sensor image intake.
-4. **Bilingual Script Support (Latin + Devanagari)**: Added `TextRecognitionScript.devanagiri` in [`OcrService`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/ocr_service.dart) to preserve Hindi and Marathi text in bilingual consignment notes.
-5. **Look-Alike Character Confusion**: Eliminated handwritten character swaps (`0` ↔ `O`, `1` ↔ `I`, `5` ↔ `B`) via semantic validator rules in [`Validator`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/services/validator.dart).
-6. **Gemini 3.5 Flash Lite Cloud Integration**: Established direct multipart uploads to FastAPI backend with in-app Server IP configuration dialog.
-7. **BNF 50-Column Standardization**: Upgraded initial formats to standard 50-column BNF format with `BNF LR No` at column index 7 immediately following `LR No *`.
-8. **BNF LR No Color Discrimination**: Prevented false extraction on yellow handwritten bilties by creating a color classifier that extracts `BNF LR No` only on white printed pages.
-9. **Dual-Component Parity**: Achieved complete synchronization between Web ([`static/index.html`](file:///D:/AndroidDev/Projects/ocr_to_excel/static/index.html)) and Android ([`lib/`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/)) across all 9 screens, dialogs, and actions.
-10. **Global Step Flow Navigation**: Implemented [`StepIndicatorBar`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/widgets/step_indicator_bar.dart) across all screens with click navigation and authentication gating.
-11. **Multi-Image 50-Column Spreadsheet Overlay**: Added in-viewer spreadsheet toggle in [`BillingImageViewer`](file:///D:/AndroidDev/Projects/ocr_to_excel/lib/views/widgets/billing_image_viewer.dart) displaying all 50 columns with Captured/Blank status pills.
-12. **Audit Lifecycle & Soft Delete**: Implemented immutable version tracking with old $\rightarrow$ new diffs and a Recycle Bin with restore capability.
-13. **Sheet 2 Export History & 30-Day Auto-Purge**: Stored historical Excel exports in Sheet 2 with individual downloads, "Download All My Exported LRs", and automated 30-day purge retention.
-14. **Sheet 1 & Sheet 2 Button Alignment**: Positioned “Add More LR” at the bottom-left and “Generate Excel (<N> LRs)” at the bottom-right across both Sheet 1 and Sheet 2.
 
 ---
 
 ## 10. Operational Guidelines & Safety Constraints
 
-* **Do NOT run `main.py` directly** from agent tool commands as it starts a blocking FastAPI server process.
-* Always preserve existing comments, docstrings, and unrelated methods when making code edits.
-* Maintain the exact 50-column order: `LR No *` at index 6 $\rightarrow$ `BNF LR No` at index 7.
-* Ensure all tests pass (`flutter test`) before generating new release APK builds.
+1. **Server Process Safety**:
+   * **Do NOT execute `backend/main.py` directly** as a blocking task within automated coding tools, as it starts an indefinite Uvicorn HTTP server. Use `run_server.bat` or `python run_server.py` in a separate terminal.
+2. **50-Column Order Guarantee**:
+   * Column index 5 (`LR No *`) MUST immediately precede column index 6 (`BNF LR No`).
+   * Never reorder or remove columns from the standardized BNF schema.
+3. **Document Type Integrity**:
+   * For **yellow/orange** bilties: strictly force `BNF LR No` to blank (`""`).
+   * For **white** pages: extract pencil/handwritten top-corner numbers as `BNF LR No`; if absent, leave strictly blank (`""`).
+4. **Master Data Priority**:
+   * Consignor and Consignee names should prioritize matching against [`docs/ManiFest.xlsx`](file:///D:/AndroidDev/Projects/ocr_to_excel/docs/ManiFest.xlsx) to inherit verified GSTINs and department codes.
+   * Vehicle registrations should query [`backend/data/driver_master.json`](file:///D:/AndroidDev/Projects/ocr_to_excel/backend/data/driver_master.json) before falling back to manual entry.
+5. **No File Changes Without Permission**:
+   * Always ask for user confirmation before modifying or adding files outside designated document maintenance tasks.
