@@ -126,5 +126,13 @@
     "license_no": "",
     "valid_upto": "",
     "vehicle_category": "Market"
+  },
+  "MH15KS2755": {
+    "vehicle_no": "MH15KS2755",
+    "driver_name": "BAPU GUNJAL",
+    "mobile_no": "",
+    "license_no": "MH41 20110015261",
+    "valid_upto": "31-07-2028",
+    "vehicle_category": "Market"
   }
 }

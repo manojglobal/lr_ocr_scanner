@@ -119,14 +119,18 @@
           <span>History</span>
         </button>
 
-        <!-- User Info / Auth Badge -->
+        <!-- User Info / Auth Badge (Compact, original container size preserved) -->
         <div id="userBadge" class="hidden items-center space-x-2 px-3 py-1 bg-slate-100 border border-slate-200 rounded-full text-xs">
           <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-600"></i>
           <span id="headerUserName" class="font-semibold text-slate-700">Ruchita Patel</span>
           <span class="text-slate-400">&bull;</span>
           <span id="headerUserMobile" class="text-slate-500 font-mono">+91 9876543210</span>
-          <button onclick="logoutUser()" class="ml-2 text-red-500 hover:underline text-[11px] font-medium">Logout</button>
         </div>
+
+        <!-- Independent Logout Button (Styled identical to History button: rounded-lg, px-3 py-1.5, shadow-sm, text-xs font-semibold) -->
+        <button id="navLogoutBtn" onclick="logoutUser()" class="hidden inline-flex items-center px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 text-xs font-semibold border border-red-200 transition shadow-sm cursor-pointer" title="Logout of session">
+          <span>Logout</span>
+        </button>
 
         <a href="/download-apk" download class="inline-flex items-center space-x-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg border border-emerald-200 transition shadow-sm">
           <i data-lucide="smartphone" class="w-3.5 h-3.5 text-emerald-600"></i>
@@ -729,6 +733,10 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <button onclick="clearBatch()" class="px-3.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition">Clear All</button>
+          <button type="button" onclick="openExcelPreviewModal()" id="btnExcelPreview" class="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold rounded-lg border border-amber-300 shadow-sm flex items-center space-x-1.5 transition cursor-pointer" title="Preview Excel spreadsheet before downloading">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-amber-700"></i>
+            <span id="btnExcelPreviewText">Excel Preview</span>
+          </button>
           <button onclick="navigateTo('screen2_upload')" class="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center space-x-1.5 transition">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i>
             <span>Add More LR</span>
@@ -743,46 +751,61 @@
       <!-- Search & Multi-Filter Bar -->
       <div class="bg-white rounded-xl p-2.5 border border-slate-200 shadow-sm shrink-0">
         <div class="flex flex-wrap items-center gap-2">
-          <!-- Text Search -->
-          <div class="flex-1 min-w-[170px] flex items-center space-x-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-sky-500 focus-within:bg-white transition">
+          <!-- Text Search with individual clear (x) -->
+          <div class="relative flex-1 min-w-[170px] flex items-center space-x-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-sky-500 focus-within:bg-white transition">
             <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-            <input type="text" id="lrSearchInput" oninput="applyBatchFilters()" placeholder="Search LR, Route, City, Goods..." class="w-full text-xs bg-transparent outline-none text-slate-800 placeholder-slate-400" />
+            <input type="text" id="lrSearchInput" oninput="handleSingleFilterInput('lrSearchInput')" placeholder="Search LR, Route, City, Goods..." class="w-full text-xs bg-transparent outline-none text-slate-800 placeholder-slate-400 pr-5" />
+            <button type="button" id="clear_lrSearchInput" onclick="clearSingleFilter('lrSearchInput')" class="hidden absolute right-2 text-slate-400 hover:text-red-500 cursor-pointer p-0.5 rounded-full hover:bg-slate-200 transition" title="Clear search">
+              <i data-lucide="x" class="w-3 h-3"></i>
+            </button>
           </div>
 
-          <!-- Customer Filter -->
-          <div class="w-44 min-w-[140px] flex items-center space-x-1.5 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-sky-500 focus-within:bg-white transition">
+          <!-- Customer Filter with individual clear (x) -->
+          <div class="relative w-44 min-w-[140px] flex items-center space-x-1.5 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-sky-500 focus-within:bg-white transition">
             <i data-lucide="building-2" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-            <input type="text" id="filterCustomer" list="batchCustomerDatalist" oninput="applyBatchFilters()" placeholder="Customer..." class="w-full text-xs bg-transparent outline-none text-slate-800 placeholder-slate-400" />
+            <input type="text" id="filterCustomer" list="batchCustomerDatalist" oninput="handleSingleFilterInput('filterCustomer')" placeholder="Customer..." class="w-full text-xs bg-transparent outline-none text-slate-800 placeholder-slate-400 pr-5" />
             <datalist id="batchCustomerDatalist"></datalist>
+            <button type="button" id="clear_filterCustomer" onclick="clearSingleFilter('filterCustomer')" class="hidden absolute right-2 text-slate-400 hover:text-red-500 cursor-pointer p-0.5 rounded-full hover:bg-slate-200 transition" title="Clear customer filter">
+              <i data-lucide="x" class="w-3 h-3"></i>
+            </button>
           </div>
 
-          <!-- Vehicle No Filter -->
-          <div class="w-36 min-w-[120px] flex items-center space-x-1.5 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-sky-500 focus-within:bg-white transition">
+          <!-- Vehicle No Filter with individual clear (x) -->
+          <div class="relative w-36 min-w-[120px] flex items-center space-x-1.5 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-sky-500 focus-within:bg-white transition">
             <i data-lucide="truck" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-            <input type="text" id="filterVehNo" oninput="applyBatchFilters()" placeholder="Vehicle No..." class="w-full text-xs bg-transparent outline-none text-slate-800 uppercase placeholder-slate-400" />
+            <input type="text" id="filterVehNo" oninput="handleSingleFilterInput('filterVehNo')" placeholder="Vehicle No..." class="w-full text-xs bg-transparent outline-none text-slate-800 uppercase placeholder-slate-400 pr-5" />
+            <button type="button" id="clear_filterVehNo" onclick="clearSingleFilter('filterVehNo')" class="hidden absolute right-2 text-slate-400 hover:text-red-500 cursor-pointer p-0.5 rounded-full hover:bg-slate-200 transition" title="Clear vehicle filter">
+              <i data-lucide="x" class="w-3 h-3"></i>
+            </button>
           </div>
 
-          <!-- Date Range: From -->
-          <div class="flex items-center space-x-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+          <!-- Date Range: From with individual clear (x) -->
+          <div class="relative flex items-center space-x-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
             <span class="text-[10px] font-bold text-slate-400 uppercase">From:</span>
-            <input type="date" id="filterDateFrom" onchange="applyBatchFilters()" class="text-xs bg-transparent outline-none text-slate-700 cursor-pointer" />
+            <input type="date" id="filterDateFrom" onchange="handleSingleFilterInput('filterDateFrom')" class="text-xs bg-transparent outline-none text-slate-700 cursor-pointer" />
+            <button type="button" id="clear_filterDateFrom" onclick="clearSingleFilter('filterDateFrom')" class="hidden text-slate-400 hover:text-red-500 cursor-pointer p-0.5 rounded-full hover:bg-slate-200 transition ml-1" title="Clear from date">
+              <i data-lucide="x" class="w-3 h-3"></i>
+            </button>
           </div>
 
-          <!-- Date Range: To -->
-          <div class="flex items-center space-x-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+          <!-- Date Range: To with individual clear (x) -->
+          <div class="relative flex items-center space-x-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
             <span class="text-[10px] font-bold text-slate-400 uppercase">To:</span>
-            <input type="date" id="filterDateTo" onchange="applyBatchFilters()" class="text-xs bg-transparent outline-none text-slate-700 cursor-pointer" />
+            <input type="date" id="filterDateTo" onchange="handleSingleFilterInput('filterDateTo')" class="text-xs bg-transparent outline-none text-slate-700 cursor-pointer" />
+            <button type="button" id="clear_filterDateTo" onclick="clearSingleFilter('filterDateTo')" class="hidden text-slate-400 hover:text-red-500 cursor-pointer p-0.5 rounded-full hover:bg-slate-200 transition ml-1" title="Clear to date">
+              <i data-lucide="x" class="w-3 h-3"></i>
+            </button>
           </div>
 
-          <!-- Clear Filters -->
+          <!-- Clear Filters (Renamed to 'Reset filter') -->
           <button type="button" id="btnClearFilters" onclick="resetBatchFilters()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 flex items-center space-x-1 transition cursor-pointer" title="Clear all filters">
             <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-500"></i>
-            <span>Reset</span>
+            <span>Reset filter</span>
           </button>
 
-          <!-- Filter Count Badge -->
+          <!-- Filter Count Badge (Default: 'Total: 0 LR') -->
           <span id="filterStatsBadge" class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap">
-            0 LRs
+            Total: 0 LR
           </span>
         </div>
       </div>
@@ -1287,6 +1310,61 @@
           Generate Excel
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Excel Export Preview Modal (Realistic Excel-Style Spreadsheet Layout) -->
+  <div id="excelPreviewModal" onclick="if(event.target === this) closeExcelPreviewModal()" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-white rounded-xl w-[96vw] max-w-[1550px] h-[90vh] flex flex-col shadow-2xl border border-slate-300 animate-in fade-in zoom-in-95 duration-200 overflow-hidden font-sans">
+      
+      <!-- 1. Top Ribbon / Title Bar -->
+      <div class="flex items-center justify-between px-3.5 py-2 bg-[#f8fafc] border-b border-slate-200 shrink-0">
+        <div class="flex items-center space-x-2.5">
+          <span class="text-xs font-bold text-slate-800">Excel Export Preview - BNF 49 Columns</span>
+          <span class="text-slate-300">|</span>
+          <span id="excelPreviewRecordCount" class="text-[11px] text-slate-500 font-medium">0 records</span>
+        </div>
+        <button type="button" onclick="closeExcelPreviewModal()" class="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-200 transition cursor-pointer" title="Close Preview">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- 3. Spreadsheet Grid Viewport (Scrollable in X & Y with sticky column letters and row numbers) -->
+      <div class="flex-1 min-h-0 overflow-auto bg-[#ffffff] select-text" id="excelSpreadsheetViewport">
+        <table id="excelSpreadsheetTable" class="border-collapse text-[11px] whitespace-nowrap table-fixed" style="font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+          <thead class="sticky top-0 z-20">
+            <!-- Row 0: Column Letters (A, B, C ... AW) -->
+            <tr id="excelRowLetters" class="bg-[#f3f4f6] text-slate-600 font-semibold text-center select-none h-[22px]">
+              <th class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-30 bg-[#e5e7eb] border-r border-b border-[#cbd5e1] text-[10px] text-slate-400 font-normal"></th>
+              <!-- Dynamically populated with A, B, C... AW + resizer handles -->
+            </tr>
+            <!-- Row 1: Header Row (49 Column Names) -->
+            <tr id="excelRowHeaders" class="bg-[#f8fafc] text-slate-800 font-bold select-none h-[26px]">
+              <th class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-30 bg-[#f3f4f6] border-r border-b border-[#cbd5e1] text-center font-mono text-[10px] text-slate-500">1</th>
+              <!-- Dynamically populated with 49 BNF column names -->
+            </tr>
+          </thead>
+          <tbody id="excelTableDataBody">
+            <!-- Dynamically populated data rows (Row 2, 3, 4...) with sticky left row numbers -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 4. Worksheet Tab Bar (Bottom) - Clean Sheet 1 only, no download, no extra tabs -->
+      <div class="flex items-center justify-between px-3 py-1 bg-[#f3f4f6] border-t border-slate-300 text-xs shrink-0 select-none">
+        <div class="flex items-center space-x-1">
+          <!-- Clean Sheet 1 Tab with signature Excel green bottom line -->
+          <div class="flex items-center px-4 py-1 bg-white border-t border-x border-[#d1d5db] border-b-2 border-b-[#107c41] rounded-t font-semibold text-[#107c41] text-[11px] shadow-xs">
+            <span>Sheet 1</span>
+          </div>
+        </div>
+        <div>
+          <button type="button" onclick="closeExcelPreviewModal()" class="px-4 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded border border-slate-300 transition cursor-pointer">
+            Close
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -2210,6 +2288,12 @@
         if (typeof saveUserBatches === 'function') saveUserBatches();
         if (typeof updateBatchBadge === 'function') updateBatchBadge();
         if (typeof updateUserBadge === 'function') updateUserBadge();
+
+        // Reset login button state immediately so it is never stuck on "Signing In..."
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i><span>Login & Continue</span>`;
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
+
         navigateTo('screen2_upload');
       }
 
@@ -2405,14 +2489,56 @@
     }
 
     function resetLoginStep() {
-      document.getElementById('loginStepOtp').classList.add('hidden');
-      document.getElementById('loginStepMobile').classList.remove('hidden');
+      // 1. Reset Send OTP / Login button
+      const sendBtn = document.getElementById('sendOtpBtn');
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i><span>Login & Continue</span>`;
+      }
+
+      // 2. Reset Verify OTP button
+      const verifyBtn = document.getElementById('verifyOtpBtn');
+      if (verifyBtn) {
+        verifyBtn.disabled = false;
+        verifyBtn.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i><span>Verify & Unlock Upload</span>`;
+      }
+
+      // 3. Reset Resend OTP button
+      const resendBtn = document.getElementById('resendOtpBtn');
+      if (resendBtn) {
+        resendBtn.disabled = true;
+        resendBtn.className = "text-slate-400 font-semibold cursor-not-allowed";
+      }
+
+      // 4. Clear any error messages
+      const loginErr = document.getElementById('loginErrorMsg');
+      if (loginErr) {
+        loginErr.innerText = '';
+        loginErr.classList.add('hidden');
+      }
+      const otpErr = document.getElementById('otpErrorMsg');
+      if (otpErr) {
+        otpErr.innerText = '';
+        otpErr.classList.add('hidden');
+      }
+
+      // 5. Restore mobile input step and hide OTP step
+      const stepOtp = document.getElementById('loginStepOtp');
+      if (stepOtp) stepOtp.classList.add('hidden');
+      const stepMobile = document.getElementById('loginStepMobile');
+      if (stepMobile) stepMobile.classList.remove('hidden');
+
+      // 6. Clear OTP boxes and stop countdown
+      document.querySelectorAll('.otp-box').forEach(b => b.value = '');
       clearInterval(resendTimer);
+
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
     }
 
     function updateUserBadge() {
       const userBadge = document.getElementById('userBadge');
       const navHistoryBtn = document.getElementById('navHistoryBtn');
+      const navLogoutBtn = document.getElementById('navLogoutBtn');
       if (currentUser) {
         document.getElementById('headerUserName').innerText = currentUser.name;
         document.getElementById('headerUserMobile').innerText = `+91 ${currentUser.mobile}`;
@@ -2427,6 +2553,13 @@
           navHistoryBtn.style.removeProperty('display');
           navHistoryBtn.style.display = 'inline-flex';
         }
+        if (navLogoutBtn) {
+          navLogoutBtn.hidden = false;
+          navLogoutBtn.removeAttribute('hidden');
+          navLogoutBtn.classList.remove('hidden');
+          navLogoutBtn.style.removeProperty('display');
+          navLogoutBtn.style.display = 'inline-flex';
+        }
       } else {
         if (userBadge) {
           userBadge.classList.add('hidden');
@@ -2437,6 +2570,12 @@
           navHistoryBtn.setAttribute('hidden', '');
           navHistoryBtn.classList.add('hidden');
           navHistoryBtn.style.setProperty('display', 'none', 'important');
+        }
+        if (navLogoutBtn) {
+          navLogoutBtn.hidden = true;
+          navLogoutBtn.setAttribute('hidden', '');
+          navLogoutBtn.classList.add('hidden');
+          navLogoutBtn.style.setProperty('display', 'none', 'important');
         }
       }
     }
@@ -2451,15 +2590,21 @@
         }
       } catch (e) {}
 
+      // Clear local session state
       currentUser = null;
       verifiedBatch = [];
       deletedBatch = [];
       activeItem = null;
       localStorage.removeItem('bnf_user');
+
+      // Update header badges & reset login form state
       updateUserBadge();
       updateBatchBadge();
       resetLoginStep();
+
+      // Return cleanly to Screen 1 (Login) without page refresh
       navigateTo('screen1_login');
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
     }
 
     // --- SCREEN 2: Upload LR (Single LR Upload Only) ---
@@ -4920,7 +5065,34 @@
       const v = document.getElementById('filterVehNo'); if (v) v.value = '';
       const df = document.getElementById('filterDateFrom'); if (df) df.value = '';
       const dt = document.getElementById('filterDateTo'); if (dt) dt.value = '';
+      ['lrSearchInput', 'filterCustomer', 'filterVehNo', 'filterDateFrom', 'filterDateTo'].forEach(id => {
+        const btn = document.getElementById('clear_' + id);
+        if (btn) btn.classList.add('hidden');
+      });
       renderBatchTable();
+    }
+
+    function handleSingleFilterInput(inputId) {
+      const el = document.getElementById(inputId);
+      const clearBtn = document.getElementById('clear_' + inputId);
+      if (clearBtn) {
+        if (el && el.value && el.value.trim() !== '') {
+          clearBtn.classList.remove('hidden');
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+      }
+      applyBatchFilters();
+    }
+
+    function clearSingleFilter(inputId) {
+      const el = document.getElementById(inputId);
+      if (el) {
+        el.value = '';
+        const clearBtn = document.getElementById('clear_' + inputId);
+        if (clearBtn) clearBtn.classList.add('hidden');
+        applyBatchFilters();
+      }
     }
 
     function applyBatchFilters() {
@@ -4954,7 +5126,7 @@
         tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 2}" class="py-8 text-center text-slate-400 text-sm">No verified bilties in current batch. Click "Add More LR" to upload.</td></tr>`;
         const badge = document.getElementById('filterStatsBadge');
         if (badge) {
-          badge.innerText = '0 LRs';
+          badge.innerText = 'Total: 0 LR';
           badge.className = 'text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap';
         }
         return;
@@ -5031,12 +5203,13 @@
       // Update Filter Badge
       const badge = document.getElementById('filterStatsBadge');
       if (badge) {
+        const totalCount = verifiedBatch.length;
         if (hasActiveFilters) {
-          badge.innerText = `Showing ${filteredList.length} of ${verifiedBatch.length} LRs`;
+          badge.innerText = `Showing ${filteredList.length} of ${totalCount} LRs`;
           badge.className = 'text-[11px] font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 whitespace-nowrap';
         } else {
-          badge.innerText = `${verifiedBatch.length} LRs`;
-          badge.className = 'text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap';
+          badge.innerText = `Total: ${totalCount} ${totalCount === 1 ? 'LR' : 'LRs'}`;
+          badge.className = 'text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap';
         }
       }
 
@@ -5222,6 +5395,231 @@
         loadAndRenderExportHistory();
       }
       lucide.createIcons();
+    }
+
+    // Helper: Generate Excel Column Letters (0->A, 1->B, 25->Z, 26->AA, 48->AW)
+    function getExcelColLetter(colIdx) {
+      let letter = '';
+      let temp = colIdx + 1;
+      while (temp > 0) {
+        const rem = (temp - 1) % 26;
+        letter = String.fromCharCode(65 + rem) + letter;
+        temp = Math.floor((temp - 1) / 26);
+      }
+      return letter;
+    }
+
+    // Helper: Determine Excel Cell Text Alignment
+    function getExcelCellAlignment(colName) {
+      const lower = colName.toLowerCase();
+      // Numbers, Packages, Weights, Financial Amounts -> Right Aligned
+      if (
+        lower.includes('pckgs') ||
+        lower.includes('weight') ||
+        lower.includes('wt') ||
+        lower.includes('freight') ||
+        lower.includes('oamount') ||
+        lower.includes('cgst') ||
+        lower.includes('sgst') ||
+        lower.includes('igst') ||
+        lower.includes('received') ||
+        lower.includes('advance') ||
+        lower.includes('valgoods')
+      ) {
+        return 'text-right pr-2 font-mono';
+      }
+      // Identifiers, Numbers, Codes, Dates -> Center Aligned
+      if (
+        lower.includes('grno') ||
+        lower.includes('lr no') ||
+        lower.includes('grdt') ||
+        lower.includes('date') ||
+        lower.includes('stockdt') ||
+        lower.includes('vehicle') ||
+        lower.includes('eway') ||
+        lower.includes('invoice') ||
+        lower.includes('transit') ||
+        lower.includes('valid')
+      ) {
+        return 'text-center font-mono';
+      }
+      // Text, Names, Descriptions -> Left Aligned
+      return 'text-left pl-2';
+    }
+
+    function selectExcelPreviewCell(coord, val) {
+      const coordEl = document.getElementById('excelFormulaCellCoord');
+      const valEl = document.getElementById('excelFormulaBarValue');
+      if (coordEl) coordEl.innerText = coord;
+      if (valEl) valEl.innerText = (val !== undefined && val !== null) ? String(val) : '';
+    }
+
+    function initExcelColumnResize() {
+      const resizers = document.querySelectorAll('.excel-col-resizer');
+      let currentTh = null;
+      let startX = 0;
+      let startWidth = 0;
+
+      resizers.forEach(resizer => {
+        resizer.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          currentTh = resizer.parentElement;
+          startX = e.pageX;
+          startWidth = currentTh.offsetWidth;
+          document.body.style.cursor = 'col-resize';
+          document.body.style.userSelect = 'none';
+
+          const onMouseMove = (moveEvent) => {
+            if (!currentTh) return;
+            const diff = moveEvent.pageX - startX;
+            const newWidth = Math.max(55, startWidth + diff);
+            const colIndex = currentTh.getAttribute('data-col-idx');
+            const cells = document.querySelectorAll(`.excel-cell-col-${colIndex}`);
+            cells.forEach(c => {
+              c.style.width = newWidth + 'px';
+              c.style.minWidth = newWidth + 'px';
+              c.style.maxWidth = newWidth + 'px';
+            });
+          };
+
+          const onMouseUp = () => {
+            currentTh = null;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+          };
+
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+        });
+      });
+    }
+
+    function openExcelPreviewModal() {
+      const modal = document.getElementById('excelPreviewModal');
+      const rowLetters = document.getElementById('excelRowLetters');
+      const rowHeaders = document.getElementById('excelRowHeaders');
+      const tbody = document.getElementById('excelTableDataBody');
+      const countEl = document.getElementById('excelPreviewRecordCount');
+      if (!modal) return;
+
+      const count = verifiedBatch.length;
+      if (countEl) countEl.innerText = `${count} ${count === 1 ? 'record' : 'records'}`;
+
+      // Default column widths: standard ~130px, names/descriptions ~170px
+      const defaultWidths = BNF_49_COLUMNS.map(col => {
+        const l = col.toLowerCase();
+        if (l.includes('customer') || l.includes('cngr') || l.includes('cnge') || l.includes('goods') || l.includes('driver')) {
+          return 165;
+        }
+        if (l.includes('date') || l.includes('grdt') || l.includes('vehicle') || l.includes('branch') || l.includes('eway')) {
+          return 125;
+        }
+        return 110;
+      });
+
+      // 1. Build Row 0: Column Letters (A, B, C... AW) with Draggable Resizers
+      if (rowLetters) {
+        const lettersHtml = BNF_49_COLUMNS.map((col, idx) => {
+          const letter = getExcelColLetter(idx);
+          const w = defaultWidths[idx];
+          return `
+            <th class="excel-cell-col-${idx} relative border-r border-b border-[#cbd5e1] text-[10px] text-slate-600 bg-[#f3f4f6] font-semibold h-[22px] select-none text-center" data-col-idx="${idx}" style="width: ${w}px; min-width: ${w}px; max-width: ${w}px;">
+              <span>${letter}</span>
+              <div class="excel-col-resizer absolute top-0 right-0 w-[5px] h-full cursor-col-resize select-none hover:bg-emerald-500 active:bg-emerald-600" title="Drag to resize column"></div>
+            </th>
+          `;
+        }).join('');
+
+        rowLetters.innerHTML = `
+          <th class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-30 bg-[#e5e7eb] border-r border-b border-[#cbd5e1] text-[10px] text-slate-400 font-normal"></th>
+          ${lettersHtml}
+        `;
+      }
+
+      // 2. Build Row 1: Header Row (Column Names)
+      if (rowHeaders) {
+        const headersHtml = BNF_49_COLUMNS.map((col, idx) => {
+          const req = col.includes('*');
+          const w = defaultWidths[idx];
+          const alignClass = getExcelCellAlignment(col);
+          const bgCol = req ? 'bg-[#f0fdf4] text-slate-800 font-extrabold' : 'bg-[#f8fafc] text-slate-700 font-bold';
+          return `
+            <th class="excel-cell-col-${idx} border-r border-b border-[#cbd5e1] text-[11px] h-[26px] ${bgCol} ${alignClass} truncate px-2" data-col-idx="${idx}" style="width: ${w}px; min-width: ${w}px; max-width: ${w}px;" title="Col ${getExcelColLetter(idx)} (Row 1): ${col}" onclick="selectExcelPreviewCell('${getExcelColLetter(idx)}1', '${col.replace(/'/g, "\\'")}')">
+              ${col}
+            </th>
+          `;
+        }).join('');
+
+        rowHeaders.innerHTML = `
+          <th class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-30 bg-[#f3f4f6] border-r border-b border-[#cbd5e1] text-center font-mono text-[10px] text-slate-500">1</th>
+          ${headersHtml}
+        `;
+      }
+
+      // 3. Build Data Rows (Rows 2, 3, 4...) with Numbered Row Index in Left Gutter
+      if (tbody) {
+        if (count === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-10 bg-[#f8fafc] border-r border-b border-[#e5e7eb] text-center font-mono text-[10px] text-slate-400 py-6">2</td>
+              <td colspan="${BNF_49_COLUMNS.length}" class="py-12 text-center text-slate-400 text-sm font-sans border-b border-[#e5e7eb]">
+                No LR records in the current batch. Click "Add More LR" to upload and verify records.
+              </td>
+            </tr>
+          `;
+        } else {
+          tbody.innerHTML = verifiedBatch.map((item, rowIdx) => {
+            const rowNumber = rowIdx + 2; // Row 1 is headers, data starts at Row 2
+            const d = item.data || {};
+            const isFallback = item.ocrEngine === 'ml_fallback';
+
+            const cellsHtml = BNF_49_COLUMNS.map((col, colIdx) => {
+              const letter = getExcelColLetter(colIdx);
+              const coord = `${letter}${rowNumber}`;
+              let val = getBnfFieldValue(d, col);
+              const hasVal = (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== 'null' && String(val).trim() !== 'None');
+              const displayVal = hasVal ? String(val).trim() : '';
+              const alignClass = getExcelCellAlignment(col);
+              const isLrCol = (col === 'grno (*)' || col === 'LR No *');
+              const fallbackBadge = (isLrCol && isFallback) ? ` <span class="text-[9px] px-1 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold" title="Fallback OCR">⚠️</span>` : '';
+              const safeVal = displayVal.replace(/"/g, '&quot;');
+              const w = defaultWidths[colIdx];
+
+              return `
+                <td class="excel-cell-col-${colIdx} border-r border-b border-[#e5e7eb] h-[24px] text-[11px] text-slate-700 bg-white hover:bg-sky-50 transition-colors ${alignClass} truncate px-2 cursor-cell" data-coord="${coord}" data-val="${safeVal}" style="width: ${w}px; min-width: ${w}px; max-width: ${w}px;" title="${coord}: ${safeVal}" onclick="selectExcelPreviewCell('${coord}', '${safeVal.replace(/'/g, "\\'")}')">
+                  ${displayVal}${fallbackBadge}
+                </td>
+              `;
+            }).join('');
+
+            return `
+              <tr class="hover:bg-slate-50 transition-colors">
+                <td class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-10 bg-[#f8fafc] border-r border-b border-[#cbd5e1] text-center font-mono text-[10px] text-slate-500 select-none h-[24px]">
+                  ${rowNumber}
+                </td>
+                ${cellsHtml}
+              </tr>
+            `;
+          }).join('');
+        }
+      }
+
+      // Initialize default active cell in formula bar
+      selectExcelPreviewCell('A1', 'branchrefcode');
+
+      modal.classList.remove('hidden');
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+
+      // Attach column resize listeners
+      initExcelColumnResize();
+    }
+
+    function closeExcelPreviewModal() {
+      const modal = document.getElementById('excelPreviewModal');
+      if (modal) modal.classList.add('hidden');
     }
 
     function populateExcelPreview() {
