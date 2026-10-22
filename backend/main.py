@@ -94,9 +94,25 @@ def _resolve_project_file(*subpaths: str) -> str:
             return norm
     return os.path.normpath(os.path.join(BASE_DIR, *subpaths))
 
+def _resolve_apk_path() -> str | None:
+    """Finds available Android APK build from flutter build output or releases folder."""
+    candidates = [
+        os.path.join(BASE_DIR, "releases", "ocr_to_excel.apk"),
+        os.path.join(os.path.dirname(BASE_DIR), "releases", "ocr_to_excel.apk"),
+        os.path.join(os.path.dirname(BASE_DIR), "build", "app", "outputs", "flutter-apk", "app-release.apk"),
+        os.path.join(os.path.dirname(BASE_DIR), "build", "app", "outputs", "apk", "release", "app-release.apk"),
+        os.path.join(os.path.dirname(BASE_DIR), "build", "app", "outputs", "flutter-apk", "app-debug.apk"),
+        os.path.join(os.path.dirname(BASE_DIR), "build", "app", "outputs", "apk", "debug", "app-debug.apk"),
+    ]
+    for c in candidates:
+        norm = os.path.normpath(c)
+        if os.path.isfile(norm) and os.path.getsize(norm) > 0:
+            return norm
+    return None
+
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 SAMPLE_IMAGES_DIR = os.path.join(STATIC_DIR, "sample_images")
-APK_PATH = _resolve_project_file("releases", "ocr_to_excel.apk")
+APK_PATH = _resolve_apk_path() or _resolve_project_file("releases", "ocr_to_excel.apk")
 EXPORT_DIR = os.path.join(BASE_DIR, "export")
 UPLOAD_LR_DIR = getattr(audit_snapshot, "UPLOAD_LR_DIR", os.path.join(EXPORT_DIR, "upload_LR"))
 SNAPSHOTS_EXCEL_DIR = getattr(audit_snapshot, "SNAPSHOTS_EXCEL_DIR", os.path.join(EXPORT_DIR, "snapshots_excel"))
@@ -742,11 +758,13 @@ def health_check():
 # --- ROUTE 3: Android APK Download ---
 @app.get("/download-apk")
 def download_apk():
-    if os.path.exists(APK_PATH):
+    apk_file = _resolve_apk_path() or APK_PATH
+    if apk_file and os.path.exists(apk_file):
         return FileResponse(
-            APK_PATH,
+            apk_file,
             filename="ocr_to_excel.apk",
-            media_type="application/vnd.android.package-archive"
+            media_type="application/vnd.android.package-archive",
+            headers={"Content-Disposition": 'attachment; filename="ocr_to_excel.apk"'}
         )
     raise HTTPException(status_code=404, detail="APK build not found on server.")
 
@@ -2397,6 +2415,20 @@ async def get_export_audit_history(
     }
 
 
+@app.delete("/api/export-audit/{target}")
+@app.post("/api/export-audit/delete")
+async def api_delete_export_audit(
+    target: str | None = None,
+    export_id: str | None = Query(default=None),
+    filename: str | None = Query(default=None)
+):
+    key = target or export_id or filename
+    if not key:
+        raise HTTPException(status_code=400, detail="Missing export identifier or filename")
+    deleted = audit_snapshot.delete_export_audit(key)
+    return {"success": True, "deleted": deleted, "target": key}
+
+
 @app.get("/api/export-audit/download-all")
 async def download_all_user_exports(
     mobile: str | None = Query(default=None),
@@ -2464,7 +2496,7 @@ async def get_previous_uploads(
     user_id: str | None = Query(default=None),
     user_mobile: str | None = Query(default=None),
     authorization: str | None = Header(default=None),
-    only_pending: bool = Query(default=True),
+    only_pending: bool = Query(default=False),
     limit: int = 50
 ):
     """

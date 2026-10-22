@@ -3759,7 +3759,7 @@
     "sha256": "5b88d64fd859a6a1a6d99b3495f9e58237c987b7e05cb1d3e8d9a54728d51b00",
     "created_at": "2026-10-12T00:53:28+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -3837,6 +3837,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -3898,7 +3905,9 @@
       "branchrefcode": "KOLKATA",
       "stockpkgs": "962",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "EXP_20261012_005449_c23f9b": {
     "file_id": "EXP_20261012_005449_c23f9b",
@@ -7043,7 +7052,7 @@
     "sha256": "64af4d5c34a30127101ced792485484ea70458683f9c6cb73c8759da967fb156",
     "created_at": "2026-10-14T18:23:20+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -7123,6 +7132,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -7186,7 +7202,9 @@
       "branchrefcode": "DELHI",
       "stockpkgs": "962",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "LR_20261014_182603_6017b6": {
     "file_id": "LR_20261014_182603_6017b6",
@@ -7626,7 +7644,7 @@
     "sha256": "64af4d5c34a30127101ced792485484ea70458683f9c6cb73c8759da967fb156",
     "created_at": "2026-10-14T22:09:48+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -7707,6 +7725,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -7771,7 +7796,9 @@
       "stockpkgs": "962",
       "freight  *": "0",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "LR_20261014_223040_49b088": {
     "file_id": "LR_20261014_223040_49b088",
@@ -8104,7 +8131,7 @@
     "sha256": "64af4d5c34a30127101ced792485484ea70458683f9c6cb73c8759da967fb156",
     "created_at": "2026-10-14T23:17:00+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -8184,6 +8211,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -8247,7 +8281,9 @@
       "branchrefcode": "DELHI",
       "stockpkgs": "962",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "LR_20261014_232728_817ee1": {
     "file_id": "LR_20261014_232728_817ee1",
@@ -9423,7 +9459,7 @@
     "sha256": "b3f82ebfe752898ccd7c40b5ec5ea9cca5cafa0352e22a467a652f3a4b46941b",
     "created_at": "2026-10-15T01:17:04+05:30",
     "edited_at": null,
-    "exported_at": "22-Oct-2026 12:42:11 AM",
+    "exported_at": "22-Oct-2026 11:13:44 PM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -9511,6 +9547,13 @@
         "action": "export",
         "export_id": "EXP_20261022_004211_374036",
         "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_004211_374036_4LRs.xlsx"
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261022_231344_d17525",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -9577,7 +9620,7 @@
       "freight": "0"
     },
     "is_exported": true,
-    "export_batch_id": "EXP_20261022_004211_374036"
+    "export_batch_id": "EXP_20261022_231344_d17525"
   },
   "LR_20261015_152906_f30d35": {
     "file_id": "LR_20261015_152906_f30d35",
@@ -9909,7 +9952,7 @@
     "sha256": "64af4d5c34a30127101ced792485484ea70458683f9c6cb73c8759da967fb156",
     "created_at": "2026-10-15T16:38:08+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -9990,6 +10033,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -10054,7 +10104,9 @@
       "cngrgstno": "07AAFCP1505P2Z8",
       "stockpkgs": "962",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "LR_20261015_163905_e44017": {
     "file_id": "LR_20261015_163905_e44017",
@@ -13612,7 +13664,7 @@
     "sha256": "cfdbad73ad0800fd6c91696d855cdda74ff28d17ea435fd5872deb16de9a5eaf",
     "created_at": "2026-10-16T15:53:44+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -13693,6 +13745,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -13757,7 +13816,9 @@
       "cngrgstno": "07AAFCP1505P2Z8",
       "stockpkgs": "962",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "LR_20261016_155425_8847bb": {
     "file_id": "LR_20261016_155425_8847bb",
@@ -24596,7 +24657,7 @@
     "sha256": "b3f82ebfe752898ccd7c40b5ec5ea9cca5cafa0352e22a467a652f3a4b46941b",
     "created_at": "2026-10-21T12:24:09+05:30",
     "edited_at": null,
-    "exported_at": "22-Oct-2026 12:42:11 AM",
+    "exported_at": "22-Oct-2026 11:13:44 PM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -24684,6 +24745,13 @@
         "action": "export",
         "export_id": "EXP_20261022_004211_374036",
         "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_004211_374036_4LRs.xlsx"
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261022_231344_d17525",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -24751,7 +24819,7 @@
       "freight": "0"
     },
     "is_exported": true,
-    "export_batch_id": "EXP_20261022_004211_374036"
+    "export_batch_id": "EXP_20261022_231344_d17525"
   },
   "LR_20261021_122431_ed7ac6": {
     "file_id": "LR_20261021_122431_ed7ac6",
@@ -25718,7 +25786,7 @@
     "sha256": "cfdbad73ad0800fd6c91696d855cdda74ff28d17ea435fd5872deb16de9a5eaf",
     "created_at": "2026-10-21T15:45:28+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Logistics User",
@@ -25799,6 +25867,13 @@
         "user": "Logistics User",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -25864,7 +25939,9 @@
       "cngrgstno": "07AAFCP1505P2Z8",
       "stockpkgs": "962",
       "freight": "0"
-    }
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
   },
   "EXP_20261021_154532_3212b5": {
     "file_id": "EXP_20261021_154532_3212b5",
@@ -26454,7 +26531,7 @@
     "sha256": "b3f82ebfe752898ccd7c40b5ec5ea9cca5cafa0352e22a467a652f3a4b46941b",
     "created_at": "2026-10-21T19:00:26+05:30",
     "edited_at": null,
-    "exported_at": "22-Oct-2026 12:42:11 AM",
+    "exported_at": "22-Oct-2026 11:13:44 PM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Ruchita Patel",
@@ -26542,6 +26619,13 @@
         "action": "export",
         "export_id": "EXP_20261022_004211_374036",
         "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_004211_374036_4LRs.xlsx"
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261022_231344_d17525",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -26613,7 +26697,7 @@
     },
     "user_id": "26a4e888",
     "is_exported": true,
-    "export_batch_id": "EXP_20261022_004211_374036"
+    "export_batch_id": "EXP_20261022_231344_d17525"
   },
   "LR_20261021_225217_8ee232": {
     "file_id": "LR_20261021_225217_8ee232",
@@ -29511,7 +29595,7 @@
     "sha256": "",
     "created_at": "2026-10-22T09:43:07+05:30",
     "edited_at": null,
-    "exported_at": "2026-10-22T09:43:07+05:30",
+    "exported_at": "2026-10-23T00:04:20+05:30",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Ruchita Patel",
@@ -29555,6 +29639,13 @@
       },
       {
         "timestamp": "2026-10-22T09:43:07+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-23T00:04:20+05:30",
         "user": "Logistics User",
         "action": "export",
         "destination": "device_download",
@@ -31215,7 +31306,7 @@
     "sha256": "",
     "created_at": "2026-10-22T16:35:00+05:30",
     "edited_at": null,
-    "exported_at": "2026-10-22T16:35:01+05:30",
+    "exported_at": "2026-10-22T22:23:27+05:30",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Ruchita Patel",
@@ -31252,6 +31343,13 @@
       },
       {
         "timestamp": "2026-10-22T16:35:01+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-22T22:23:27+05:30",
         "user": "Logistics User",
         "action": "export",
         "destination": "device_download",
@@ -31977,7 +32075,7 @@
     "sha256": "b3f82ebfe752898ccd7c40b5ec5ea9cca5cafa0352e22a467a652f3a4b46941b",
     "created_at": "2026-10-22T21:59:23+05:30",
     "edited_at": null,
-    "exported_at": null,
+    "exported_at": "22-Oct-2026 11:13:44 PM",
     "deleted_at": null,
     "is_deleted": false,
     "created_by": "Ruchita Patel",
@@ -32059,6 +32157,13 @@
         "user": "Ruchita Patel",
         "action": "create",
         "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261022_231344_d17525",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx"
       }
     ],
     "custom_meta": {
@@ -32127,6 +32232,1084 @@
       "cngegstno": "07AAFCP1505P2Z8",
       "stockpkgs": "520",
       "freight": "0"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261022_231344_d17525"
+  },
+  "EXP_20261022_231344_d17525": {
+    "file_id": "EXP_20261022_231344_d17525",
+    "file_name": "USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-22T23:13:44+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-22T23:13:45+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:13:44+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:13:44+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261022_231344_d17525",
+      "user_export_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+      "audit_copy": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+      "generated_by": "Ruchita Patel",
+      "generated_at": "22-Oct-2026 11:13:44 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261022_231344_d17525_audit": {
+    "file_id": "EXP_20261022_231344_d17525_audit",
+    "file_name": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+    "file_size_bytes": 8565,
+    "file_size_kb": 8.4,
+    "sha256": "a8c89ef622e80f859b7c379aa571000d77d8e81a1a3fc29b7940924064518812",
+    "created_at": "2026-10-22T23:13:45+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": "a8c89ef622e80f859b7c379aa571000d77d8e81a1a3fc29b7940924064518812"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:13:45+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261022_231344_d17525_1LRs.xlsx",
+      "generated_by": "Ruchita Patel",
+      "generated_at": "22-Oct-2026 11:13:44 PM"
+    },
+    "current_data": null
+  },
+  "LR_20261022_231548_1cff0b": {
+    "file_id": "LR_20261022_231548_1cff0b",
+    "file_name": "LR_20261022_231548_389b36_Captured_LR_1792691141285.jpg",
+    "file_type": "bilty_image",
+    "file_path": "export/upload_LR/LR_20261022_231548_389b36_Captured_LR_1792691141285.jpg",
+    "file_size_bytes": 437983,
+    "file_size_kb": 427.7,
+    "sha256": "fad0a7eb5b3541fbc337aed38b4fa51d4e0e578ee0a93060b9a08a49282595c3",
+    "created_at": "2026-10-22T23:15:48+05:30",
+    "edited_at": null,
+    "exported_at": "22-Oct-2026 11:20:39 PM",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": "26a4e888",
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:15:48+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261022_231548_389b36_Captured_LR_1792691141285.jpg",
+        "snapshot_data": {
+          "Vehicle No *": "",
+          "Vehicle Type *": "Market",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "Vehicle Category": "Market",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "branchrefcode": "KOLKATA",
+          "stockpckgs": "",
+          "stockpkgs": "",
+          "stockaweight": "",
+          "stockcweight": "",
+          "received": "0",
+          "advance": "0",
+          "collectionstncode": "KOLKATA",
+          "ftl": "N",
+          "custrefcode": "CM001",
+          "staxpaidby": "C",
+          "dlvtype": "G",
+          "freight  *": "0",
+          "freight": "0",
+          "oamount": "0",
+          "cgst": "0",
+          "sgst": "0",
+          "igst": "0.00"
+        },
+        "sha256": "fad0a7eb5b3541fbc337aed38b4fa51d4e0e578ee0a93060b9a08a49282595c3"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:15:48+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261022_232039_c9bc29",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 27,
+      "upload_id": "LR_20261022_231548_1cff0b",
+      "lr_no": "",
+      "saved_filename": "LR_20261022_231548_389b36_Captured_LR_1792691141285.jpg",
+      "original_filename": "Captured_LR_1792691141285.jpg",
+      "snapshot_path": "D:\\AndroidDev\\Projects\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261022_231548_389b36_Captured_LR_1792691141285.jpg",
+      "user_id": "26a4e888",
+      "user_mobile": "9876543210",
+      "created_by": "Ruchita Patel"
+    },
+    "current_data": {
+      "Vehicle No *": "",
+      "Vehicle Type *": "Market",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "Vehicle Category": "Market",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "branchrefcode": "KOLKATA",
+      "stockpckgs": "",
+      "stockpkgs": "",
+      "stockaweight": "",
+      "stockcweight": "",
+      "received": "0",
+      "advance": "0",
+      "collectionstncode": "KOLKATA",
+      "ftl": "N",
+      "custrefcode": "CM001",
+      "staxpaidby": "C",
+      "dlvtype": "G",
+      "freight  *": "0",
+      "freight": "0",
+      "oamount": "0",
+      "cgst": "0",
+      "sgst": "0",
+      "igst": "0.00"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261022_232039_c9bc29"
+  },
+  "EXP_20261022_232039_c9bc29": {
+    "file_id": "EXP_20261022_232039_c9bc29",
+    "file_name": "USER_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-22T23:20:40+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-22T23:20:40+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261022_232039_c9bc29",
+      "user_export_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+      "audit_copy": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+      "generated_by": "Ruchita Patel",
+      "generated_at": "22-Oct-2026 11:20:39 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261022_232039_c9bc29_audit": {
+    "file_id": "EXP_20261022_232039_c9bc29_audit",
+    "file_name": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+    "file_size_bytes": 7899,
+    "file_size_kb": 7.7,
+    "sha256": "6e8a326ac42ad6d7b42e25301fd681f744e0859850de276c25eaddb9906347c8",
+    "created_at": "2026-10-22T23:20:40+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": "6e8a326ac42ad6d7b42e25301fd681f744e0859850de276c25eaddb9906347c8"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:20:40+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261022_232039_c9bc29_1LRs.xlsx",
+      "generated_by": "Ruchita Patel",
+      "generated_at": "22-Oct-2026 11:20:39 PM"
+    },
+    "current_data": null
+  },
+  "LR_20261022_232138_befb7e": {
+    "file_id": "LR_20261022_232138_befb7e",
+    "file_name": "LR_20261022_232138_e2109a_LR_32752_HR74C1091_LR_no_32752_ambala.pdf",
+    "file_type": "bilty_pdf",
+    "file_path": "export/upload_LR/LR_20261022_232138_e2109a_LR_32752_HR74C1091_LR_no_32752_ambala.pdf",
+    "file_size_bytes": 1384761,
+    "file_size_kb": 1352.3,
+    "sha256": "406e552810bdc51cdf162c4315cb1dcd7813eca5d6428cc279e35e6e1cb49f46",
+    "created_at": "2026-10-22T23:21:38+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": "26a4e888",
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:21:38+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261022_232138_e2109a_LR_32752_HR74C1091_LR_no_32752_ambala.pdf",
+        "snapshot_data": {
+          "grno": "32752",
+          "LR No *": "32752",
+          "grdt": "30/09/2026",
+          "stockdt": "30/09/2026",
+          "Customer Name *": "HIMALAYA WELLNESS COMPANY",
+          "cngr *": "Himalaya Wellness Company Medchal, Telangana-501401",
+          "cnge *": "Himalaya wellness company Kurukshetra, Haryana-136135",
+          "cngrgstno *": "36AADFT3025B1ZQ",
+          "cngegstno *": "06AADFT3025B2ZS",
+          "orgrefcode": "HYDERABAD",
+          "destrefcode": "Haryana (Ambala)",
+          "bookedpckgs": "1",
+          "packing": "BOX",
+          "goods": "Himalaya Products",
+          "valgoods": "4839933.71",
+          "invoiceno": "5516701068",
+          "invoiedt": "30/09/2026",
+          "ewaybillno": "112565948483",
+          "Valid Upto": "09/10/2026",
+          "bookedaweight": "14.877",
+          "bookedcweight": "15",
+          "pmark": "001691",
+          "grtype(Don’t know)": "TO PAY",
+          "freight  *": "0",
+          "oamount": "4839934.00",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "547808.42",
+          "received": "0.00",
+          "advance": "0.00",
+          "collectionstncode": "HYDERABAD",
+          "ftl": "FTL",
+          "custrefcode": "C7056",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "stockpckgs": "2034",
+          "stockaweight": "14.877",
+          "stockcweight": "15",
+          "productcode": "",
+          "Vehicle No *": "HR74C1091",
+          "Vehicle Type *": "Market",
+          "Depatment Name": "HIMA-KOLKATA",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "Vehicle Category": "Market",
+          "department": "HIMA-KOLKATA",
+          "Counter": "HYDERABAD",
+          "counter": "HYDERABAD",
+          "branchrefcode": "HYDERABAD",
+          "stockpkgs": "2034",
+          "freight": "0"
+        },
+        "sha256": "406e552810bdc51cdf162c4315cb1dcd7813eca5d6428cc279e35e6e1cb49f46"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:21:38+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 53,
+      "upload_id": "LR_20261022_232138_befb7e",
+      "lr_no": "32752",
+      "saved_filename": "LR_20261022_232138_e2109a_LR_32752_HR74C1091_LR_no_32752_ambala.pdf",
+      "original_filename": "HR74C1091 LR no 32752 ambala.pdf",
+      "snapshot_path": "D:\\AndroidDev\\Projects\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261022_232138_e2109a_LR_32752_HR74C1091_LR_no_32752_ambala.pdf",
+      "user_id": "26a4e888",
+      "user_mobile": "9876543210",
+      "created_by": "Ruchita Patel"
+    },
+    "current_data": {
+      "grno": "32752",
+      "LR No *": "32752",
+      "grdt": "30/09/2026",
+      "stockdt": "30/09/2026",
+      "Customer Name *": "HIMALAYA WELLNESS COMPANY",
+      "cngr *": "Himalaya Wellness Company Medchal, Telangana-501401",
+      "cnge *": "Himalaya wellness company Kurukshetra, Haryana-136135",
+      "cngrgstno *": "36AADFT3025B1ZQ",
+      "cngegstno *": "06AADFT3025B2ZS",
+      "orgrefcode": "HYDERABAD",
+      "destrefcode": "Haryana (Ambala)",
+      "bookedpckgs": "1",
+      "packing": "BOX",
+      "goods": "Himalaya Products",
+      "valgoods": "4839933.71",
+      "invoiceno": "5516701068",
+      "invoiedt": "30/09/2026",
+      "ewaybillno": "112565948483",
+      "Valid Upto": "09/10/2026",
+      "bookedaweight": "14.877",
+      "bookedcweight": "15",
+      "pmark": "001691",
+      "grtype(Don’t know)": "TO PAY",
+      "freight  *": "0",
+      "oamount": "4839934.00",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "547808.42",
+      "received": "0.00",
+      "advance": "0.00",
+      "collectionstncode": "HYDERABAD",
+      "ftl": "FTL",
+      "custrefcode": "C7056",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "stockpckgs": "2034",
+      "stockaweight": "14.877",
+      "stockcweight": "15",
+      "productcode": "",
+      "Vehicle No *": "HR74C1091",
+      "Vehicle Type *": "Market",
+      "Depatment Name": "HIMA-KOLKATA",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "Vehicle Category": "Market",
+      "department": "HIMA-KOLKATA",
+      "Counter": "HYDERABAD",
+      "counter": "HYDERABAD",
+      "branchrefcode": "HYDERABAD",
+      "stockpkgs": "2034",
+      "freight": "0"
     }
+  },
+  "LR_20261022_234339_ebdb17": {
+    "file_id": "LR_20261022_234339_ebdb17",
+    "file_name": "LR_20261022_234339_6c8852_LR_30035_image_part1.jpg",
+    "file_type": "bilty_image",
+    "file_path": "export/upload_LR/LR_20261022_234339_6c8852_LR_30035_image_part1.jpg",
+    "file_size_bytes": 137610,
+    "file_size_kb": 134.4,
+    "sha256": "5421e879d09d98321c5576f49f3d365342a8893963f76190b73a18a84218a48f",
+    "created_at": "2026-10-22T23:43:39+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": "26a4e888",
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:43:39+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261022_234339_6c8852_LR_30035_image_part1.jpg",
+        "snapshot_data": {
+          "grno": "30035",
+          "LR No *": "30035",
+          "grdt": "05/08/2026",
+          "stockdt": "05/08/2026",
+          "Customer Name *": "Himalaya Wellness Company",
+          "cngr *": "Himalaya Wellness Company Somasam Hyderabad-501401",
+          "cnge *": "Himalaya Wellness Company Kurukshetra Haryana-136136",
+          "cngrgstno *": "29AADFT3025B2ZK",
+          "cngegstno *": "29AADFT3025B2ZK",
+          "orgrefcode": "HYDERABAD",
+          "destrefcode": "Haryana (Ambada)",
+          "bookedpckgs": "2632",
+          "packing": "Box",
+          "goods": "Himalaya Products",
+          "valgoods": "5446344",
+          "invoiceno": "5616700769",
+          "invoiedt": "05/08/2026",
+          "ewaybillno": "102509410411",
+          "Valid Upto": "14/08/2026",
+          "bookedaweight": "15057",
+          "bookedcweight": "15057",
+          "pmark": "001678",
+          "grtype(Don’t know)": "TO PAY",
+          "freight  *": "0",
+          "oamount": "5446344",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "0.00",
+          "received": "0.00",
+          "advance": "0.00",
+          "collectionstncode": "HYDERABAD",
+          "ftl": "FTL",
+          "custrefcode": "CM001",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "stockpckgs": "2632",
+          "stockaweight": "15057",
+          "stockcweight": "15057",
+          "productcode": "",
+          "Vehicle No *": "PB13AR4739",
+          "Vehicle Type *": "32 FT MXL",
+          "Depatment Name": "HIMA-KOLKATA",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "BNF LR No": "",
+          "Vehicle Category": "32 FT MXL",
+          "department": "HIMA-KOLKATA",
+          "Counter": "HYDERABAD",
+          "counter": "HYDERABAD",
+          "branchrefcode": "HYDERABAD",
+          "cngrgstno": "29AADFT3025B2ZK",
+          "cngegstno": "29AADFT3025B2ZK",
+          "stockpkgs": "2632",
+          "freight": "0"
+        },
+        "sha256": "5421e879d09d98321c5576f49f3d365342a8893963f76190b73a18a84218a48f"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:43:39+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 56,
+      "upload_id": "LR_20261022_234339_ebdb17",
+      "lr_no": "30035",
+      "saved_filename": "LR_20261022_234339_6c8852_LR_30035_image_part1.jpg",
+      "original_filename": "image_part1.jpeg",
+      "snapshot_path": "D:\\AndroidDev\\Projects\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261022_234339_6c8852_LR_30035_image_part1.jpg",
+      "user_id": "26a4e888",
+      "user_mobile": "9876543210",
+      "created_by": "Ruchita Patel"
+    },
+    "current_data": {
+      "grno": "30035",
+      "LR No *": "30035",
+      "grdt": "05/08/2026",
+      "stockdt": "05/08/2026",
+      "Customer Name *": "Himalaya Wellness Company",
+      "cngr *": "Himalaya Wellness Company Somasam Hyderabad-501401",
+      "cnge *": "Himalaya Wellness Company Kurukshetra Haryana-136136",
+      "cngrgstno *": "29AADFT3025B2ZK",
+      "cngegstno *": "29AADFT3025B2ZK",
+      "orgrefcode": "HYDERABAD",
+      "destrefcode": "Haryana (Ambada)",
+      "bookedpckgs": "2632",
+      "packing": "Box",
+      "goods": "Himalaya Products",
+      "valgoods": "5446344",
+      "invoiceno": "5616700769",
+      "invoiedt": "05/08/2026",
+      "ewaybillno": "102509410411",
+      "Valid Upto": "14/08/2026",
+      "bookedaweight": "15057",
+      "bookedcweight": "15057",
+      "pmark": "001678",
+      "grtype(Don’t know)": "TO PAY",
+      "freight  *": "0",
+      "oamount": "5446344",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "0.00",
+      "received": "0.00",
+      "advance": "0.00",
+      "collectionstncode": "HYDERABAD",
+      "ftl": "FTL",
+      "custrefcode": "CM001",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "stockpckgs": "2632",
+      "stockaweight": "15057",
+      "stockcweight": "15057",
+      "productcode": "",
+      "Vehicle No *": "PB13AR4739",
+      "Vehicle Type *": "32 FT MXL",
+      "Depatment Name": "HIMA-KOLKATA",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "BNF LR No": "",
+      "Vehicle Category": "32 FT MXL",
+      "department": "HIMA-KOLKATA",
+      "Counter": "HYDERABAD",
+      "counter": "HYDERABAD",
+      "branchrefcode": "HYDERABAD",
+      "cngrgstno": "29AADFT3025B2ZK",
+      "cngegstno": "29AADFT3025B2ZK",
+      "stockpkgs": "2632",
+      "freight": "0"
+    }
+  },
+  "LR_20261022_235727_84c773": {
+    "file_id": "LR_20261022_235727_84c773",
+    "file_name": "LR_20261022_235727_d9d984_LR_9417559_WhatsApp_Image_2026-09-30_at_9.jpg",
+    "file_type": "bilty_image",
+    "file_path": "export/upload_LR/LR_20261022_235727_d9d984_LR_9417559_WhatsApp_Image_2026-09-30_at_9.jpg",
+    "file_size_bytes": 119109,
+    "file_size_kb": 116.3,
+    "sha256": "64af4d5c34a30127101ced792485484ea70458683f9c6cb73c8759da967fb156",
+    "created_at": "2026-10-22T23:57:27+05:30",
+    "edited_at": null,
+    "exported_at": "23-Oct-2026 12:03:36 AM",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": "26a4e888",
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:57:27+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261022_235727_d9d984_LR_9417559_WhatsApp_Image_2026-09-30_at_9.jpg",
+        "snapshot_data": {
+          "grno": "9417559",
+          "LR No *": "9417559",
+          "grdt": "07 Sep 26",
+          "stockdt": "07 Sep 26",
+          "Customer Name *": "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)",
+          "cngr *": "PFL12 : PATANJALI FOODS LTD BIHAR DURGAWATI, GT ROAD, KARANPURA, Kaimur (Bhabua), Bihar, 821105,Kaimur ,821105",
+          "cnge *": "8888 : SHRI MATESHWARI TRADERS MAHARAJGANJ, UTTAR PRADESH PHULMANHA LEHARA BAZAR MAHARAJGANJ, LEHARA BAZAR,, LEHARA BAZAR,273157",
+          "cngrgstno *": "07AAFCP1505P2Z8",
+          "cngegstno *": "",
+          "orgrefcode": "KARNPURA SSRM",
+          "destrefcode": "LEHRABAZAR",
+          "bookedpckgs": "962",
+          "packing": "Carton box",
+          "goods": "BISCUITS",
+          "valgoods": "815151",
+          "invoiceno": "8604508887",
+          "invoiedt": "07 Sep 26",
+          "ewaybillno": "891737496631",
+          "Valid Upto": "",
+          "bookedaweight": "7495",
+          "bookedcweight": "7500",
+          "pmark": "",
+          "grtype(Don’t know)": "TBB",
+          "freight  *": "0",
+          "oamount": "815151",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "0.00",
+          "received": "0.00",
+          "advance": "0.00",
+          "collectionstncode": "KARNPURA SSRM",
+          "ftl": "FTL",
+          "custrefcode": "BL652",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "stockpckgs": "962",
+          "stockaweight": "7495",
+          "stockcweight": "7500",
+          "productcode": "",
+          "Vehicle No *": "UP32SN5433",
+          "Vehicle Type *": "Market",
+          "Depatment Name": "",
+          "Driver Name *": "CHANDRA KESH SINGH",
+          "Mobile no   *": "9876543210",
+          "Liscense No *": "UP32 20190045123",
+          "Valid Up to *": "20/05/2031",
+          "BNF LR No": "33610",
+          "Vehicle Category": "Market",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "branchrefcode": "KOLKATA",
+          "cngrgstno": "07AAFCP1505P2Z8",
+          "stockpkgs": "962",
+          "freight": "0"
+        },
+        "sha256": "64af4d5c34a30127101ced792485484ea70458683f9c6cb73c8759da967fb156"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:57:27+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "export_id": "EXP_20261023_000337_bc0cbc",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 54,
+      "upload_id": "LR_20261022_235727_84c773",
+      "lr_no": "9417559",
+      "saved_filename": "LR_20261022_235727_d9d984_LR_9417559_WhatsApp_Image_2026-09-30_at_9.jpg",
+      "original_filename": "WhatsApp Image 2026-09-30 at 9.13.51 AM.jpeg",
+      "snapshot_path": "D:\\AndroidDev\\Projects\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261022_235727_d9d984_LR_9417559_WhatsApp_Image_2026-09-30_at_9.jpg",
+      "user_id": "26a4e888",
+      "user_mobile": "9876543210",
+      "created_by": "Ruchita Patel"
+    },
+    "current_data": {
+      "grno": "9417559",
+      "LR No *": "9417559",
+      "grdt": "07 Sep 26",
+      "stockdt": "07 Sep 26",
+      "Customer Name *": "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)",
+      "cngr *": "PFL12 : PATANJALI FOODS LTD BIHAR DURGAWATI, GT ROAD, KARANPURA, Kaimur (Bhabua), Bihar, 821105,Kaimur ,821105",
+      "cnge *": "8888 : SHRI MATESHWARI TRADERS MAHARAJGANJ, UTTAR PRADESH PHULMANHA LEHARA BAZAR MAHARAJGANJ, LEHARA BAZAR,, LEHARA BAZAR,273157",
+      "cngrgstno *": "07AAFCP1505P2Z8",
+      "cngegstno *": "",
+      "orgrefcode": "KARNPURA SSRM",
+      "destrefcode": "LEHRABAZAR",
+      "bookedpckgs": "962",
+      "packing": "Carton box",
+      "goods": "BISCUITS",
+      "valgoods": "815151",
+      "invoiceno": "8604508887",
+      "invoiedt": "07 Sep 26",
+      "ewaybillno": "891737496631",
+      "Valid Upto": "",
+      "bookedaweight": "7495",
+      "bookedcweight": "7500",
+      "pmark": "",
+      "grtype(Don’t know)": "TBB",
+      "freight  *": "0",
+      "oamount": "815151",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "0.00",
+      "received": "0.00",
+      "advance": "0.00",
+      "collectionstncode": "KARNPURA SSRM",
+      "ftl": "FTL",
+      "custrefcode": "BL652",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "stockpckgs": "962",
+      "stockaweight": "7495",
+      "stockcweight": "7500",
+      "productcode": "",
+      "Vehicle No *": "UP32SN5433",
+      "Vehicle Type *": "Market",
+      "Depatment Name": "",
+      "Driver Name *": "CHANDRA KESH SINGH",
+      "Mobile no   *": "9876543210",
+      "Liscense No *": "UP32 20190045123",
+      "Valid Up to *": "20/05/2031",
+      "BNF LR No": "33610",
+      "Vehicle Category": "Market",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "branchrefcode": "KOLKATA",
+      "cngrgstno": "07AAFCP1505P2Z8",
+      "stockpkgs": "962",
+      "freight": "0"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261023_000337_bc0cbc"
+  },
+  "LR_20261022_235733_176e63": {
+    "file_id": "LR_20261022_235733_176e63",
+    "file_name": "LR_20261022_235733_8f67fe_Captured_LR_1792693647970.jpg",
+    "file_type": "bilty_image",
+    "file_path": "export/upload_LR/LR_20261022_235733_8f67fe_Captured_LR_1792693647970.jpg",
+    "file_size_bytes": 20185,
+    "file_size_kb": 19.7,
+    "sha256": "101889a425811ce80fef752ae405c807656bbce1428c7d59d4d78b5c6100c3a9",
+    "created_at": "2026-10-22T23:57:33+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": "26a4e888",
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-22T23:57:33+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261022_235733_8f67fe_Captured_LR_1792693647970.jpg",
+        "snapshot_data": {
+          "Vehicle Type *": "Market",
+          "Vehicle Category": "Market",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "branchrefcode": "KOLKATA",
+          "stockpckgs": "",
+          "stockpkgs": "",
+          "stockaweight": "",
+          "stockcweight": "",
+          "received": "0",
+          "advance": "0",
+          "collectionstncode": "KOLKATA",
+          "ftl": "N",
+          "custrefcode": "CM001",
+          "staxpaidby": "C",
+          "dlvtype": "G",
+          "freight  *": "0",
+          "freight": "0",
+          "oamount": "0",
+          "cgst": "0",
+          "sgst": "0",
+          "igst": "0.00"
+        },
+        "sha256": "101889a425811ce80fef752ae405c807656bbce1428c7d59d4d78b5c6100c3a9"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-22T23:57:33+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 22,
+      "upload_id": "LR_20261022_235733_176e63",
+      "lr_no": "",
+      "saved_filename": "LR_20261022_235733_8f67fe_Captured_LR_1792693647970.jpg",
+      "original_filename": "Captured_LR_1792693647970.jpg",
+      "snapshot_path": "D:\\AndroidDev\\Projects\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261022_235733_8f67fe_Captured_LR_1792693647970.jpg",
+      "user_id": "26a4e888",
+      "user_mobile": "9876543210",
+      "created_by": "Ruchita Patel"
+    },
+    "current_data": {
+      "Vehicle Type *": "Market",
+      "Vehicle Category": "Market",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "branchrefcode": "KOLKATA",
+      "stockpckgs": "",
+      "stockpkgs": "",
+      "stockaweight": "",
+      "stockcweight": "",
+      "received": "0",
+      "advance": "0",
+      "collectionstncode": "KOLKATA",
+      "ftl": "N",
+      "custrefcode": "CM001",
+      "staxpaidby": "C",
+      "dlvtype": "G",
+      "freight  *": "0",
+      "freight": "0",
+      "oamount": "0",
+      "cgst": "0",
+      "sgst": "0",
+      "igst": "0.00"
+    }
+  },
+  "EXP_20261023_000337_bc0cbc": {
+    "file_id": "EXP_20261023_000337_bc0cbc",
+    "file_name": "USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-23T00:03:37+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-23T00:04:30+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-23T00:04:30+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261023_000337_bc0cbc",
+      "user_export_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+      "audit_copy": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+      "generated_by": "Ruchita Patel",
+      "generated_at": "23-Oct-2026 12:03:36 AM"
+    },
+    "current_data": null
+  },
+  "EXP_20261023_000337_bc0cbc_audit": {
+    "file_id": "EXP_20261023_000337_bc0cbc_audit",
+    "file_name": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+    "file_size_bytes": 8648,
+    "file_size_kb": 8.4,
+    "sha256": "c2aa9197e33087bb2a3f48b83a9a1ebf33252d7023edd438b432b22f241d8b57",
+    "created_at": "2026-10-23T00:03:37+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Ruchita Patel",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "action": "create",
+        "user": "Ruchita Patel",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": "c2aa9197e33087bb2a3f48b83a9a1ebf33252d7023edd438b432b22f241d8b57"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-23T00:03:37+05:30",
+        "user": "Ruchita Patel",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261023_000337_bc0cbc_1LRs.xlsx",
+      "generated_by": "Ruchita Patel",
+      "generated_at": "23-Oct-2026 12:03:36 AM"
+    },
+    "current_data": null
   }
 }

@@ -115,7 +115,7 @@
       <div class="flex items-center space-x-3">
         <!-- History Button in Top Navbar -->
         <button id="navHistoryBtn" onclick="openHistoryFromNavbar()" class="hidden inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition shadow-sm" title="History / Audit Snapshot & Lifecycle Log">
-          <i data-lucide="clock" class="w-3.5 h-3.5 text-sky-600"></i>
+          <!-- <i data-lucide="clock" class="w-3.5 h-3.5 text-sky-600"></i> -->
           <span>History</span>
         </button>
 
@@ -260,7 +260,7 @@
           </div>
           <div>
             <h3 class="text-base font-bold text-slate-800">Capture or Upload LR Image</h3>
-            <p class="text-xs text-slate-500 mt-0.5">Select an image/PDF or drag and drop file here.<br>Supported formats: JPG, PNG, PDF &bull; Max 10 MB per file</p>
+            <p class="text-xs text-slate-500 mt-0.5">Select an image/PDF or drag and drop file here.<br>Supported formats: JPG, PNG, PDF</p>
           </div>
 
           <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleCameraCapture(event)" />
@@ -361,10 +361,13 @@
               <span>+</span>
             </button>
             <button type="button" onclick="resetLrPreviewZoom()" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Reset View (100% Fit)">
-              <span>&#8634;</span>
+              <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
             </button>
-            <button type="button" onclick="rotateLrPreview(90)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Rotate 90° Clockwise">
-              <span>&#8635;</span>
+            <button type="button" onclick="rotateLrPreview(-90)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Rotate 90° Counter-Clockwise (Left)">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            </button>
+            <button type="button" onclick="rotateLrPreview(90)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Rotate 90° Clockwise (Right)">
+              <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
             </button>
           </div>
         </div>
@@ -569,10 +572,13 @@
                 <span>+</span>
               </button>
               <button type="button" onclick="resetLrPreviewZoom()" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Reset View (100% Fit)">
-                <span>&#8634;</span>
+                <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
               </button>
-              <button type="button" onclick="rotateLrPreview(90)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Rotate 90° Clockwise">
-                <span>&#8635;</span>
+              <button type="button" onclick="rotateLrPreview(-90)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Rotate 90° Counter-Clockwise (Left)">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" onclick="rotateLrPreview(90)" class="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center transition shadow-xs text-xs font-bold" title="Rotate 90° Clockwise (Right)">
+                <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
               </button>
             </div>
           </div>
@@ -1101,10 +1107,7 @@
             <span>Snap Document</span>
           </button>
 
-          <button onclick="triggerNativeCameraFallback()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl flex items-center space-x-1 transition" title="Use Native Device Camera">
-            <i data-lucide="smartphone" class="w-4 h-4"></i>
-            <span>Device Cam</span>
-          </button>
+          <div class="w-24 sm:w-28 shrink-0 invisible pointer-events-none" aria-hidden="true"></div>
         </div>
       </div>
     </div>
@@ -2124,36 +2127,18 @@
                (strLr && !ignoredValues.has(strLr.toLowerCase()) && completedLrNos.includes(strLr));
       };
 
-      // 3. Clear exported items from active pending verifiedBatch & persist to user storage
-      verifiedBatch = verifiedBatch.filter(item => !matchesAnyCompleted(item));
+      // 3. User requirement: downloading a file should not delete its data in LR list section and Previous uploaded LR section.
+      // Data should only be removed when the user clicks the "Clear All." button.
+      // Therefore, verifiedBatch and recents are preserved intact.
       try {
         saveUserBatches();
       } catch (_) {}
 
-      // 4. Remove exported items from pending Previous Uploaded LR storage
-      if (recentKey) {
-        try {
-          let recents = [];
-          try {
-            recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
-          } catch (_) {
-            recents = [];
-          }
-          if (Array.isArray(recents)) {
-            recents = recents.filter(r => !matchesAnyCompleted(r));
-            if (recents.length > 25) recents = recents.slice(0, 25);
-            localStorage.setItem(recentKey, JSON.stringify(recents));
-          }
-        } catch (rErr) {
-          console.warn('[Storage Quota] Notice while clearing recents:', rErr);
-        }
-      }
-
-      // 5. Update UI badges and views
+      // 4. Update UI badges and views
       updateBatchBadge();
       renderBatchTable();
       renderPreviousUploadsWeb();
-      console.log(`[Batch Lifecycle] Marked ${docsToMark.length} LR records as completed & cleared from pending.`);
+      console.log(`[Batch Lifecycle] Recorded export for ${docsToMark.length} LR records. Queue and recents preserved.`);
     }
 
     // --- Account-Based Batch Persistence & 30-Day Auto Purge ---
@@ -2182,7 +2167,7 @@
             raw = localStorage.getItem('bnf_session_batch_' + token);
           }
           const parsed = raw ? JSON.parse(raw) : [];
-          verifiedBatch = (Array.isArray(parsed) ? parsed : []).filter(item => item && !isDummyLRItem(item) && !isItemExportedByUser(item) && !isItemTombstonedByUser(item)).map(item => {
+          verifiedBatch = (Array.isArray(parsed) ? parsed : []).filter(item => item && !isDummyLRItem(item) && !isItemTombstonedByUser(item)).map(item => {
             const cached = getDocImage(item.id, item.filename);
             if (cached) {
               if (!item.imageSrc && cached.imageSrc) item.imageSrc = cached.imageSrc;
@@ -2207,7 +2192,7 @@
             }
             let addedFromRecents = false;
             (Array.isArray(recents) ? recents : []).forEach(r => {
-              if (!r || !r.filename || isDummyLRItem(r) || isItemExportedByUser(r) || isItemTombstonedByUser(r)) return;
+              if (!r || !r.filename || isDummyLRItem(r) || isItemTombstonedByUser(r)) return;
               const alreadyInBatch = verifiedBatch.some(b => b.id === r.id || b.filename === r.filename || (b.saved_filename && b.saved_filename === r.saved_filename));
               if (!alreadyInBatch) {
                 const cached = getDocImage(r.id, r.filename);
@@ -2856,7 +2841,7 @@
           mobile: data.user.mobile,
           token: data.token
         };
-        localStorage.setItem('', JSON.stringify(currentUser));
+        localStorage.setItem('bnf_user', JSON.stringify(currentUser));
 
         // Restore user's persisted pending LR records
         loadUserBatches();
@@ -3050,17 +3035,21 @@
       const modal = document.getElementById('cameraModal');
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // If browser does not support getUserMedia (or non-HTTPS remote), use native device file capture
+        alert('Webcam requires a secure context (HTTPS or localhost). Opening standard device camera/file picker instead.');
         triggerNativeCameraFallback();
         return;
       }
 
       try {
-        modal.classList.remove('hidden');
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.style.display = 'flex';
+        }
         await startWebcamStream();
-        lucide.createIcons();
+        if (window.lucide) lucide.createIcons();
       } catch (err) {
         console.warn('getUserMedia direct error:', err);
+        alert('Could not start live webcam: ' + (err.message || 'Camera permission denied or camera in use.') + '\nOpening standard device camera/file picker instead.');
         closeWebcam();
         triggerNativeCameraFallback();
       }
@@ -3068,24 +3057,58 @@
 
     async function startWebcamStream() {
       if (webcamStream) {
-        webcamStream.getTracks().forEach(t => t.stop());
+        try {
+          webcamStream.getTracks().forEach(t => t.stop());
+        } catch (_) {}
+        webcamStream = null;
       }
       const video = document.getElementById('webcamVideo');
-      const constraints = {
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      };
-      try {
-        webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (e) {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (!video) return;
+
+      const attempts = [
+        { video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+        { video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { facingMode: currentFacingMode }, audio: false },
+        { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      let stream = null;
+      let lastErr = null;
+      for (const constraint of attempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraint);
+          if (stream) break;
+        } catch (e) {
+          lastErr = e;
+        }
       }
+
+      if (!stream) {
+        throw (lastErr || new Error('No compatible webcam video stream found.'));
+      }
+
+      webcamStream = stream;
       video.srcObject = webcamStream;
-      await video.play();
+      video.setAttribute('playsinline', '');
+      video.muted = true;
+
+      await new Promise((resolve) => {
+        video.onloadedmetadata = async () => {
+          try {
+            await video.play();
+          } catch (pErr) {
+            console.warn('Webcam video play notice:', pErr);
+          }
+          resolve();
+        };
+        setTimeout(async () => {
+          try {
+            await video.play();
+          } catch (_) {}
+          resolve();
+        }, 1200);
+      });
     }
 
     function switchWebcamCamera() {
@@ -3095,11 +3118,18 @@
 
     function closeWebcam() {
       if (webcamStream) {
-        webcamStream.getTracks().forEach(t => t.stop());
+        try {
+          webcamStream.getTracks().forEach(t => t.stop());
+        } catch (_) {}
         webcamStream = null;
       }
+      const video = document.getElementById('webcamVideo');
+      if (video) video.srcObject = null;
       const modal = document.getElementById('cameraModal');
-      if (modal) modal.classList.add('hidden');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
     }
 
     function triggerNativeCameraFallback() {
@@ -3134,7 +3164,7 @@
         const capturedFile = new File([blob], filename, { type: 'image/jpeg' });
         closeWebcam();
         handleSelectedFiles([capturedFile]);
-      }, 'image/jpeg', 0.92);
+      }, 'image/jpeg', 0.95);
     }
 
     // Notification helper functions for OCR Fallback (Points 2 & 3)
@@ -4100,7 +4130,7 @@
     let lrPreviewStartY = 0;
 
     function rotateLrPreview(deg = 90) {
-      lrPreviewRotateDeg = (lrPreviewRotateDeg + deg) % 360;
+      lrPreviewRotateDeg = ((lrPreviewRotateDeg + deg) % 360 + 360) % 360;
       updateLrPreviewTransform();
     }
 
@@ -5165,7 +5195,7 @@
       if (!item || isDummyLRItem(item)) return;
       const key = getUserRecentStorageKey();
       if (!key) return;
-      if (isItemTombstonedByUser(item) || isItemExportedByUser(item)) return;
+      if (isItemTombstonedByUser(item)) return;
       try {
         let recents = [];
         try {
@@ -5199,7 +5229,7 @@
                  (item.imageSrc && item.imageSrc.startsWith('data:application/pdf')) ||
                  Boolean(item.originalPdfSrc)
         };
-        recents = recents.filter(r => r.filename !== record.filename && r.id !== record.id && r.saved_filename !== record.saved_filename && !isItemExportedByUser(r));
+        recents = recents.filter(r => r.filename !== record.filename && r.id !== record.id && r.saved_filename !== record.saved_filename);
         recents.unshift(record);
         if (recents.length > 25) recents = recents.slice(0, 25);
         localStorage.setItem(key, JSON.stringify(recents));
@@ -5217,7 +5247,7 @@
         const queryParams = new URLSearchParams();
         if (currentUser.id) queryParams.set('user_id', currentUser.id);
         if (currentUser.mobile) queryParams.set('user_mobile', currentUser.mobile);
-        queryParams.set('only_pending', 'true');
+        queryParams.set('only_pending', 'false');
 
         const headers = {};
         if (currentUser.token) {
@@ -5236,13 +5266,13 @@
           } catch (_) {
             recents = [];
           }
-          recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r) && !isItemExportedByUser(r));
+          recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
 
           let batchUpdated = false;
 
           // Merge server-persisted uploads (server is source of truth for physical files)
           json.uploads.forEach(srv => {
-            if (isDummyLRItem(srv) || isItemTombstonedByUser(srv) || isItemExportedByUser(srv)) return;
+            if (isDummyLRItem(srv) || isItemTombstonedByUser(srv)) return;
             const existingIdx = recents.findIndex(r => r.filename === srv.filename || r.id === srv.id || r.saved_filename === srv.saved_filename);
             const entry = {
               id: srv.id,
@@ -5353,8 +5383,8 @@
         recents = [];
       }
 
-      // Filter out any dummy / test / placeholder entries, tombstones, and exported items
-      recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r) && !isItemExportedByUser(r));
+      // Filter out any dummy / test / placeholder entries and tombstones
+      recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
       try {
         localStorage.setItem(key, JSON.stringify(recents));
       } catch (_) {}
@@ -5362,7 +5392,7 @@
       // Merge verifiedBatch so all currently loaded session documents display immediately
       if (Array.isArray(verifiedBatch) && verifiedBatch.length > 0) {
         verifiedBatch.forEach(b => {
-          if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b) || isItemExportedByUser(b)) return;
+          if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b)) return;
           const exists = recents.some(r => r.filename === b.filename || r.id === b.id || (r.saved_filename && r.saved_filename === b.saved_filename));
           if (!exists) {
             const bCompact = (b.thumbnail_image && b.thumbnail_image.length <= 60000)
@@ -5556,10 +5586,10 @@
         try {
           recents = key ? JSON.parse(localStorage.getItem(key) || '[]') : [];
         } catch (_) {}
-        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r) && !isItemExportedByUser(r));
+        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
         if (Array.isArray(verifiedBatch)) {
           verifiedBatch.forEach(b => {
-            if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b) || isItemExportedByUser(b)) return;
+            if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b)) return;
             if (!recents.some(r => r.filename === b.filename || r.id === b.id)) {
               recents.unshift(b);
             }
@@ -5980,9 +6010,38 @@
 
         deletedBatch.push(item);
       });
+
+      // Clear Previous Uploaded LR section upon explicit Clear All action
+      const recentKey = getUserRecentStorageKey();
+      if (recentKey) {
+        try {
+          localStorage.setItem(recentKey, JSON.stringify([]));
+        } catch (_) {}
+      }
+
+      // Record tombstones for cleared items so server sync does not resurrect cleared items
+      const removedKey = getUserRemovedStorageKey();
+      if (removedKey) {
+        try {
+          let tombstones = [];
+          try {
+            tombstones = JSON.parse(localStorage.getItem(removedKey) || '[]');
+          } catch (_) {
+            tombstones = [];
+          }
+          verifiedBatch.forEach(b => {
+            if (b.id && !tombstones.includes(b.id)) tombstones.push(b.id);
+            if (b.saved_filename && !tombstones.includes(b.saved_filename)) tombstones.push(b.saved_filename);
+            if (b.filename && !tombstones.includes(b.filename)) tombstones.push(b.filename);
+          });
+          localStorage.setItem(removedKey, JSON.stringify(tombstones));
+        } catch (_) {}
+      }
+
       verifiedBatch = [];
       saveUserBatches();
       renderBatchTable();
+      renderPreviousUploadsWeb();
     }
 
     function filterBatchTable() {
@@ -6523,7 +6582,7 @@
                 <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">30 Days</span>
               </td>
               <td class="py-2.5 px-3 text-center">
-                <a href="${dUrl}" download="${fn}" class="inline-flex items-center space-x-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-sm transition">
+                <a href="${dUrl}" download="${fn}" class="inline-flex items-center space-x-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-sm transition" title="Download Excel">
                   <i data-lucide="download" class="w-3.5 h-3.5"></i>
                   <span>Download Excel</span>
                 </a>
