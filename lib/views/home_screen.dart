@@ -478,6 +478,30 @@ class _HomeScreenState extends State<HomeScreen> {
     required String previewPath,
     required String previewUrl,
   }) {
+    // PDF files: Display clean PDF icon with filename
+    if (isPdf) {
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: const Color(0xFFFEF2F2),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.picture_as_pdf, color: Color(0xFFDC2626), size: 24),
+            const SizedBox(height: 3),
+            Text(
+              fileName,
+              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
     // 1. Try saved/resolved preview path on local disk
     if (previewPath.isNotEmpty && File(previewPath).existsSync()) {
       return Image.file(

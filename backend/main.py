@@ -751,12 +751,75 @@ def download_apk():
     raise HTTPException(status_code=404, detail="APK build not found on server.")
 
 
+def _resolve_user_from_request(
+    authorization: str | None = None,
+    user_id: str | None = None,
+    user_mobile: str | None = None,
+    user_name: str | None = None
+) -> dict[str, str]:
+    """
+    Resolves the authenticated user context from session token, user_id, or mobile number.
+    Returns dict with keys: user_id, user_mobile, user_name.
+    """
+    resolved_id = (user_id or "").strip()
+    resolved_mobile = (user_mobile or "").strip()
+    resolved_name = (user_name or "").strip()
+
+    # 1. First attempt to resolve via active session token
+    if authorization:
+        session_user = auth_service.get_session_user(authorization)
+        if session_user:
+            resolved_id = session_user.get("user_id") or resolved_id
+            resolved_mobile = session_user.get("mobile") or resolved_mobile
+            resolved_name = session_user.get("name") or resolved_name
+
+    # 2. If mobile is present, standardize and look up in registered users.json
+    if resolved_mobile:
+        clean_mob = re.sub(r"\D", "", resolved_mobile)
+        if clean_mob.startswith("91") and len(clean_mob) == 12:
+            clean_mob = clean_mob[2:]
+        elif clean_mob.startswith("0") and len(clean_mob) == 11:
+            clean_mob = clean_mob[1:]
+        resolved_mobile = clean_mob
+
+        users = auth_service._load_users()
+        if clean_mob in users:
+            u_entry = users[clean_mob]
+            resolved_id = u_entry.get("id") or resolved_id
+            resolved_name = resolved_name or u_entry.get("name") or "Logistics User"
+
+    # 3. If only user_id is present, look up by ID in registered users.json
+    elif resolved_id:
+        users = auth_service._load_users()
+        for mob_key, u_entry in users.items():
+            if u_entry.get("id") == resolved_id:
+                resolved_mobile = mob_key
+                resolved_name = resolved_name or u_entry.get("name") or "Logistics User"
+                break
+
+    return {
+        "user_id": resolved_id,
+        "user_mobile": resolved_mobile,
+        "user_name": resolved_name or "Logistics User"
+    }
+
+
 # --- ROUTE 4: Image Extraction API (Web & Android) ---
 @app.post("/extract-handwriting", response_model=ParsedDocument)
 async def extract_handwriting(
     file: UploadFile = File(...),
     custom_prompt: str | None = Form(default=None),
+    user_id: str | None = Form(default=None),
+    user_mobile: str | None = Form(default=None),
+    user_name: str | None = Form(default=None),
+    authorization: str | None = Header(default=None),
 ):
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=user_id,
+        user_mobile=user_mobile,
+        user_name=user_name
+    )
     print(f"\n[Step 1/5] Received file: '{file.filename}' (Content-Type: '{file.content_type}')")
 
     image_bytes = await file.read()
@@ -1145,6 +1208,9 @@ async def extract_handwriting(
                 file_type="bilty_image" if mime_type != "application/pdf" else "bilty_pdf",
                 file_bytes=bytes_to_save,
                 file_id=upload_id,
+                user_name=actor.get("user_name") or "Logistics User",
+                user_mobile=actor.get("user_mobile") or "",
+                user_id=actor.get("user_id") or None,
                 custom_meta={
                     "extracted_fields": len(data_dict),
                     "upload_id": upload_id,
@@ -1152,6 +1218,9 @@ async def extract_handwriting(
                     "saved_filename": snapshot_lr_filename,
                     "original_filename": file.filename,
                     "snapshot_path": snapshot_lr_path,
+                    "user_id": actor.get("user_id") or "",
+                    "user_mobile": actor.get("user_mobile") or "",
+                    "created_by": actor.get("user_name") or "Logistics User",
                 },
                 initial_data=data_dict
             )
@@ -1972,6 +2041,9 @@ class ExportMetaRequest(BaseModel):
     token: str | None = None
 
 
+# In-memory ephemeral cache for clean user-facing Excel bytes (avoids saving user files to disk)
+_USER_EXCEL_BYTES_CACHE: dict[str, bytes] = {}
+
 @app.post("/api/export-excel-meta")
 async def api_export_excel_meta(req: ExportMetaRequest):
     docs = req.documents
@@ -2017,6 +2089,11 @@ async def api_export_excel_meta(req: ExportMetaRequest):
     user_wb, user_bytes, _, _ = _build_workbook_for_docs(
         docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False
     )
+    _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
+    _USER_EXCEL_BYTES_CACHE[export_id] = user_bytes
+    if len(_USER_EXCEL_BYTES_CACHE) > 50:
+        first_k = next(iter(_USER_EXCEL_BYTES_CACHE))
+        _USER_EXCEL_BYTES_CACHE.pop(first_k, None)
 
     # 3. Save backend snapshot audit copy into backend/export/snapshots_excel/
     # (Do NOT save user-downloaded Excel file to backend disk)
@@ -2028,6 +2105,7 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         lr_tag="",
         prefix="GR_Import_BNF"
     )
+    _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
 
     # 4. Register Excel metadata in lifecycle tracker with unified export_id
     excel_meta = file_lifecycle_service.record_file_creation(
@@ -2069,6 +2147,45 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         user_name=user_name,
         destination="browser_download"
     )
+
+    # Tag underlying bilty documents as exported in lifecycle registry
+    try:
+        with file_lifecycle_service._lock:
+            reg = file_lifecycle_service._load_registry()
+            reg_updated = False
+            for doc in docs:
+                d_map = _get_doc_data(doc)
+                doc_fn = getattr(doc, "filename", None) or (doc.get("filename") if isinstance(doc, dict) else None) or ""
+                doc_lr = str(d_map.get("lrno") or d_map.get("LR No *") or d_map.get("grno") or "").strip()
+
+                for fid, entry in reg.items():
+                    if entry.get("file_type") not in ("bilty_image", "bilty_pdf"):
+                        continue
+                    cm = entry.get("custom_meta") or {}
+                    match = False
+                    if doc_fn and doc_fn in (entry.get("file_name"), cm.get("original_filename"), cm.get("saved_filename"), cm.get("upload_id")):
+                        match = True
+                    elif doc_lr and (doc_lr == cm.get("lr_no") or doc_lr == str(entry.get("current_data", {}).get("LR No *") or "").strip()):
+                        match = True
+
+                    if match:
+                        entry["is_exported"] = True
+                        entry["exported_at"] = exported_at
+                        entry["export_batch_id"] = export_id
+                        if "edit_history" not in entry:
+                            entry["edit_history"] = []
+                        entry["edit_history"].append({
+                            "timestamp": file_lifecycle_service.get_current_timestamp(),
+                            "user": user_name,
+                            "action": "export",
+                            "export_id": export_id,
+                            "details": f"Included in Excel export {user_filename}"
+                        })
+                        reg_updated = True
+            if reg_updated:
+                file_lifecycle_service._save_registry(reg)
+    except Exception as ex_tag:
+        print(f"[Lifecycle Export Tag Notice] {ex_tag}")
 
     # 5. Record export audit (with reference to both user download file and backend audit copy)
     audit_info = audit_snapshot.generate_lightweight_snapshot(
@@ -2123,11 +2240,14 @@ async def download_exported_file(
         if session_user:
             actor_name = session_user.get("name") or actor_name
 
-    # 1. If an existing physical file exists on disk (e.g. legacy exports), serve directly
-    file_path = audit_snapshot.resolve_file_path(safe_name)
-    if not file_path:
-        file_path = os.path.join(audit_snapshot.EXPORTS_DIR, safe_name)
-    if file_path and os.path.isfile(file_path):
+    # 1. Primary path: Stream clean in-memory user bytes (Row 1 Headers, Rows 2+ Data, 0 metadata rows)
+    clean_bytes = _USER_EXCEL_BYTES_CACHE.get(safe_name)
+    if not clean_bytes:
+        exp_match = re.search(r'EXP_[0-9]+_[a-f0-9]+', safe_name)
+        if exp_match and exp_match.group(0) in _USER_EXCEL_BYTES_CACHE:
+            clean_bytes = _USER_EXCEL_BYTES_CACHE[exp_match.group(0)]
+
+    if clean_bytes:
         try:
             file_lifecycle_service.record_file_export(
                 file_id_or_path=safe_name,
@@ -2137,10 +2257,9 @@ async def download_exported_file(
         except Exception:
             pass
 
-        return FileResponse(
-            file_path,
+        return StreamingResponse(
+            io.BytesIO(clean_bytes),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=safe_name,
             headers={
                 "Content-Disposition": f'attachment; filename="{safe_name}"',
                 "Access-Control-Expose-Headers": "Content-Disposition",
@@ -2150,29 +2269,48 @@ async def download_exported_file(
             }
         )
 
-    # 2. When user-downloaded Excel is not stored on backend disk:
-    # Resolve matching backend snapshot audit copy from backend/export/snapshots_excel/
-    audit_name = safe_name.replace("USER_EXPORT_", "AUDIT_EXPORT_") if "USER_EXPORT_" in safe_name else (safe_name if safe_name.startswith("AUDIT_") else f"AUDIT_EXPORT_{safe_name}")
-    snap_path = audit_snapshot.resolve_file_path(audit_name)
-    if not snap_path:
-        # Search by export ID in filename
-        exp_match = re.search(r'EXP_[0-9]+_[a-f0-9]+', safe_name)
-        if exp_match:
-            exp_id = exp_match.group(0)
-            if os.path.isdir(audit_snapshot.SNAPSHOTS_EXCEL_DIR):
-                for fn in os.listdir(audit_snapshot.SNAPSHOTS_EXCEL_DIR):
-                    if exp_id in fn and fn.endswith(".xlsx"):
-                        snap_path = os.path.join(audit_snapshot.SNAPSHOTS_EXCEL_DIR, fn)
-                        break
+    # 2. Check if a clean user export exists on disk in legacy directories
+    # (Never serve snapshots from snapshots_excel directly as user downloads!)
+    file_path = None
+    candidate_lr = os.path.join(UPLOAD_LR_DIR, safe_name)
+    if os.path.isfile(candidate_lr):
+        file_path = candidate_lr
+    else:
+        candidate_exp = os.path.join(audit_snapshot.EXPORTS_DIR, safe_name)
+        if os.path.isfile(candidate_exp):
+            file_path = candidate_exp
 
+    if file_path and os.path.isfile(file_path):
+        try:
+            wb_test = openpyxl.load_workbook(file_path, read_only=True)
+            has_history = "History" in wb_test.sheetnames
+            wb_test.close()
+            if not has_history:
+                return FileResponse(
+                    file_path,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    filename=safe_name,
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{safe_name}"',
+                        "Access-Control-Expose-Headers": "Content-Disposition",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0"
+                    }
+                )
+        except Exception:
+            pass
+
+    # 3. Dynamic fallback: Load internal audit snapshot from snapshots_excel and generate clean user report
+    snap_path = audit_snapshot.resolve_snapshot_path(safe_name)
     if snap_path and os.path.isfile(snap_path):
-        # Generate clean user-facing Excel workbook in-memory without saving to disk
         try:
             wb = openpyxl.load_workbook(snap_path)
+            # Remove internal audit History sheet
             if "History" in wb.sheetnames:
                 wb.remove(wb["History"])
             ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
-            # Remove top audit metadata rows so Row 1 is headers and Rows 2+ are data
+            # Remove top audit metadata rows so Row 1 is column headers and Rows 2+ are clean consignment data
             while ws.max_row > 1 and ws.cell(1, 1).value and str(ws.cell(1, 1).value).strip().startswith(("User Name:", "Export Date:", "Export Time:", "Exported At:")):
                 ws.delete_rows(1, 1)
 
@@ -2180,6 +2318,9 @@ async def download_exported_file(
             wb.save(buf)
             buf.seek(0)
             clean_bytes = buf.getvalue()
+
+            # Cache the clean bytes for future downloads
+            _USER_EXCEL_BYTES_CACHE[safe_name] = clean_bytes
 
             try:
                 file_lifecycle_service.record_file_export(
@@ -2203,7 +2344,7 @@ async def download_exported_file(
             )
         except Exception as e_stream:
             print(f"[Export Download Stream Error] {e_stream}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate download workbook: {e_stream}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate clean download workbook: {e_stream}")
 
     raise HTTPException(status_code=404, detail="Exported Excel file not found.")
 
@@ -2314,6 +2455,180 @@ async def download_all_user_exports(
         }
     )
 
+
+# =========================================================================
+# ROUTE: PREVIOUSLY UPLOADED LRs (Images and PDFs) - User Isolated
+# =========================================================================
+@app.get("/api/previous-uploads")
+async def get_previous_uploads(
+    user_id: str | None = Query(default=None),
+    user_mobile: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+    only_pending: bool = Query(default=True),
+    limit: int = 50
+):
+    """
+    Returns verified previously uploaded LR documents (both images and PDFs)
+    that physically exist on disk in UPLOAD_LR_DIR for the authenticated user only.
+    Excludes any dummy test stubs, deleted items, or files belonging to other users.
+    When only_pending=True (default), excludes already exported/completed LR documents.
+    """
+    try:
+        actor = _resolve_user_from_request(
+            authorization=authorization,
+            user_id=user_id,
+            user_mobile=user_mobile
+        )
+        req_user_id = actor.get("user_id") or ""
+        req_mobile = actor.get("user_mobile") or ""
+
+        # Strictly require valid user context to prevent any cross-user leakage
+        if not req_user_id and not req_mobile:
+            return {"success": True, "total": 0, "uploads": []}
+
+        all_metadata = file_lifecycle_service.get_all_metadata(include_deleted=False, limit=200)
+        items = []
+        seen_filenames = set()
+
+        for meta in all_metadata:
+            if meta.get("is_deleted", False):
+                continue
+            if only_pending and (meta.get("is_exported", False) or meta.get("exported_at")):
+                continue
+
+            # User ownership check: must match user_id or user_mobile
+            custom_meta = meta.get("custom_meta") or {}
+            meta_user_id = meta.get("user_id") or custom_meta.get("user_id") or ""
+            meta_mobile = meta.get("user_mobile") or custom_meta.get("user_mobile") or ""
+
+            match_user = False
+            if req_user_id and meta_user_id and req_user_id == meta_user_id:
+                match_user = True
+            elif req_mobile and meta_mobile and req_mobile == meta_mobile:
+                match_user = True
+
+            if not match_user:
+                continue
+
+            file_type = meta.get("file_type")
+            if file_type not in ("bilty_image", "bilty_pdf"):
+                continue
+
+            saved_name = meta.get("file_name") or ""
+            if not saved_name or saved_name in seen_filenames:
+                continue
+
+            full_path = os.path.join(UPLOAD_LR_DIR, saved_name)
+            if not os.path.isfile(full_path):
+                continue
+
+            orig_name = custom_meta.get("original_filename") or saved_name
+
+            # Exclude dummy mock placeholders
+            lower_orig = orig_name.lower()
+            if any(t in lower_orig for t in ("dummy", "mock", "placeholder", "fake_doc")):
+                continue
+
+            seen_filenames.add(saved_name)
+            is_pdf = file_type == "bilty_pdf" or saved_name.lower().endswith(".pdf") or orig_name.lower().endswith(".pdf")
+            file_id = meta.get("file_id") or f"lr_{int(os.path.getmtime(full_path))}"
+
+            preview_url = None
+            preview_pages = []
+            if is_pdf:
+                upload_prefix = custom_meta.get("upload_id") or ""
+                base_stem = os.path.splitext(saved_name)[0]
+                for f in sorted(os.listdir(UPLOAD_LR_DIR)):
+                    if (upload_prefix and f.startswith(upload_prefix) and f.endswith(".jpg")) or \
+                       (base_stem and base_stem[:25] in f and f.endswith(".jpg")):
+                        if "preview" in f:
+                            preview_url = f"/uploads/{f}"
+                        if "page" in f or "preview" in f:
+                            preview_pages.append(f"/uploads/{f}")
+                if not preview_url and preview_pages:
+                    preview_url = preview_pages[0]
+            else:
+                preview_url = f"/uploads/{saved_name}"
+
+            data_payload = meta.get("current_data") or {}
+            if not data_payload and meta.get("versions"):
+                data_payload = meta["versions"][-1].get("snapshot_data") or {}
+
+            lr_no = custom_meta.get("lr_no") or data_payload.get("LR No *") or data_payload.get("grno") or ""
+
+            items.append({
+                "id": file_id,
+                "filename": orig_name,
+                "saved_filename": saved_name,
+                "file_url": f"/snapshots/{saved_name}",
+                "preview_url": preview_url,
+                "preview_pages": preview_pages,
+                "page_count": max(len(preview_pages), 1) if is_pdf else 1,
+                "file_type": file_type,
+                "isPdf": is_pdf,
+                "lrNo": lr_no,
+                "createdAt": meta.get("created_at") or datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat(),
+                "data": data_payload
+            })
+
+            if len(items) >= limit:
+                break
+
+        return {"success": True, "total": len(items), "uploads": items}
+    except Exception as e:
+        print(f"[Previous Uploads API Error] {e}")
+        return {"success": False, "total": 0, "uploads": [], "error": str(e)}
+
+
+class DeletePreviousUploadRequest(BaseModel):
+    file_id_or_name: str
+    user_id: str | None = None
+    user_mobile: str | None = None
+    user_name: str | None = "Logistics User"
+
+
+@app.post("/api/previous-uploads/delete")
+async def delete_previous_upload(
+    req: DeletePreviousUploadRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Soft-deletes a previously uploaded LR document for the authenticated user,
+    ensuring it is removed from previous uploads and never reappears on reload or re-login.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile,
+        user_name=req.user_name
+    )
+    user_display = actor.get("user_name") or req.user_name or "Logistics User"
+
+    res = file_lifecycle_service.record_file_deletion(
+        file_id_or_path=req.file_id_or_name,
+        user_name=user_display,
+        reason="Removed from previous uploads by user"
+    )
+
+    # If not found directly by file_id_or_path, try finding in registry via saved_filename or custom_meta
+    if not res:
+        with file_lifecycle_service._lock:
+            reg = file_lifecycle_service._load_registry()
+            matched_fid = None
+            target_key = req.file_id_or_name.strip()
+            for fid, entry in reg.items():
+                cm = entry.get("custom_meta") or {}
+                if target_key in (fid, entry.get("file_name"), cm.get("saved_filename"), cm.get("original_filename"), cm.get("upload_id")):
+                    matched_fid = fid
+                    break
+            if matched_fid:
+                res = file_lifecycle_service.record_file_deletion(
+                    file_id_or_path=matched_fid,
+                    user_name=user_display,
+                    reason="Removed from previous uploads by user"
+                )
+
+    return {"success": True, "deleted": bool(res), "file_id_or_name": req.file_id_or_name}
 
 # =========================================================================
 # ROUTE 8: FILE LIFECYCLE & AUDIT METADATA ENDPOINTS

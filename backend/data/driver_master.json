@@ -29,7 +29,7 @@
     "mobile_no": "7309691052",
     "license_no": "DL-1420110012345",
     "valid_upto": "31/12/2028",
-    "vehicle_category": "MARKET"
+    "vehicle_category": "Market"
   },
   "UP32SN5433": {
     "vehicle_no": "UP32SN5433",
@@ -53,23 +53,23 @@
     "mobile_no": "",
     "license_no": "MH38 20100004760",
     "valid_upto": "08-08-2030",
-    "vehicle_category": "MARKET"
+    "vehicle_category": "Market"
   },
   "HR65A5507": {
     "vehicle_no": "HR65A5507",
     "driver_name": "ANOOP KUMAR",
     "mobile_no": "7016235178",
     "license_no": "HR-2120160116071",
-    "valid_upto": "01-Feb-2029",
+    "valid_upto": "20-Jul-2036",
     "vehicle_category": "Market"
   },
   "TN88U9459": {
     "vehicle_no": "TN88U9459",
     "driver_name": "MANI T",
-    "mobile_no": "",
+    "mobile_no": "8667668809",
     "license_no": "TN48Z20150003341",
     "valid_upto": "26-10-2035",
-    "vehicle_category": "MARKET"
+    "vehicle_category": "Market"
   },
   "MP13ZW5189": {
     "vehicle_no": "MP13ZW5189",
@@ -77,7 +77,7 @@
     "mobile_no": "",
     "license_no": "",
     "valid_upto": "",
-    "vehicle_category": "MARKET"
+    "vehicle_category": "Market"
   },
   "MH40DC2203": {
     "vehicle_no": "MH40DC2203",
@@ -100,7 +100,7 @@
     "driver_name": "VENKATESHA",
     "mobile_no": "",
     "license_no": "",
-    "valid_upto": "28/04/2036",
+    "valid_upto": "28/04/2016",
     "vehicle_category": "Market"
   },
   "MH04AB1234": {
@@ -133,6 +133,30 @@
     "mobile_no": "",
     "license_no": "MH41 20110015261",
     "valid_upto": "31-07-2028",
+    "vehicle_category": "GOODS CARRIER"
+  },
+  "BR44G4606": {
+    "vehicle_no": "BR44G4606",
+    "driver_name": "PINTU YADAV",
+    "mobile_no": "",
+    "license_no": "UP60 20200018827",
+    "valid_upto": "04-01-2027",
+    "vehicle_category": "GOODS CARRIER"
+  },
+  "RJ32GE1341": {
+    "vehicle_no": "RJ32GE1341",
+    "driver_name": "MUKESH KUMAR",
+    "mobile_no": "",
+    "license_no": "UP13 20060111959",
+    "valid_upto": "26-12-2029",
+    "vehicle_category": "Market"
+  },
+  "UP21FT4643": {
+    "vehicle_no": "UP21FT4643",
+    "driver_name": "IMRAN",
+    "mobile_no": "",
+    "license_no": "",
+    "valid_upto": "",
     "vehicle_category": "Market"
   }
 }

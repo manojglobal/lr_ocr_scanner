@@ -112,7 +112,8 @@ def record_file_creation(
     file_bytes: Optional[bytes] = None,
     custom_meta: Optional[dict[str, Any]] = None,
     file_id: Optional[str] = None,
-    initial_data: Optional[dict[str, Any]] = None
+    initial_data: Optional[dict[str, Any]] = None,
+    user_id: Optional[str] = None
 ) -> dict[str, Any]:
     """
     Registers the creation of a file (Excel, screenshot, snapshot, or bilty upload).
@@ -194,7 +195,8 @@ def record_file_creation(
             "deleted_at": None,
             "is_deleted": False,
             "created_by": user_name,
-            "user_mobile": user_mobile,
+            "user_id": user_id or (custom_meta.get("user_id") if custom_meta else None),
+            "user_mobile": user_mobile or (custom_meta.get("user_mobile") if custom_meta else ""),
             "last_edited_by": None,
             "current_version": 1,
             "versions": [v1_record],
@@ -494,16 +496,25 @@ def get_metadata_by_id(file_id_or_path: str) -> Optional[dict[str, Any]]:
 
 
 def _find_entry(registry: dict[str, dict[str, Any]], key: str) -> Optional[dict[str, Any]]:
-    """Helper to locate entry by file_id, file_name, or relative path."""
+    """Helper to locate entry by file_id, file_name, relative path, or custom_meta filenames."""
+    if not key:
+        return None
     if key in registry:
         return registry[key]
-    normalized_key = key.replace("\\", "/")
+    normalized_key = str(key).replace("\\", "/")
+    base_target = os.path.basename(normalized_key)
     for entry in registry.values():
         if entry.get("file_id") == key:
             return entry
-        if entry.get("file_name") == key:
+        if entry.get("file_name") == key or entry.get("file_name") == base_target:
             return entry
-        if entry.get("file_path") == normalized_key or entry.get("file_path", "").endswith("/" + os.path.basename(key)):
+        cm = entry.get("custom_meta") or {}
+        if cm.get("upload_id") == key or cm.get("saved_filename") == key or cm.get("saved_filename") == base_target:
+            return entry
+        if cm.get("original_filename") == key or cm.get("original_filename") == base_target:
+            return entry
+        fp = entry.get("file_path", "")
+        if fp == normalized_key or fp.endswith("/" + base_target):
             return entry
     return None
 

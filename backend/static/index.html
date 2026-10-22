@@ -732,7 +732,7 @@
           <h2 class="text-xl font-bold text-slate-800">LR List (For Excel Export)</h2>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button onclick="clearBatch()" class="px-3.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition">Clear All</button>
+          <button type="button" onclick="clearBatch()" class="px-3.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition cursor-pointer" title="Clear all data from batch">Clear All</button>
           <button type="button" onclick="openExcelPreviewModal()" id="btnExcelPreview" class="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold rounded-lg border border-amber-300 shadow-sm flex items-center space-x-1.5 transition cursor-pointer" title="Preview Excel spreadsheet before downloading">
             <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-amber-700"></i>
             <span id="btnExcelPreviewText">Excel Preview</span>
@@ -1313,6 +1313,37 @@
     </div>
   </div>
 
+  <!-- Clear All Warning Confirmation Modal -->
+  <div id="clearAllConfirmModal" onclick="if(event.target === this) closeClearAllConfirmModal()" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+      <!-- Header with Red Warning Icon -->
+      <div class="flex items-center space-x-3 text-red-600">
+        <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center border border-red-200 shrink-0">
+          <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Clear All Data</h3>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-red-500 font-semibold">Warning</span>
+        </div>
+      </div>
+
+      <!-- Message -->
+      <p class="text-xs text-slate-700 leading-relaxed font-medium">
+        Are you sure you want to clear all data?
+      </p>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center justify-end space-x-2 pt-2">
+        <button type="button" onclick="closeClearAllConfirmModal()" class="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer">
+          Cancel
+        </button>
+        <button type="button" onclick="proceedClearAllConfirmModal()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Excel Export Preview Modal (Realistic Excel-Style Spreadsheet Layout) -->
   <div id="excelPreviewModal" onclick="if(event.target === this) closeExcelPreviewModal()" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
     <div class="bg-white rounded-xl w-[96vw] max-w-[1550px] h-[90vh] flex flex-col shadow-2xl border border-slate-300 animate-in fade-in zoom-in-95 duration-200 overflow-hidden font-sans">
@@ -1824,51 +1855,17 @@
       const fn = (item.filename || item.name || item.saved_filename || item.file_url || '').toLowerCase();
       const id = (item.id || '').toLowerCase();
       const title = (item.document_title || '').toLowerCase();
-      const d = item.data || {};
-      const lrNo = (d['grno'] || d['LR No *'] || d['BNF LR No'] || d['grno (*)'] || '').toString().toLowerCase();
-      const cngr = (d['cngr *'] || d['cngr'] || '').toString().toLowerCase();
-      const cnge = (d['cnge *'] || d['cnge'] || '').toString().toLowerCase();
-      const cust = (d['Customer Name *'] || d['customer'] || '').toString().toLowerCase();
-      const veh = (d['Vehicle No *'] || d['Vehicle No'] || d['vehno'] || '').toString().toLowerCase();
-      const driver = (d['Driver Name *'] || d['driver_name'] || '').toString().toLowerCase();
-      
-      const allText = `${fn} ${id} ${title} ${lrNo} ${cngr} ${cnge} ${cust} ${veh} ${driver}`;
+      const allText = `${fn} ${id} ${title}`;
 
+      // Strictly filter genuine test mock placeholders, but allow real scanned documents (DocScanner, cities, etc.)
       const dummyPatterns = [
-        'ap16tg9309',
-        '32849',
-        'vijayawada',
         'dummy',
-        'test',
         'mock',
-        'sample',
-        'demo',
+        'sample_lr',
         'placeholder',
-        'nloiad273',
-        'mh04ab1234',
-        'bilty_scan',
-        'tn09cd5678',
-        'lr_chennai',
-        'lr-987654',
-        'consignment_note',
-        'docscanner',
-        'new_doc',
-        'gallery',
-        'ambala',
-        '33118',
-        '33119',
-        '31476',
-        '32752',
-        '32754',
-        '32969',
-        '32971',
-        '32973',
-        '32974',
-        '32975',
-        '32976',
-        '32987',
-        '5516701068',
-        'bnf-99881'
+        'fake_doc',
+        'test_lr',
+        'nloiad273'
       ];
       
       for (let i = 0; i < dummyPatterns.length; i++) {
@@ -1883,12 +1880,33 @@
     // --- Session-Based Batch Isolation & Cleanup ---
     (function clearLegacyFrontendHistory() {
       try {
-        const cleanupKey = 'bnf_session_isolation_v3';
+        // Automatically prune any oversized completed ID arrays or dead keys across all accounts
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('bnf_completed_lr_ids_')) {
+            try {
+              const arr = JSON.parse(localStorage.getItem(k) || '[]');
+              if (Array.isArray(arr) && arr.length > 50) {
+                localStorage.setItem(k, JSON.stringify(arr.slice(-50)));
+              }
+            } catch (_) {}
+          }
+          if (k && k.startsWith('bnf_exported_batches_')) {
+            try {
+              const arr = JSON.parse(localStorage.getItem(k) || '[]');
+              if (Array.isArray(arr) && arr.length > 15) {
+                localStorage.setItem(k, JSON.stringify(arr.slice(0, 15)));
+              }
+            } catch (_) {}
+          }
+        }
+
+        const cleanupKey = 'bnf_session_isolation_v4';
         if (!localStorage.getItem(cleanupKey)) {
           const keysToRemove = [];
           for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
-            if (k && (k.startsWith('bnf_batch_') || k.startsWith('bnf_deleted_') || k === 'bnf_user')) {
+            if (k && (k.startsWith('bnf_batch_') || k.startsWith('bnf_deleted_') || k.startsWith('bnf_session_batch_') || k === 'bnf_recent_uploaded_files')) {
               keysToRemove.push(k);
             }
           }
@@ -1913,90 +1931,439 @@
           }
         }
 
-        // Always purge any dummy / test LRs from bnf_recent_uploaded_files
-        const storedRecents = localStorage.getItem('bnf_recent_uploaded_files');
-        if (storedRecents) {
-          const parsedRecents = JSON.parse(storedRecents);
-          if (Array.isArray(parsedRecents)) {
-            const cleanedRecents = parsedRecents.filter(r => r && r.filename && !isDummyLRItem(r));
-            localStorage.setItem('bnf_recent_uploaded_files', JSON.stringify(cleanedRecents));
-          }
-        }
+        // Purge any legacy shared un-isolated recent uploads key
+        localStorage.removeItem('bnf_recent_uploaded_files');
       } catch (e) {}
     })();
 
-    // --- Session-Based Batch Isolation & 30-Day Auto Purge ---
-    function loadUserBatches(sessionToken) {
-      const token = sessionToken || (currentUser ? currentUser.token : null);
-      if (!token) {
-        verifiedBatch = [];
-        deletedBatch = [];
-        updateBatchBadge();
-        return;
-      }
-      try {
-        const raw = localStorage.getItem('bnf_session_batch_' + token);
-        const parsed = raw ? JSON.parse(raw) : [];
-        verifiedBatch = parsed.filter(item => item && !isDummyLRItem(item)).map(item => {
-          const cached = getDocImage(item.id, item.filename);
-          if (cached) {
-            if (!item.imageSrc && cached.imageSrc) item.imageSrc = cached.imageSrc;
-            if (!item.preview_image && cached.preview_image) item.preview_image = cached.preview_image;
-            if (!item.originalPdfSrc && cached.originalPdfSrc) item.originalPdfSrc = cached.originalPdfSrc;
-            if ((!item.preview_pages || item.preview_pages.length === 0) && cached.preview_pages) item.preview_pages = cached.preview_pages;
-            if (!item.page_count && cached.page_count) item.page_count = cached.page_count;
-          }
-          if (!item.current_page) item.current_page = 1;
-          return item;
-        });
-      } catch (e) {
-        verifiedBatch = [];
-      }
-      try {
-        const rawDel = localStorage.getItem('bnf_session_deleted_' + token);
-        deletedBatch = rawDel ? JSON.parse(rawDel) : [];
-      } catch (e) {
-        deletedBatch = [];
-      }
-      autoPurgeOldData();
-      updateBatchBadge();
-      renderPreviousUploadsWeb();
+    // --- Stable Per-Account Storage Keying Helpers ---
+    function getUserBatchStorageKey(user = currentUser) {
+      if (!user) return null;
+      const idKey = (user.mobile || user.id || user.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_account_batch_' + idKey;
+    }
 
-      // Asynchronously hydrate any batch items that need high-res images from IndexedDB
-      if (Array.isArray(verifiedBatch)) {
-        verifiedBatch.forEach(async (item) => {
-          if (!item.imageSrc || item.imageSrc.length < 5000) {
-            const dbPayload = await loadDocImageAsync(item.id, item.filename);
-            if (dbPayload) {
-              if (dbPayload.imageSrc) item.imageSrc = dbPayload.imageSrc;
-              if (dbPayload.preview_image && !item.preview_image) item.preview_image = dbPayload.preview_image;
-              if (dbPayload.originalPdfSrc) item.originalPdfSrc = dbPayload.originalPdfSrc;
-              if ((!item.preview_pages || item.preview_pages.length === 0) && dbPayload.preview_pages) item.preview_pages = dbPayload.preview_pages;
-              if (!item.page_count && dbPayload.page_count) item.page_count = dbPayload.page_count;
+    function getUserDeletedStorageKey(user = currentUser) {
+      if (!user) return null;
+      const idKey = (user.mobile || user.id || user.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_account_deleted_' + idKey;
+    }
+
+    function getUserRecentStorageKey(user = currentUser) {
+      if (!user) return null;
+      const idKey = (user.mobile || user.id || user.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_recent_uploaded_files_' + idKey;
+    }
+
+    function getUserRemovedStorageKey(user = currentUser) {
+      if (!user) return null;
+      const idKey = (user.mobile || user.id || user.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_removed_uploaded_files_' + idKey;
+    }
+
+    function getUserRemovedTombstones(user = currentUser) {
+      const k = getUserRemovedStorageKey(user);
+      if (!k) return [];
+      try {
+        const raw = localStorage.getItem(k);
+        return raw ? JSON.parse(raw) : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function isItemTombstonedByUser(item, user = currentUser) {
+      if (!item) return false;
+      const tombstones = getUserRemovedTombstones(user);
+      if (!tombstones || tombstones.length === 0) return false;
+      const itemId = item.id ? String(item.id).trim() : '';
+      const itemFn = item.filename ? String(item.filename).trim() : '';
+      const itemSaved = item.saved_filename ? String(item.saved_filename).trim() : '';
+      return tombstones.some(t => {
+        if (!t) return false;
+        const strT = String(t).trim();
+        return (itemId && itemId === strT) || (itemFn && itemFn === strT) || (itemSaved && itemSaved === strT);
+      });
+    }
+
+    // --- Export Completion & Lifecycle Helpers ---
+    function getUserExportedStorageKey(user = currentUser) {
+      if (!user) return null;
+      const idKey = (user.mobile || user.id || user.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_exported_batches_' + idKey;
+    }
+
+    function getUserCompletedItemsStorageKey(user = currentUser) {
+      if (!user) return null;
+      const idKey = (user.mobile || user.id || user.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_completed_lr_ids_' + idKey;
+    }
+
+    function isItemExportedByUser(item, user = currentUser) {
+      if (!item) return false;
+      if (item.is_exported === true || item.isExported === true) return true;
+      if (typeof item.exportedAt === 'string' && item.exportedAt.trim().length > 0) return true;
+      if (typeof item.exported_at === 'string' && item.exported_at.trim().length > 0) return true;
+      const k = getUserCompletedItemsStorageKey(user);
+      if (!k) return false;
+      try {
+        const raw = localStorage.getItem(k);
+        const set = raw ? JSON.parse(raw) : [];
+        if (!set || !Array.isArray(set) || set.length === 0) return false;
+        const ignored = new Set(['', '-', 'none', 'null', 'undefined', 'lr document', 'document.jpg', 'default']);
+        const itemId = item.id ? String(item.id).trim() : '';
+        const itemFn = item.filename ? String(item.filename).trim() : '';
+        const itemSaved = item.saved_filename ? String(item.saved_filename).trim() : '';
+        const itemLr = item.data ? (item.data['LR No *'] || item.data['lrno'] || item.data['grno']) : (item.lrNo || '');
+        const strLr = itemLr ? String(itemLr).trim() : '';
+        return set.some(s => {
+          if (!s) return false;
+          const strS = String(s).trim();
+          if (ignored.has(strS.toLowerCase())) return false;
+          return (itemId && itemId === strS) ||
+                 (itemFn && !ignored.has(itemFn.toLowerCase()) && itemFn === strS) ||
+                 (itemSaved && !ignored.has(itemSaved.toLowerCase()) && itemSaved === strS) ||
+                 (strLr && !ignored.has(strLr.toLowerCase()) && strLr === strS);
+        });
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function markBatchAsCompletedAndClearPending(exportedDocs, exportMeta = {}) {
+      if (!currentUser) return;
+      const exportId = exportMeta.export_id || ('exp_' + Date.now());
+      const expBatchesKey = getUserExportedStorageKey();
+      const compIdsKey = getUserCompletedItemsStorageKey();
+      const recentKey = getUserRecentStorageKey();
+
+      const docsToMark = (Array.isArray(exportedDocs) && exportedDocs.length > 0) ? exportedDocs : verifiedBatch;
+      if (!docsToMark || docsToMark.length === 0) return;
+
+      const completedIds = [];
+      const completedFilenames = [];
+      const completedSavedNames = [];
+      const completedLrNos = [];
+      const ignoredValues = new Set(['', '-', 'none', 'null', 'undefined', 'lr document', 'document.jpg', 'default']);
+
+      docsToMark.forEach(d => {
+        if (!d) return;
+        if (d.id && !ignoredValues.has(String(d.id).trim().toLowerCase())) completedIds.push(String(d.id).trim());
+        if (d.filename && !ignoredValues.has(String(d.filename).trim().toLowerCase())) completedFilenames.push(String(d.filename).trim());
+        if (d.saved_filename && !ignoredValues.has(String(d.saved_filename).trim().toLowerCase())) completedSavedNames.push(String(d.saved_filename).trim());
+        const lr = (d.data && (d.data['LR No *'] || d.data['lrno'] || d.data['grno'])) || d.lrNo || '';
+        if (lr && !ignoredValues.has(String(lr).trim().toLowerCase())) completedLrNos.push(String(lr).trim());
+      });
+
+      // 1. Record completed LR keys in localStorage (compact, quota-safe strategy capped at 50)
+      if (compIdsKey) {
+        try {
+          let existingCompleted = [];
+          try {
+            existingCompleted = JSON.parse(localStorage.getItem(compIdsKey) || '[]');
+          } catch (_) {
+            existingCompleted = [];
+          }
+          if (!Array.isArray(existingCompleted)) existingCompleted = [];
+
+          // Primary keys: store unique IDs & saved filenames only to minimize byte footprint
+          const allNew = [...completedIds, ...completedSavedNames, ...completedLrNos];
+          allNew.forEach(val => {
+            if (val && !existingCompleted.includes(val)) existingCompleted.push(val);
+          });
+          if (existingCompleted.length > 50) {
+            existingCompleted = existingCompleted.slice(-50);
+          }
+          localStorage.setItem(compIdsKey, JSON.stringify(existingCompleted));
+        } catch (compErr) {
+          console.warn('[Storage Quota] Notice while storing completed LR set, trimming to minimal:', compErr);
+          try {
+            const minimalIds = completedIds.slice(-10);
+            localStorage.setItem(compIdsKey, JSON.stringify(minimalIds));
+          } catch (_) {}
+        }
+      }
+
+      // 2. Record batch metadata in exported batches log (quota-safe capped at 15)
+      if (expBatchesKey) {
+        try {
+          let batches = [];
+          try {
+            batches = JSON.parse(localStorage.getItem(expBatchesKey) || '[]');
+          } catch (_) {
+            batches = [];
+          }
+          if (!Array.isArray(batches)) batches = [];
+          batches.unshift({
+            export_id: exportId,
+            filename: exportMeta.filename || 'export.xlsx',
+            count: docsToMark.length,
+            exported_at: exportMeta.exported_at || new Date().toISOString(),
+            doc_ids: completedIds.slice(0, 10)
+          });
+          if (batches.length > 15) batches = batches.slice(0, 15);
+          localStorage.setItem(expBatchesKey, JSON.stringify(batches));
+        } catch (bErr) {
+          console.warn('[Storage Quota] Notice while storing export batch metadata:', bErr);
+          try {
+            localStorage.setItem(expBatchesKey, JSON.stringify([]));
+          } catch (_) {}
+        }
+      }
+
+      const matchesAnyCompleted = (item) => {
+        if (!item) return false;
+        const iId = item.id ? String(item.id).trim() : '';
+        const iFn = item.filename ? String(item.filename).trim() : '';
+        const iSaved = item.saved_filename ? String(item.saved_filename).trim() : '';
+        const iLr = (item.data && (item.data['LR No *'] || item.data['lrno'] || item.data['grno'])) || item.lrNo || '';
+        const strLr = iLr ? String(iLr).trim() : '';
+        return (iId && completedIds.includes(iId)) ||
+               (iFn && !ignoredValues.has(iFn.toLowerCase()) && completedFilenames.includes(iFn)) ||
+               (iSaved && !ignoredValues.has(iSaved.toLowerCase()) && completedSavedNames.includes(iSaved)) ||
+               (strLr && !ignoredValues.has(strLr.toLowerCase()) && completedLrNos.includes(strLr));
+      };
+
+      // 3. Clear exported items from active pending verifiedBatch & persist to user storage
+      verifiedBatch = verifiedBatch.filter(item => !matchesAnyCompleted(item));
+      try {
+        saveUserBatches();
+      } catch (_) {}
+
+      // 4. Remove exported items from pending Previous Uploaded LR storage
+      if (recentKey) {
+        try {
+          let recents = [];
+          try {
+            recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
+          } catch (_) {
+            recents = [];
+          }
+          if (Array.isArray(recents)) {
+            recents = recents.filter(r => !matchesAnyCompleted(r));
+            if (recents.length > 25) recents = recents.slice(0, 25);
+            localStorage.setItem(recentKey, JSON.stringify(recents));
+          }
+        } catch (rErr) {
+          console.warn('[Storage Quota] Notice while clearing recents:', rErr);
+        }
+      }
+
+      // 5. Update UI badges and views
+      updateBatchBadge();
+      renderBatchTable();
+      renderPreviousUploadsWeb();
+      console.log(`[Batch Lifecycle] Marked ${docsToMark.length} LR records as completed & cleared from pending.`);
+    }
+
+    // --- Account-Based Batch Persistence & 30-Day Auto Purge ---
+    let isLoadingUserBatches = false;
+    function loadUserBatches(sessionToken) {
+      if (isLoadingUserBatches) return;
+      isLoadingUserBatches = true;
+      try {
+        const token = sessionToken || (currentUser ? currentUser.token : null);
+        const accountBatchKey = getUserBatchStorageKey();
+        const accountDeletedKey = getUserDeletedStorageKey();
+        const recentKey = getUserRecentStorageKey();
+
+        if (!accountBatchKey && !token) {
+          verifiedBatch = [];
+          deletedBatch = [];
+          updateBatchBadge();
+          return;
+        }
+        try {
+          let raw = null;
+          if (accountBatchKey) {
+            raw = localStorage.getItem(accountBatchKey);
+          }
+          if (!raw && token) {
+            raw = localStorage.getItem('bnf_session_batch_' + token);
+          }
+          const parsed = raw ? JSON.parse(raw) : [];
+          verifiedBatch = (Array.isArray(parsed) ? parsed : []).filter(item => item && !isDummyLRItem(item) && !isItemExportedByUser(item) && !isItemTombstonedByUser(item)).map(item => {
+            const cached = getDocImage(item.id, item.filename);
+            if (cached) {
+              if (!item.imageSrc && cached.imageSrc) item.imageSrc = cached.imageSrc;
+              if (!item.preview_image && cached.preview_image) item.preview_image = cached.preview_image;
+              if (!item.originalPdfSrc && cached.originalPdfSrc) item.originalPdfSrc = cached.originalPdfSrc;
+              if ((!item.preview_pages || item.preview_pages.length === 0) && cached.preview_pages) item.preview_pages = cached.preview_pages;
+              if (!item.page_count && cached.page_count) item.page_count = cached.page_count;
+              if (!item.file_url && cached.file_url) item.file_url = cached.file_url;
+              if (!item.preview_url && cached.preview_url) item.preview_url = cached.preview_url;
+            }
+            if (!item.current_page) item.current_page = 1;
+            return item;
+          });
+
+          // Ensure all undownloaded pending records from account recents are restored into verifiedBatch
+          if (recentKey) {
+            let recents = [];
+            try {
+              recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
+            } catch (_) {
+              recents = [];
+            }
+            let addedFromRecents = false;
+            (Array.isArray(recents) ? recents : []).forEach(r => {
+              if (!r || !r.filename || isDummyLRItem(r) || isItemExportedByUser(r) || isItemTombstonedByUser(r)) return;
+              const alreadyInBatch = verifiedBatch.some(b => b.id === r.id || b.filename === r.filename || (b.saved_filename && b.saved_filename === r.saved_filename));
+              if (!alreadyInBatch) {
+                const cached = getDocImage(r.id, r.filename);
+                const restoredItem = {
+                  id: r.id || ('rec_' + Date.now()),
+                  filename: r.filename,
+                  saved_filename: r.saved_filename || null,
+                  file_url: r.file_url || (r.saved_filename ? `/uploads/${r.saved_filename}` : null),
+                  preview_url: r.preview_url || null,
+                  page_count: r.page_count || 1,
+                  current_page: 1,
+                  preview_pages: r.preview_pages || (cached && cached.preview_pages ? cached.preview_pages : []),
+                  imageSrc: (cached && cached.imageSrc) || r.preview_image || r.preview_url || null,
+                  preview_image: (cached && cached.preview_image) || r.preview_image || null,
+                  thumbnail_image: (cached && cached.preview_image) || r.preview_image || null,
+                  originalPdfSrc: (cached && cached.originalPdfSrc) || null,
+                  data: Object.assign({}, r.data || {}),
+                  ocrEngine: r.ocrEngine || 'surya_ocr',
+                  createdAt: r.createdAt || new Date().toISOString(),
+                  editedAt: null,
+                  exportedAt: null,
+                  deletedAt: null,
+                  current_version: 1,
+                  versions: r.versions || [
+                    {
+                      version: 1,
+                      timestamp: r.createdAt || new Date().toISOString(),
+                      action: 'add',
+                      user_name: currentUser?.name || 'Logistics User',
+                      user_mobile: currentUser?.mobile || '',
+                      ocr_engine: r.ocrEngine || 'surya_ocr',
+                      details: 'Restored from pending uploads',
+                      snapshot_data: Object.assign({}, r.data || {})
+                    }
+                  ],
+                  editHistory: r.editHistory || [
+                    {
+                      timestamp: r.createdAt || new Date().toISOString(),
+                      user: currentUser?.name || 'Logistics User',
+                      mobile: currentUser?.mobile || '',
+                      action: 'add',
+                      version: 1,
+                      details: 'Restored from pending uploads'
+                    }
+                  ]
+                };
+                verifiedBatch.push(restoredItem);
+                addedFromRecents = true;
+              }
+            });
+            if (addedFromRecents) {
+              saveUserBatches();
             }
           }
-        });
+        } catch (e) {
+          verifiedBatch = [];
+        }
+        try {
+          let rawDel = null;
+          if (accountDeletedKey) {
+            rawDel = localStorage.getItem(accountDeletedKey);
+          }
+          if (!rawDel && token) {
+            rawDel = localStorage.getItem('bnf_session_deleted_' + token);
+          }
+          deletedBatch = rawDel ? JSON.parse(rawDel) : [];
+        } catch (e) {
+          deletedBatch = [];
+        }
+        autoPurgeOldData();
+        updateBatchBadge();
+        renderBatchTable();
+        renderPreviousUploadsWeb();
+        syncPreviousUploadsFromServer();
+
+        // Asynchronously hydrate any batch items that need high-res images from IndexedDB
+        if (Array.isArray(verifiedBatch)) {
+          verifiedBatch.forEach(async (item) => {
+            if (!item.imageSrc || item.imageSrc.length < 5000) {
+              const dbPayload = await loadDocImageAsync(item.id, item.filename);
+              if (dbPayload) {
+                if (dbPayload.imageSrc) item.imageSrc = dbPayload.imageSrc;
+                if (dbPayload.preview_image && !item.preview_image) item.preview_image = dbPayload.preview_image;
+                if (dbPayload.originalPdfSrc) item.originalPdfSrc = dbPayload.originalPdfSrc;
+                if ((!item.preview_pages || item.preview_pages.length === 0) && dbPayload.preview_pages) item.preview_pages = dbPayload.preview_pages;
+                if (!item.page_count && dbPayload.page_count) item.page_count = dbPayload.page_count;
+                if (!item.file_url && dbPayload.file_url) item.file_url = dbPayload.file_url;
+                if (!item.preview_url && dbPayload.preview_url) item.preview_url = dbPayload.preview_url;
+              }
+            }
+          });
+        }
+      } finally {
+        isLoadingUserBatches = false;
       }
     }
 
     function saveUserBatches() {
-      if (!currentUser || !currentUser.token) return;
+      if (!currentUser) return;
       try {
+        const accountBatchKey = getUserBatchStorageKey();
+        const accountDeletedKey = getUserDeletedStorageKey();
+
         // Strip heavy multi-megabyte base64 strings for localStorage persistence to prevent QuotaExceededError
         const sanitized = verifiedBatch.map(item => {
           // Always ensure in-memory store and IndexedDB keep full images
-          storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc);
+          storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
 
           const clone = Object.assign({}, item);
-          if (clone.originalPdfSrc && clone.originalPdfSrc.length > 50000) delete clone.originalPdfSrc;
-          // Keep compact preview_image for localStorage (<= 60KB), but strip giant raw base64
-          if (clone.imageSrc && clone.imageSrc.length > 60000) {
-            clone.imageSrc = (clone.preview_image && clone.preview_image.length <= 60000) ? clone.preview_image : '';
+          delete clone.originalPdfSrc;
+          // Keep compact preview_image for localStorage (<= 30KB), strip giant raw base64
+          if (clone.imageSrc && clone.imageSrc.length > 30000) clone.imageSrc = '';
+          if (clone.preview_image && clone.preview_image.length > 30000) clone.preview_image = '';
+          if (clone.thumbnail_image && clone.thumbnail_image.length > 30000) clone.thumbnail_image = '';
+          if (Array.isArray(clone.preview_pages)) {
+            clone.preview_pages = clone.preview_pages.filter(p => typeof p === 'string' && (p.startsWith('http') || p.startsWith('/') || p.length <= 30000));
           }
           return clone;
         });
-        localStorage.setItem('bnf_session_batch_' + currentUser.token, JSON.stringify(sanitized));
-        localStorage.setItem('bnf_session_deleted_' + currentUser.token, JSON.stringify(deletedBatch));
+
+        const safeSet = (key, val) => {
+          if (!key) return;
+          try {
+            localStorage.setItem(key, JSON.stringify(val));
+          } catch (err) {
+            console.warn(`Quota notice for ${key}, falling back to minimal payload:`, err);
+            try {
+              const minimal = Array.isArray(val) ? val.map(it => {
+                const m = Object.assign({}, it);
+                delete m.imageSrc;
+                delete m.preview_image;
+                delete m.thumbnail_image;
+                delete m.originalPdfSrc;
+                delete m.preview_pages;
+                return m;
+              }) : val;
+              localStorage.setItem(key, JSON.stringify(minimal));
+            } catch (innerErr) {
+              console.error(`Failed to store minimal payload for ${key}:`, innerErr);
+            }
+          }
+        };
+
+        // 1. Primary persistence keyed by user account mobile
+        if (accountBatchKey) {
+          safeSet(accountBatchKey, sanitized);
+        }
+        if (accountDeletedKey) {
+          safeSet(accountDeletedKey, deletedBatch);
+        }
+
+        // 2. Also keep session token key synced for backwards compatibility
+        if (currentUser.token) {
+          safeSet('bnf_session_batch_' + currentUser.token, sanitized);
+          safeSet('bnf_session_deleted_' + currentUser.token, deletedBatch);
+        }
       } catch (e) {
         console.warn('Batch session quota warning:', e);
       }
@@ -2022,10 +2389,16 @@
         });
         if (deletedBatch.length !== before) changed = true;
       }
-      if (changed && currentUser && currentUser.token) {
+      if (changed && currentUser) {
         try {
-          localStorage.setItem('bnf_session_batch_' + currentUser.token, JSON.stringify(verifiedBatch));
-          localStorage.setItem('bnf_session_deleted_' + currentUser.token, JSON.stringify(deletedBatch));
+          const accountBatchKey = getUserBatchStorageKey();
+          const accountDeletedKey = getUserDeletedStorageKey();
+          if (accountBatchKey) localStorage.setItem(accountBatchKey, JSON.stringify(verifiedBatch));
+          if (accountDeletedKey) localStorage.setItem(accountDeletedKey, JSON.stringify(deletedBatch));
+          if (currentUser.token) {
+            localStorage.setItem('bnf_session_batch_' + currentUser.token, JSON.stringify(verifiedBatch));
+            localStorage.setItem('bnf_session_deleted_' + currentUser.token, JSON.stringify(deletedBatch));
+          }
         } catch (e) {}
       }
     }
@@ -2039,7 +2412,7 @@
       }
       if (!currentUser) {
         // Fallback default user so preview is never blocked by login redirect
-        currentUser = { name: 'Logistics User', mobile: '9876543210', token: 'dev_session_' + Date.now() };
+        currentUser = { id: '26a4e888', name: 'Ruchita Patel', mobile: '9876543210', token: 'dev_session_' + Date.now() };
         try { localStorage.setItem('bnf_user', JSON.stringify(currentUser)); } catch(e) {}
         if (typeof updateUserBadge === 'function') updateUserBadge();
       }
@@ -2142,6 +2515,9 @@
         return;
       }
       if (targetScreen === 'screen7_lrlist') {
+        if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser) {
+          loadUserBatches();
+        }
         renderBatchTable();
         navigateTo('screen7_lrlist');
         return;
@@ -2178,11 +2554,15 @@
       updateFlowBar(screenId);
       if (screenId === 'screen2_upload') {
         renderPreviousUploadsWeb();
+        syncPreviousUploadsFromServer();
       }
       if ((screenId === 'screen4_edit' || screenId === 'screen4b_customization') && activeItem) {
         loadLrImagePreview(activeItem);
       }
       if (screenId === 'screen7_lrlist') {
+        if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser) {
+          loadUserBatches();
+        }
         renderBatchTable();
       }
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -2277,23 +2657,27 @@
 
       function applySuccessfulLogin(userData, token) {
         currentUser = {
+          id: userData.id || null,
           name: userData.name || name,
           mobile: userData.mobile || mobile,
           token: token || ('bnf_' + Date.now())
         };
         localStorage.setItem('bnf_user', JSON.stringify(currentUser));
-        verifiedBatch = [];
-        deletedBatch = [];
-        activeItem = null;
-        if (typeof saveUserBatches === 'function') saveUserBatches();
-        if (typeof updateBatchBadge === 'function') updateBatchBadge();
-        if (typeof updateUserBadge === 'function') updateUserBadge();
+
+        // Restore user's persisted pending LR records
+        loadUserBatches();
+        updateBatchBadge();
+        updateUserBadge();
+        renderBatchTable();
+        renderPreviousUploadsWeb();
+        syncPreviousUploadsFromServer();
 
         // Reset login button state immediately so it is never stuck on "Signing In..."
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i><span>Login & Continue</span>`;
         if (window.lucide && lucide.createIcons) lucide.createIcons();
 
+        // Requirement: Always keep user on the Upload LR page by default on login (no auto-redirect to LR List)
         navigateTo('screen2_upload');
       }
 
@@ -2467,20 +2851,22 @@
 
         // Save session
         currentUser = {
+          id: data.user.id || null,
           name: data.user.name,
           mobile: data.user.mobile,
           token: data.token
         };
-        localStorage.setItem('bnf_user', JSON.stringify(currentUser));
-        // Session-based isolation: new login session starts with a fresh empty batch
-        verifiedBatch = [];
-        deletedBatch = [];
-        activeItem = null;
-        saveUserBatches();
+        localStorage.setItem('', JSON.stringify(currentUser));
+
+        // Restore user's persisted pending LR records
+        loadUserBatches();
         updateBatchBadge();
         updateUserBadge();
+        renderBatchTable();
+        renderPreviousUploadsWeb();
+        syncPreviousUploadsFromServer();
 
-        // Advance to Screen 2 (Upload is now unlocked!)
+        // Requirement: Always keep user on the Upload LR page by default on login (no auto-redirect to LR List)
         navigateTo('screen2_upload');
       } catch (err) {
         errorDiv.innerText = 'Network error while verifying OTP.';
@@ -2582,6 +2968,9 @@
 
     function logoutUser() {
       try {
+        if (currentUser) {
+          saveUserBatches();
+        }
         if (currentUser && currentUser.token) {
           fetch('/api/auth/logout', {
             method: 'POST',
@@ -2596,6 +2985,9 @@
       deletedBatch = [];
       activeItem = null;
       localStorage.removeItem('bnf_user');
+
+      // Clear user recents display so logged out state shows clean placeholder
+      renderPreviousUploadsWeb();
 
       // Update header badges & reset login form state
       updateUserBadge();
@@ -3230,6 +3622,11 @@
 
           const formData = new FormData();
           formData.append('file', file);
+          if (currentUser) {
+            if (currentUser.id) formData.append('user_id', currentUser.id);
+            if (currentUser.mobile) formData.append('user_mobile', currentUser.mobile);
+            if (currentUser.name) formData.append('user_name', currentUser.name);
+          }
 
           let result = null;
           let activeOcrEngine = 'server';
@@ -3238,8 +3635,13 @@
           try {
             const abortCtrl = new AbortController();
             const timeoutId = setTimeout(() => abortCtrl.abort(), 90000);
+            const reqHeaders = {};
+            if (currentUser && currentUser.token) {
+              reqHeaders['Authorization'] = 'Bearer ' + currentUser.token;
+            }
             const resp = await fetch('/extract-handwriting', {
               method: 'POST',
+              headers: reqHeaders,
               body: formData,
               signal: abortCtrl.signal
             });
@@ -4761,10 +5163,13 @@
 
     function saveRecentUploadWeb(item) {
       if (!item || isDummyLRItem(item)) return;
+      const key = getUserRecentStorageKey();
+      if (!key) return;
+      if (isItemTombstonedByUser(item) || isItemExportedByUser(item)) return;
       try {
         let recents = [];
         try {
-          recents = JSON.parse(localStorage.getItem('bnf_recent_uploaded_files') || '[]');
+          recents = JSON.parse(localStorage.getItem(key) || '[]');
         } catch (_) {
           recents = [];
         }
@@ -4782,20 +5187,146 @@
         const record = {
           id: item.id || 'rec_' + Date.now(),
           filename: item.filename || 'LR Document',
+          saved_filename: item.saved_filename || null,
           preview_image: compactPreview,
           preview_url: item.preview_url || null,
+          preview_pages: item.preview_pages || [],
+          page_count: item.page_count || 1,
           data: Object.assign({}, item.data || {}),
           createdAt: item.createdAt || new Date().toISOString(),
           isPdf: (item.filename && item.filename.toLowerCase().endsWith('.pdf')) ||
+                 (item.saved_filename && item.saved_filename.toLowerCase().endsWith('.pdf')) ||
                  (item.imageSrc && item.imageSrc.startsWith('data:application/pdf')) ||
                  Boolean(item.originalPdfSrc)
         };
-        recents = recents.filter(r => r.filename !== record.filename && r.id !== record.id);
+        recents = recents.filter(r => r.filename !== record.filename && r.id !== record.id && r.saved_filename !== record.saved_filename && !isItemExportedByUser(r));
         recents.unshift(record);
         if (recents.length > 25) recents = recents.slice(0, 25);
-        localStorage.setItem('bnf_recent_uploaded_files', JSON.stringify(recents));
+        localStorage.setItem(key, JSON.stringify(recents));
       } catch (e) {
         console.warn('Recent upload storage quota notice:', e);
+      }
+    }
+
+    async function syncPreviousUploadsFromServer() {
+      if (!currentUser) return;
+      const key = getUserRecentStorageKey();
+      if (!key) return;
+
+      try {
+        const queryParams = new URLSearchParams();
+        if (currentUser.id) queryParams.set('user_id', currentUser.id);
+        if (currentUser.mobile) queryParams.set('user_mobile', currentUser.mobile);
+        queryParams.set('only_pending', 'true');
+
+        const headers = {};
+        if (currentUser.token) {
+          headers['Authorization'] = 'Bearer ' + currentUser.token;
+        }
+
+        const res = await fetch('/api/previous-uploads?' + queryParams.toString(), {
+          headers: headers
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json && json.success && Array.isArray(json.uploads)) {
+          let recents = [];
+          try {
+            recents = JSON.parse(localStorage.getItem(key) || '[]');
+          } catch (_) {
+            recents = [];
+          }
+          recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r) && !isItemExportedByUser(r));
+
+          let batchUpdated = false;
+
+          // Merge server-persisted uploads (server is source of truth for physical files)
+          json.uploads.forEach(srv => {
+            if (isDummyLRItem(srv) || isItemTombstonedByUser(srv) || isItemExportedByUser(srv)) return;
+            const existingIdx = recents.findIndex(r => r.filename === srv.filename || r.id === srv.id || r.saved_filename === srv.saved_filename);
+            const entry = {
+              id: srv.id,
+              filename: srv.filename,
+              saved_filename: srv.saved_filename,
+              file_url: srv.file_url,
+              preview_url: srv.preview_url,
+              preview_pages: srv.preview_pages || [],
+              page_count: srv.page_count || 1,
+              isPdf: Boolean(srv.isPdf),
+              data: srv.data || {},
+              createdAt: srv.createdAt,
+              preview_image: srv.isPdf ? null : srv.preview_url
+            };
+            if (existingIdx !== -1) {
+              recents[existingIdx] = Object.assign({}, entry, recents[existingIdx]);
+            } else {
+              recents.push(entry);
+            }
+
+            // Also restore server pending uploads into verifiedBatch so LR List is always populated
+            const inBatch = verifiedBatch.some(b => b.filename === srv.filename || b.id === srv.id || (b.saved_filename && b.saved_filename === srv.saved_filename));
+            if (!inBatch) {
+              const cached = getDocImage(srv.id, srv.filename);
+              verifiedBatch.push({
+                id: srv.id || ('srv_' + Date.now()),
+                filename: srv.filename,
+                saved_filename: srv.saved_filename || null,
+                file_url: srv.file_url || (srv.saved_filename ? `/uploads/${srv.saved_filename}` : null),
+                preview_url: srv.preview_url || null,
+                preview_pages: srv.preview_pages || (cached && cached.preview_pages ? cached.preview_pages : []),
+                page_count: srv.page_count || 1,
+                current_page: 1,
+                imageSrc: (cached && cached.imageSrc) || (srv.isPdf ? null : srv.preview_url),
+                preview_image: (cached && cached.preview_image) || (srv.isPdf ? null : srv.preview_url),
+                thumbnail_image: (cached && cached.preview_image) || (srv.isPdf ? null : srv.preview_url),
+                originalPdfSrc: (cached && cached.originalPdfSrc) || null,
+                data: Object.assign({}, srv.data || {}),
+                ocrEngine: 'surya_ocr',
+                createdAt: srv.createdAt || new Date().toISOString(),
+                editedAt: null,
+                exportedAt: null,
+                deletedAt: null,
+                current_version: 1,
+                versions: [
+                  {
+                    version: 1,
+                    timestamp: srv.createdAt || new Date().toISOString(),
+                    action: 'add',
+                    user_name: currentUser?.name || 'Logistics User',
+                    user_mobile: currentUser?.mobile || '',
+                    ocr_engine: 'surya_ocr',
+                    details: 'Restored from server pending uploads',
+                    snapshot_data: Object.assign({}, srv.data || {})
+                  }
+                ],
+                editHistory: [
+                  {
+                    timestamp: srv.createdAt || new Date().toISOString(),
+                    user: currentUser?.name || 'Logistics User',
+                    mobile: currentUser?.mobile || '',
+                    action: 'add',
+                    version: 1,
+                    details: 'Restored from server pending uploads'
+                  }
+                ]
+              });
+              batchUpdated = true;
+            }
+          });
+
+          recents.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          if (recents.length > 25) recents = recents.slice(0, 25);
+          localStorage.setItem(key, JSON.stringify(recents));
+          renderPreviousUploadsWeb();
+
+          if (batchUpdated) {
+            saveUserBatches();
+            updateBatchBadge();
+            renderBatchTable();
+          }
+        }
+      } catch (err) {
+        console.warn('Sync previous uploads notice:', err);
       }
     }
 
@@ -4804,24 +5335,35 @@
       const countBadge = document.getElementById('previousUploadsCountBadge');
       if (!container) return;
 
+      if (!currentUser) {
+        if (countBadge) countBadge.innerText = '0 files';
+        container.innerHTML = `
+          <div class="col-span-full py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <p class="text-xs font-semibold">Please log in to view your previously uploaded LR documents.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const key = getUserRecentStorageKey();
       let recents = [];
       try {
-        recents = JSON.parse(localStorage.getItem('bnf_recent_uploaded_files') || '[]');
+        recents = JSON.parse(localStorage.getItem(key) || '[]');
       } catch (e) {
         recents = [];
       }
 
-      // Filter out any dummy / test / placeholder entries
-      recents = recents.filter(r => r && r.filename && !isDummyLRItem(r));
+      // Filter out any dummy / test / placeholder entries, tombstones, and exported items
+      recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r) && !isItemExportedByUser(r));
       try {
-        localStorage.setItem('bnf_recent_uploaded_files', JSON.stringify(recents));
+        localStorage.setItem(key, JSON.stringify(recents));
       } catch (_) {}
 
       // Merge verifiedBatch so all currently loaded session documents display immediately
       if (Array.isArray(verifiedBatch) && verifiedBatch.length > 0) {
         verifiedBatch.forEach(b => {
-          if (!b || !b.filename || isDummyLRItem(b)) return;
-          const exists = recents.some(r => r.filename === b.filename || r.id === b.id);
+          if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b) || isItemExportedByUser(b)) return;
+          const exists = recents.some(r => r.filename === b.filename || r.id === b.id || (r.saved_filename && r.saved_filename === b.saved_filename));
           if (!exists) {
             const bCompact = (b.thumbnail_image && b.thumbnail_image.length <= 60000)
               ? b.thumbnail_image
@@ -4831,13 +5373,18 @@
             recents.unshift({
               id: b.id,
               filename: b.filename,
+              saved_filename: b.saved_filename || null,
+              file_url: b.file_url || null,
               preview_image: bCompact,
               preview_url: b.preview_url || null,
+              preview_pages: b.preview_pages || [],
+              page_count: b.page_count || 1,
               data: b.data || {},
               createdAt: b.createdAt || new Date().toISOString(),
-              isPdf: (b.filename && b.filename.toLowerCase().endsWith('.pdf')) ||
-                     (b.imageSrc && b.imageSrc.startsWith('data:application/pdf')) ||
-                     Boolean(b.originalPdfSrc)
+              isPdf: Boolean((b.filename && b.filename.toLowerCase().endsWith('.pdf')) ||
+                             (b.saved_filename && b.saved_filename.toLowerCase().endsWith('.pdf')) ||
+                             (b.imageSrc && b.imageSrc.startsWith('data:application/pdf')) ||
+                             Boolean(b.originalPdfSrc))
             });
           }
         });
@@ -4857,24 +5404,46 @@
 
       container.innerHTML = recents.map((r, idx) => {
         const d = r.data || {};
-        const lrNo = d['grno'] || d['LR No *'] || d['BNF LR No'] || r.filename || '—';
-        const isPdf = r.isPdf || (r.filename && r.filename.toLowerCase().endsWith('.pdf'));
+        const lrNo = d['grno'] || d['LR No *'] || d['BNF LR No'] || r.lrNo || r.filename || '—';
+        const isPdf = Boolean(r.isPdf || (r.filename && r.filename.toLowerCase().endsWith('.pdf')) || (r.saved_filename && r.saved_filename.toLowerCase().endsWith('.pdf')));
         const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
         const thumbSrc = r.preview_image || r.preview_url;
 
-        const mediaPreview = thumbSrc
-          ? `<div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
-               <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
-               ${isPdf ? `<span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-sm pointer-events-none">PDF</span>` : ''}
-             </div>`
-          : `<div id="thumb_box_${idx}" class="w-full h-24 ${isPdf ? 'bg-red-950/20 text-red-600' : 'bg-slate-100 text-slate-500'} flex flex-col items-center justify-center rounded-lg border border-slate-200">
-               <i data-lucide="${isPdf ? 'file-text' : 'file'}" class="w-8 h-8"></i>
-               <span class="text-[10px] font-bold mt-1">${isPdf ? 'PDF Document' : 'Scanned Image'}</span>
-             </div>`;
+        let mediaPreview = '';
+        if (isPdf) {
+          // Requirement: For PDF files, show a PDF icon with the filename
+          mediaPreview = `
+            <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-red-50/70 border border-red-200/80 flex flex-col items-center justify-center p-2 text-center group-hover:bg-red-50 transition">
+              <span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-xs pointer-events-none">PDF</span>
+              <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-1 shrink-0">
+                <i data-lucide="file-text" class="w-4 h-4 text-red-600"></i>
+              </div>
+              <span class="text-[10px] font-semibold text-slate-700 line-clamp-2 px-1 break-all leading-tight" title="${r.filename}">
+                ${r.filename}
+              </span>
+            </div>
+          `;
+        } else {
+          // Requirement: For Image files, show image previews
+          if (thumbSrc) {
+            mediaPreview = `
+              <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
+                <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
+              </div>
+            `;
+          } else {
+            mediaPreview = `
+              <div id="thumb_box_${idx}" class="w-full h-24 bg-slate-100 text-slate-500 flex flex-col items-center justify-center rounded-lg border border-slate-200">
+                <i data-lucide="image" class="w-7 h-7 text-sky-500"></i>
+                <span class="text-[10px] font-bold mt-1 text-slate-500">Image</span>
+              </div>
+            `;
+          }
+        }
 
         return `
           <div onclick="openPreviousUploadPreview(${idx})" class="group relative cursor-pointer bg-white p-2.5 rounded-xl border border-slate-200 hover:border-sky-400 hover:shadow-md transition" title="Click to Open Step 2: LR & Master Verification">
-            <button type="button" onclick="removePreviousUploadItem(event, ${idx})" class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-slate-100 hover:bg-rose-500 text-slate-400 hover:text-white flex items-center justify-center transition shadow-sm opacity-80 hover:opacity-100 z-10" title="Remove from recent uploads">
+            <button type="button" onclick="removePreviousUploadItem(event, ${idx})" class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-slate-100 hover:bg-rose-500 text-slate-400 hover:text-white flex items-center justify-center transition shadow-sm opacity-80 hover:opacity-100 z-10 cursor-pointer" title="Remove from recent uploads">
               <i data-lucide="x" class="w-3 h-3"></i>
             </button>
             ${mediaPreview}
@@ -4892,19 +5461,17 @@
 
       if (window.lucide && lucide.createIcons) lucide.createIcons();
 
-      // Asynchronously hydrate missing thumbnails from IndexedDB in the background
+      // Asynchronously hydrate missing image thumbnails from IndexedDB in the background (images only)
       recents.forEach(async (r, idx) => {
+        if (r.isPdf) return; // Keep clean PDF icon with filename for PDFs
         const boxEl = document.getElementById(`thumb_box_${idx}`);
         if (boxEl && !boxEl.querySelector('img')) {
           const cached = await loadDocImageAsync(r.id, r.filename);
           if (cached && (cached.preview_image || cached.imageSrc || cached.preview_url)) {
-            const thumb = cached.preview_image || cached.preview_url || (!r.isPdf ? cached.imageSrc : null);
+            const thumb = cached.preview_image || cached.preview_url || cached.imageSrc;
             if (thumb && !thumb.startsWith('data:application/pdf')) {
               boxEl.className = 'relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200';
-              boxEl.innerHTML = `
-                <img src="${thumb}" alt="${r.filename}" class="w-full h-full object-cover" />
-                ${r.isPdf ? `<span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-sm pointer-events-none">PDF</span>` : ''}
-              `;
+              boxEl.innerHTML = `<img src="${thumb}" alt="${r.filename}" class="w-full h-full object-cover" />`;
             }
           }
         }
@@ -4916,19 +5483,63 @@
         event.stopPropagation();
         event.preventDefault();
       }
+      if (!currentUser) return;
+      const key = getUserRecentStorageKey();
+      const removedKey = getUserRemovedStorageKey();
+      if (!key) return;
+
       try {
-        let recents = JSON.parse(localStorage.getItem('bnf_recent_uploaded_files') || '[]');
-        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r));
+        let recents = JSON.parse(localStorage.getItem(key) || '[]');
+        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
         if (idx >= 0 && idx < recents.length) {
           const removed = recents.splice(idx, 1)[0];
-          localStorage.setItem('bnf_recent_uploaded_files', JSON.stringify(recents));
+          localStorage.setItem(key, JSON.stringify(recents));
+
+          // 1. Record persistent tombstone locally so server sync never resurrects it
+          if (removedKey && removed) {
+            let tombstones = [];
+            try {
+              tombstones = JSON.parse(localStorage.getItem(removedKey) || '[]');
+            } catch (_) {
+              tombstones = [];
+            }
+            if (removed.id && !tombstones.includes(removed.id)) tombstones.push(removed.id);
+            if (removed.saved_filename && !tombstones.includes(removed.saved_filename)) tombstones.push(removed.saved_filename);
+            if (removed.filename && !tombstones.includes(removed.filename)) tombstones.push(removed.filename);
+            localStorage.setItem(removedKey, JSON.stringify(tombstones));
+          }
+
+          // 2. Remove from active verified batch if present
           if (removed && Array.isArray(verifiedBatch)) {
-            const bIdx = verifiedBatch.findIndex(b => b.filename === removed.filename || b.id === removed.id);
+            const bIdx = verifiedBatch.findIndex(b => b.filename === removed.filename || b.id === removed.id || (b.saved_filename && b.saved_filename === removed.saved_filename));
             if (bIdx !== -1) {
               verifiedBatch.splice(bIdx, 1);
               if (typeof saveUserBatches === 'function') saveUserBatches();
               if (typeof updateBatchBadge === 'function') updateBatchBadge();
             }
+          }
+
+          // 3. Notify backend API to soft-delete the file so it is permanently deleted on server
+          if (removed) {
+            const fileTarget = removed.id || removed.saved_filename || removed.filename;
+            const headers = { 'Content-Type': 'application/json' };
+            if (currentUser.token) {
+              headers['Authorization'] = 'Bearer ' + currentUser.token;
+            }
+            fetch('/api/previous-uploads/delete', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({
+                file_id_or_name: fileTarget,
+                user_id: currentUser.id || null,
+                user_mobile: currentUser.mobile || null,
+                user_name: currentUser.name || 'Logistics User'
+              })
+            }).then(r => r.json()).then(res => {
+              console.log('[Delete Upload] Server confirmed deletion:', res);
+            }).catch(delErr => {
+              console.warn('[Delete Upload] Server delete notification notice:', delErr);
+            });
           }
         }
         renderPreviousUploadsWeb();
@@ -4941,13 +5552,14 @@
     async function openPreviousUploadPreview(idx) {
       try {
         let recents = [];
+        const key = getUserRecentStorageKey();
         try {
-          recents = JSON.parse(localStorage.getItem('bnf_recent_uploaded_files') || '[]');
+          recents = key ? JSON.parse(localStorage.getItem(key) || '[]') : [];
         } catch (_) {}
-        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r));
+        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r) && !isItemExportedByUser(r));
         if (Array.isArray(verifiedBatch)) {
           verifiedBatch.forEach(b => {
-            if (!b || !b.filename || isDummyLRItem(b)) return;
+            if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b) || isItemExportedByUser(b)) return;
             if (!recents.some(r => r.filename === b.filename || r.id === b.id)) {
               recents.unshift(b);
             }
@@ -4975,8 +5587,13 @@
             if (!verifiedBatch[matchIdx].preview_image && cached.preview_image) verifiedBatch[matchIdx].preview_image = cached.preview_image;
             if (!verifiedBatch[matchIdx].originalPdfSrc && cached.originalPdfSrc) verifiedBatch[matchIdx].originalPdfSrc = cached.originalPdfSrc;
           }
+          if (target.file_url && !verifiedBatch[matchIdx].file_url) verifiedBatch[matchIdx].file_url = target.file_url;
+          if (target.preview_url && !verifiedBatch[matchIdx].preview_url) verifiedBatch[matchIdx].preview_url = target.preview_url;
+          if (target.preview_pages && (!verifiedBatch[matchIdx].preview_pages || verifiedBatch[matchIdx].preview_pages.length === 0)) verifiedBatch[matchIdx].preview_pages = target.preview_pages;
+          if (target.page_count && !verifiedBatch[matchIdx].page_count) verifiedBatch[matchIdx].page_count = target.page_count;
           batchItem = verifiedBatch[matchIdx];
         } else {
+          if (!target.current_page) target.current_page = 1;
           verifiedBatch.push(target);
           batchItem = target;
         }
@@ -4994,6 +5611,9 @@
     }
 
     function navigateToAddMoreList() {
+      if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser) {
+        loadUserBatches();
+      }
       renderBatchTable();
       navigateTo('screen7_lrlist');
     }
@@ -5114,6 +5734,14 @@
     }
 
     function renderBatchTable() {
+      if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser && !isLoadingUserBatches) {
+        const batchKey = getUserBatchStorageKey();
+        const recKey = getUserRecentStorageKey();
+        if ((batchKey && localStorage.getItem(batchKey)) || (recKey && localStorage.getItem(recKey))) {
+          loadUserBatches();
+          return;
+        }
+      }
       updateBatchBadge();
       updateDeletedBadgeCount();
       populateBatchCustomerDatalist();
@@ -5306,42 +5934,55 @@
     }
 
     function clearBatch() {
-      if (verifiedBatch.length === 0) return;
-      if (confirm('Clear all consignment notes from this batch?')) {
-        const delTimestamp = new Date().toISOString();
-        verifiedBatch.forEach(item => {
-          item.deletedAt = delTimestamp;
-          const newVer = (item.current_version || 1) + 1;
-          item.current_version = newVer;
-
-          if (!item.versions) item.versions = [];
-          item.versions.push({
-            version: newVer,
-            timestamp: delTimestamp,
-            action: 'delete',
-            user_name: currentUser?.name || 'Logistics User',
-            user_mobile: currentUser?.mobile || '',
-            details: 'Batch queue cleared by user',
-            diff: { deleted: true },
-            snapshot_data: Object.assign({}, item.data || {})
-          });
-
-          if (!item.editHistory) item.editHistory = [];
-          item.editHistory.push({
-            timestamp: delTimestamp,
-            user: currentUser?.name || 'Logistics User',
-            mobile: currentUser?.mobile || '',
-            action: 'delete',
-            version: newVer,
-            details: 'Batch queue cleared by user'
-          });
-
-          deletedBatch.push(item);
-        });
-        verifiedBatch = [];
-        saveUserBatches();
-        renderBatchTable();
+      if (!verifiedBatch || verifiedBatch.length === 0) return;
+      const modal = document.getElementById('clearAllConfirmModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
       }
+    }
+
+    function closeClearAllConfirmModal() {
+      const modal = document.getElementById('clearAllConfirmModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function proceedClearAllConfirmModal() {
+      closeClearAllConfirmModal();
+      if (!verifiedBatch || verifiedBatch.length === 0) return;
+      const delTimestamp = new Date().toISOString();
+      verifiedBatch.forEach(item => {
+        item.deletedAt = delTimestamp;
+        const newVer = (item.current_version || 1) + 1;
+        item.current_version = newVer;
+
+        if (!item.versions) item.versions = [];
+        item.versions.push({
+          version: newVer,
+          timestamp: delTimestamp,
+          action: 'delete',
+          user_name: currentUser?.name || 'Logistics User',
+          user_mobile: currentUser?.mobile || '',
+          details: 'Batch queue cleared by user',
+          diff: { deleted: true },
+          snapshot_data: Object.assign({}, item.data || {})
+        });
+
+        if (!item.editHistory) item.editHistory = [];
+        item.editHistory.push({
+          timestamp: delTimestamp,
+          user: currentUser?.name || 'Logistics User',
+          mobile: currentUser?.mobile || '',
+          action: 'delete',
+          version: newVer,
+          details: 'Batch queue cleared by user'
+        });
+
+        deletedBatch.push(item);
+      });
+      verifiedBatch = [];
+      saveUserBatches();
+      renderBatchTable();
     }
 
     function filterBatchTable() {
@@ -6368,6 +7009,14 @@
         // Direct device download trigger straight into user's Downloads folder first
         triggerDirectDownload(res.download_url, res.filename);
 
+        // Mark corresponding batch as completed/exported and remove from pending lists
+        const exportedDocsSnapshot = [...verifiedBatch];
+        try {
+          markBatchAsCompletedAndClearPending(exportedDocsSnapshot, res);
+        } catch (markErr) {
+          console.warn('[Export Lifecycle] Notice updating pending lists:', markErr);
+        }
+
         // Stop loading spinner with success indication
         stopExportButtonsLoading(true);
 
@@ -6475,6 +7124,18 @@
 
       // Direct device download trigger first
       triggerDirectDownload(downloadUrl, filename);
+
+      // Mark corresponding batch as completed/exported and remove from pending lists
+      const clientDocsSnapshot = [...verifiedBatch];
+      try {
+        markBatchAsCompletedAndClearPending(clientDocsSnapshot, {
+          export_id: 'client_' + Date.now(),
+          filename: filename,
+          exported_at: exportedAt
+        });
+      } catch (markErr) {
+        console.warn('[Export Lifecycle] Notice updating pending lists:', markErr);
+      }
 
       const dBtn = document.getElementById('directDownloadExcelBtn');
       if (dBtn) {
@@ -6691,7 +7352,9 @@
     function startNewBatch() {
       verifiedBatch = [];
       activeItem = null;
+      saveUserBatches();
       updateBatchBadge();
+      renderBatchTable();
       navigateTo('screen2_upload');
     }
   </script>

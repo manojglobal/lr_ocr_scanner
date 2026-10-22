@@ -142,25 +142,30 @@ def resolve_file_path(filename: str) -> str | None:
     """
     Resolves the absolute path for an exported file or LR document by searching
     backend/export/upload_LR, backend/export/snapshots_excel, and legacy folders.
+    Note: For user-facing downloads (USER_EXPORT_*), snapshots are never returned
+    as direct file paths to ensure the clean user report is always served.
     """
     if not filename:
         return None
     safe_name = os.path.basename(filename)
+    is_user_export = safe_name.startswith("USER_EXPORT_")
 
     # 1. Direct path in upload_LR
     p_lr = os.path.join(UPLOAD_LR_DIR, safe_name)
     if os.path.isfile(p_lr):
         return p_lr
 
-    # 2. Direct path in snapshots_excel
-    p_snap = os.path.join(SNAPSHOTS_EXCEL_DIR, safe_name)
-    if os.path.isfile(p_snap):
-        return p_snap
+    # 2. Direct path in snapshots_excel (only for audit/snapshot files, never user exports)
+    if not is_user_export:
+        p_snap = os.path.join(SNAPSHOTS_EXCEL_DIR, safe_name)
+        if os.path.isfile(p_snap):
+            return p_snap
 
     # 3. Direct path in legacy SNAPSHOTS_DIR
-    p1 = os.path.join(SNAPSHOTS_DIR, safe_name)
-    if os.path.isfile(p1):
-        return p1
+    if not is_user_export:
+        p1 = os.path.join(SNAPSHOTS_DIR, safe_name)
+        if os.path.isfile(p1):
+            return p1
 
     # 4. Direct path in legacy EXPORTS_DIR
     p2 = os.path.join(EXPORTS_DIR, safe_name)
@@ -172,12 +177,12 @@ def resolve_file_path(filename: str) -> str | None:
     if os.path.isfile(p3):
         return p3
 
-    # 6. Search in snapshots_excel by export ID
-    if os.path.isdir(SNAPSHOTS_EXCEL_DIR):
+    # 6. Search in snapshots_excel by export ID (only for audit/snapshot requests, never user exports)
+    if not is_user_export and os.path.isdir(SNAPSHOTS_EXCEL_DIR):
         for fn in os.listdir(SNAPSHOTS_EXCEL_DIR):
             if fn == safe_name:
                 return os.path.join(SNAPSHOTS_EXCEL_DIR, fn)
-            clean_id = safe_name.replace(".xlsx", "").replace("USER_EXPORT_", "").replace("AUDIT_EXPORT_", "")
+            clean_id = safe_name.replace(".xlsx", "").replace("AUDIT_EXPORT_", "")
             if clean_id and clean_id in fn:
                 return os.path.join(SNAPSHOTS_EXCEL_DIR, fn)
 
@@ -186,6 +191,33 @@ def resolve_file_path(filename: str) -> str | None:
         for fn in os.listdir(UPLOAD_LR_DIR):
             if fn == safe_name:
                 return os.path.join(UPLOAD_LR_DIR, fn)
+
+    return None
+
+
+def resolve_snapshot_path(filename: str) -> str | None:
+    """
+    Specifically resolves an internal audit snapshot workbook in backend/export/snapshots_excel/.
+    """
+    if not filename:
+        return None
+    safe_name = os.path.basename(filename)
+    p_snap = os.path.join(SNAPSHOTS_EXCEL_DIR, safe_name)
+    if os.path.isfile(p_snap):
+        return p_snap
+
+    audit_name = safe_name if safe_name.startswith("AUDIT_") else f"AUDIT_EXPORT_{safe_name.replace('USER_EXPORT_', '')}"
+    p_audit = os.path.join(SNAPSHOTS_EXCEL_DIR, audit_name)
+    if os.path.isfile(p_audit):
+        return p_audit
+
+    # Search by export ID
+    exp_match = re.search(r'EXP_[0-9]+_[a-f0-9]+', safe_name)
+    if exp_match and os.path.isdir(SNAPSHOTS_EXCEL_DIR):
+        exp_id = exp_match.group(0)
+        for fn in os.listdir(SNAPSHOTS_EXCEL_DIR):
+            if exp_id in fn and fn.endswith(".xlsx"):
+                return os.path.join(SNAPSHOTS_EXCEL_DIR, fn)
 
     return None
 
