@@ -22,6 +22,7 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import auth_service
 import audit_snapshot
 import file_lifecycle_service
+import user_cloud_service
 
 # Configuration
 def _load_env_file():
@@ -1291,6 +1292,22 @@ async def extract_handwriting(
 
         print(f"[Success] Extracted {len(data_dict)} key-value pair(s)")
         print(f"[Output Title] {parsed_output.document_title}")
+
+        # Automatically record newly uploaded LR into user's temporary cloud JSON DB
+        try:
+            user_mob = actor.get("user_mobile") or user_mobile or ""
+            user_uid = actor.get("user_id") or user_id or ""
+            user_dname = actor.get("user_name") or user_name or "Logistics User"
+            if user_mob:
+                user_cloud_service.record_uploaded_lr(
+                    mobile=user_mob,
+                    lr_entry=parsed_output.model_dump() if hasattr(parsed_output, "model_dump") else parsed_output.dict(),
+                    user_id=user_uid,
+                    user_name=user_dname
+                )
+        except Exception as cloud_err:
+            print(f"[UserCloudService] Notice recording uploaded LR: {cloud_err}")
+
         return parsed_output
 
     except Exception as e:
@@ -2230,6 +2247,30 @@ async def api_export_excel_meta(req: ExportMetaRequest):
 
     file_size_kb = round(len(user_bytes) / 1024, 1)
 
+    # Automatically record generated Excel file into user's temporary cloud JSON DB
+    try:
+        if user_mobile:
+            user_cloud_service.record_generated_excel(
+                mobile=user_mobile,
+                excel_entry={
+                    "export_id": export_id,
+                    "filename": user_filename,
+                    "user_export_filename": user_filename,
+                    "audit_filename": audit_filename,
+                    "download_url": f"/api/download-export/{user_filename}",
+                    "audit_download_url": f"/api/download-audit-export/{audit_filename}",
+                    "file_size_kb": file_size_kb,
+                    "total_lrs": len(docs),
+                    "generated_on": exported_at,
+                    "generated_by": user_name,
+                    "documents": [d.model_dump() if hasattr(d, "model_dump") else (d if isinstance(d, dict) else {}) for d in docs]
+                },
+                user_id=active_token,
+                user_name=user_name
+            )
+    except Exception as cloud_ex:
+        print(f"[UserCloudService] Notice recording generated Excel: {cloud_ex}")
+
     return {
         "success": True,
         "export_id": export_id,
@@ -2416,7 +2457,24 @@ async def get_export_audit_history(
         if session_user:
             target_mobile = session_user.get("mobile")
 
+    if target_mobile:
+        # Automatically prune any Excel exports whose physical files were deleted from the backend disk
+        valid_excels = user_cloud_service.prune_user_deleted_excels(target_mobile)
+        if isinstance(valid_excels, list) and len(valid_excels) > 0:
+            return {
+                "success": True,
+                "count": len(valid_excels),
+                "history": valid_excels,
+                "user_mobile": target_mobile
+            }
+
     logs = audit_snapshot.get_user_audit_history(user_mobile=target_mobile, limit=100)
+    if logs and target_mobile:
+        for l in logs:
+            try:
+                user_cloud_service.record_generated_excel(target_mobile, l)
+            except Exception:
+                pass
     return {
         "success": True,
         "count": len(logs),
@@ -2527,6 +2585,17 @@ async def get_previous_uploads(
         # Strictly require valid user context to prevent any cross-user leakage
         if not req_user_id and not req_mobile:
             return {"success": True, "total": 0, "uploads": []}
+
+        # Check user's dedicated cloud JSON DB first for user isolation and cross-device sync
+        if req_mobile:
+            cloud_data = user_cloud_service.get_user_cloud_data(req_mobile)
+            cloud_uploads = cloud_data.get("uploaded_lrs")
+            if isinstance(cloud_uploads, list):
+                return {
+                    "success": True,
+                    "total": len(cloud_uploads),
+                    "uploads": cloud_uploads
+                }
 
         all_metadata = file_lifecycle_service.get_all_metadata(include_deleted=False, limit=200)
         items = []
@@ -2670,6 +2739,18 @@ async def delete_previous_upload(
                     reason="Removed from previous uploads by user"
                 )
 
+    # Also remove from user's dedicated cloud JSON DB (active_batch & uploaded_lrs)
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    if req_mobile:
+        try:
+            user_cloud_service.delete_user_lr_record(
+                mobile=req_mobile,
+                lr_identifiers=[req.file_id_or_name],
+                user_id=actor.get("user_id") or req.user_id
+            )
+        except Exception as c_err:
+            print(f"[UserCloudService] Delete LR notice: {c_err}")
+
     return {"success": True, "deleted": bool(res), "file_id_or_name": req.file_id_or_name}
 
 
@@ -2743,6 +2824,161 @@ async def clear_all_previous_uploads(
             file_lifecycle_service._save_registry(reg)
 
     return {"success": True, "cleared_count": cleared_count}
+
+
+# =========================================================================
+# ROUTE 7C: USER TEMPORARY CLOUD STORAGE (JSON DB FORMAT)
+# =========================================================================
+class SaveUserCloudBatchRequest(BaseModel):
+    documents: list[dict] = []
+    user_mobile: str | None = None
+    user_id: str | None = None
+    user_name: str | None = "Logistics User"
+
+
+class ClearUserCloudStorageRequest(BaseModel):
+    user_mobile: str | None = None
+    user_id: str | None = None
+    clear_history: bool = False
+
+
+@app.get("/api/user-cloud-storage")
+async def get_user_cloud_storage(
+    user_mobile: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+    authorization: str | None = Header(default=None)
+):
+    """
+    Retrieves the authenticated user's temporary cloud storage database (JSON DB format),
+    containing their active LR batch, previously uploaded LRs, and generated Excel files.
+    Allows viewing history and downloading Excels from any device or after browser closure.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=user_id,
+        user_mobile=user_mobile
+    )
+    req_mobile = actor.get("user_mobile") or user_mobile or ""
+    req_user_id = actor.get("user_id") or user_id or ""
+
+    if not req_mobile and not req_user_id:
+        return {
+            "success": True,
+            "data": {
+                "user_mobile": "",
+                "active_batch": [],
+                "uploaded_lrs": [],
+                "generated_excels": []
+            }
+        }
+
+    cloud_data = user_cloud_service.get_user_cloud_data(mobile=req_mobile, user_id=req_user_id)
+    return {"success": True, "data": cloud_data}
+
+
+@app.post("/api/user-cloud-storage/save-batch")
+async def save_user_cloud_batch(
+    req: SaveUserCloudBatchRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Persists the user's active LR batch into their dedicated server-side JSON database.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile,
+        user_name=req.user_name
+    )
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    req_user_id = actor.get("user_id") or req.user_id or ""
+    req_user_name = actor.get("user_name") or req.user_name or "Logistics User"
+
+    if not req_mobile:
+        return {"success": False, "error": "User mobile is required"}
+
+    res = user_cloud_service.save_user_active_batch(
+        mobile=req_mobile,
+        documents=req.documents,
+        user_id=req_user_id,
+        user_name=req_user_name
+    )
+    return {"success": bool(res), "count": len(req.documents)}
+
+
+@app.post("/api/user-cloud-storage/clear-all")
+async def clear_user_cloud_storage(
+    req: ClearUserCloudStorageRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Modifies Clear All to delete only the current user's data from their JSON database.
+    Does NOT delete or modify any physical files in upload_LR/ or snapshots_excel/.
+    Keeps all uploaded LR images, PDFs, previews, and generated Excel files on the server.
+    Ensures other users' data and files remain 100% unaffected.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile
+    )
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    req_user_id = actor.get("user_id") or req.user_id or ""
+
+    if not req_mobile:
+        return {"success": False, "error": "User mobile is required"}
+
+    result = user_cloud_service.clear_user_cloud_database(
+        mobile=req_mobile,
+        user_id=req_user_id,
+        clear_history=req.clear_history
+    )
+    return result
+
+
+class DeleteUserCloudLRRequest(BaseModel):
+    lr_identifier: str | None = None
+    lr_identifiers: list[str] = []
+    user_mobile: str | None = None
+    user_id: str | None = None
+
+
+@app.post("/api/user-cloud-storage/delete-lr")
+async def delete_user_cloud_lr(
+    req: DeleteUserCloudLRRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Permanently removes a specific LR from the authenticated user's cloud JSON DB
+    (both active_batch and uploaded_lrs).
+    Does NOT affect other records or other users.
+    Does NOT delete physical files from disk.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile
+    )
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    req_user_id = actor.get("user_id") or req.user_id or ""
+
+    if not req_mobile:
+        return {"success": False, "error": "User mobile is required"}
+
+    ids_to_delete = list(req.lr_identifiers) if req.lr_identifiers else []
+    if req.lr_identifier and req.lr_identifier not in ids_to_delete:
+        ids_to_delete.append(req.lr_identifier)
+
+    if not ids_to_delete:
+        return {"success": False, "error": "lr_identifier or lr_identifiers is required"}
+
+    result = user_cloud_service.delete_user_lr_record(
+        mobile=req_mobile,
+        lr_identifiers=ids_to_delete,
+        user_id=req_user_id
+    )
+    return result
+
 
 # =========================================================================
 # ROUTE 8: FILE LIFECYCLE & AUDIT METADATA ENDPOINTS

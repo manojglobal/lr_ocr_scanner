@@ -2287,7 +2287,104 @@
         }
       } finally {
         isLoadingUserBatches = false;
+        // Asynchronously hydrate user's temporary cloud JSON DB (supports any device & post-browser closure)
+        if (currentUser && currentUser.mobile) {
+          syncUserCloudStorage();
+        }
       }
+    }
+
+    let isSyncingCloudStorage = false;
+    async function syncUserCloudStorage() {
+      if (!currentUser || !currentUser.mobile || isSyncingCloudStorage) return;
+      isSyncingCloudStorage = true;
+      try {
+        const query = new URLSearchParams();
+        if (currentUser.mobile) query.set('user_mobile', currentUser.mobile);
+        if (currentUser.id) query.set('user_id', currentUser.id);
+
+        const headers = {};
+        if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+
+        const res = await fetch('/api/user-cloud-storage?' + query.toString(), { headers });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!json || !json.success || !json.data) return;
+
+        const cloud = json.data;
+        const cloudActive = Array.isArray(cloud.active_batch) ? cloud.active_batch : [];
+        const cloudUploads = Array.isArray(cloud.uploaded_lrs) ? cloud.uploaded_lrs : [];
+        const cloudExcels = Array.isArray(cloud.generated_excels) ? cloud.generated_excels : [];
+
+        // 1. Hydrate active batch from cloud JSON DB (supports cross-device & browser closure)
+        if (cloudActive.length > 0) {
+          const merged = [...cloudActive];
+          (verifiedBatch || []).forEach(localItem => {
+            if (!localItem || !localItem.id) return;
+            const exists = merged.some(m => m.id === localItem.id || (m.saved_filename && m.saved_filename === localItem.saved_filename));
+            if (!exists) merged.push(localItem);
+          });
+          verifiedBatch = merged;
+          saveUserBatches();
+          updateBatchBadge();
+          renderBatchTable();
+        }
+
+        // 2. Hydrate previously uploaded LRs
+        const recentKey = getUserRecentStorageKey();
+        if (recentKey && cloudUploads.length > 0) {
+          try {
+            localStorage.setItem(recentKey, JSON.stringify(cloudUploads));
+          } catch (_) {}
+          renderPreviousUploadsWeb();
+        }
+
+        // 3. Hydrate generated Excel exports
+        const expBatchesKey = getUserExportedStorageKey();
+        if (expBatchesKey && cloudExcels.length > 0) {
+          try {
+            localStorage.setItem(expBatchesKey, JSON.stringify(cloudExcels));
+          } catch (_) {}
+          loadAndRenderExportHistory();
+        }
+      } catch (err) {
+        console.warn('[UserCloudStorage] Background sync notice:', err);
+      } finally {
+        isSyncingCloudStorage = false;
+      }
+    }
+
+    let _cloudSyncDebounceTimer = null;
+    function syncUserBatchToCloud() {
+      if (!currentUser || !currentUser.mobile) return;
+      if (_cloudSyncDebounceTimer) clearTimeout(_cloudSyncDebounceTimer);
+      _cloudSyncDebounceTimer = setTimeout(async () => {
+        try {
+          const headers = { 'Content-Type': 'application/json' };
+          if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+
+          // Strip heavy image bytes for network efficiency
+          const docsToSend = (verifiedBatch || []).map(item => {
+            const copy = Object.assign({}, item);
+            if (copy.imageSrc && copy.imageSrc.length > 40000) copy.imageSrc = '';
+            if (copy.originalPdfSrc) copy.originalPdfSrc = '';
+            return copy;
+          });
+
+          await fetch('/api/user-cloud-storage/save-batch', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+              documents: docsToSend,
+              user_mobile: currentUser.mobile,
+              user_id: currentUser.id || null,
+              user_name: currentUser.name || 'Logistics User'
+            })
+          });
+        } catch (e) {
+          console.warn('[UserCloudStorage] Background batch sync notice:', e);
+        }
+      }, 400);
     }
 
     function saveUserBatches() {
@@ -2349,6 +2446,9 @@
           safeSet('bnf_session_batch_' + currentUser.token, sanitized);
           safeSet('bnf_session_deleted_' + currentUser.token, deletedBatch);
         }
+
+        // 3. Persist batch state to user's dedicated cloud JSON DB
+        syncUserBatchToCloud();
       } catch (e) {
         console.warn('Batch session quota warning:', e);
       }
@@ -5934,7 +6034,7 @@
                 <button onclick="viewBatchItem(${origIdx})" class="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition cursor-pointer" title="View / Edit LR">
                   <i data-lucide="edit-3" class="w-4 h-4"></i>
                 </button>
-                <button onclick="deleteBatchItem(${origIdx})" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer" title="Delete">
+                <button onclick="deleteBatchItem(${origIdx}, '${(item.id || '').replace(/'/g, "\\'")}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer" title="Delete">
                   <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
               </div>
@@ -5955,10 +6055,16 @@
       loadLrImagePreview(activeItem);
     }
 
-    function deleteBatchItem(idx) {
-      if (idx < 0 || idx >= verifiedBatch.length) return;
-      const target = verifiedBatch[idx];
-      if (confirm(`Remove consignment LR ${target.data?.['grno'] || target.filename} from batch?`)) {
+    function deleteBatchItem(idx, targetId) {
+      let actualIdx = idx;
+      if (targetId && (actualIdx < 0 || actualIdx >= verifiedBatch.length || verifiedBatch[actualIdx]?.id !== targetId)) {
+        const found = verifiedBatch.findIndex(b => b && b.id === targetId);
+        if (found !== -1) actualIdx = found;
+      }
+      if (actualIdx < 0 || actualIdx >= verifiedBatch.length) return;
+      const target = verifiedBatch[actualIdx];
+      const lrName = target.data?.['grno'] || target.data?.['LR No *'] || target.filename || 'item';
+      if (confirm(`Remove consignment LR ${lrName} from batch?`)) {
         const delTimestamp = new Date().toISOString();
         target.deletedAt = delTimestamp;
         const newVer = (target.current_version || 1) + 1;
@@ -5986,10 +6092,95 @@
           details: 'Consignment deleted from batch queue'
         });
 
+        const targetIdentifiers = [
+          target.id,
+          target.saved_filename,
+          target.filename,
+          target.data?.['grno'],
+          target.data?.['LR No *']
+        ].filter(Boolean);
+
+        // 1. Clear activeItem if it was the deleted item
+        if (activeItem && (activeItem.id === target.id || activeItem.filename === target.filename)) {
+          activeItem = null;
+        }
+
+        // 2. Remove from verifiedBatch in memory
         deletedBatch.push(target);
-        verifiedBatch.splice(idx, 1);
+        verifiedBatch.splice(actualIdx, 1);
+
+        // 3. Persist batch to localStorage and trigger cloud sync
         saveUserBatches();
+        updateBatchBadge();
         renderBatchTable();
+
+        // 4. Remove from Recent Uploads in localStorage and UI
+        const recentKey = getUserRecentStorageKey();
+        if (recentKey) {
+          try {
+            let recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
+            recents = recents.filter(r => {
+              if (!r) return false;
+              return !targetIdentifiers.includes(r.id) &&
+                     !targetIdentifiers.includes(r.saved_filename) &&
+                     !targetIdentifiers.includes(r.filename);
+            });
+            localStorage.setItem(recentKey, JSON.stringify(recents));
+            renderPreviousUploadsWeb();
+          } catch (_) {}
+        }
+
+        // 5. Register persistent tombstone so server sync never resurrects it
+        const removedKey = getUserRemovedStorageKey();
+        if (removedKey) {
+          try {
+            let tombstones = JSON.parse(localStorage.getItem(removedKey) || '[]');
+            targetIdentifiers.forEach(idKey => {
+              if (idKey && !tombstones.includes(idKey)) {
+                tombstones.push(idKey);
+              }
+            });
+            localStorage.setItem(removedKey, JSON.stringify(tombstones));
+          } catch (_) {}
+        }
+
+        // 6. Asynchronously permanently remove from server cloud JSON DB & lifecycle registry
+        if (currentUser) {
+          try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+
+            // Delete permanently from user cloud JSON DB (both active_batch & uploaded_lrs)
+            fetch('/api/user-cloud-storage/delete-lr', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({
+                lr_identifiers: targetIdentifiers,
+                user_mobile: currentUser.mobile || null,
+                user_id: currentUser.id || null
+              })
+            }).catch(e => console.warn('[UserCloudStorage] Delete LR notice:', e));
+
+            // Soft-delete in backend lifecycle tracker
+            const fileTarget = target.id || target.saved_filename || target.filename;
+            if (fileTarget) {
+              fetch('/api/previous-uploads/delete', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                  file_id_or_name: fileTarget,
+                  user_id: currentUser.id || null,
+                  user_mobile: currentUser.mobile || null,
+                  user_name: currentUser.name || 'Logistics User'
+                })
+              }).catch(e => console.warn('[PreviousUploads] Delete notice:', e));
+            }
+          } catch (e) {
+            console.warn('[Delete LR] Server notification notice:', e);
+          }
+        }
+
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
       }
     }
 
@@ -6003,7 +6194,7 @@
         } catch (_) {}
       }
       if ((!verifiedBatch || verifiedBatch.length === 0) && !hasRecents) {
-        alert('No consignment data to clear.');
+        alert('No consignment data in LR list to clear.');
         return;
       }
       const modal = document.getElementById('clearAllConfirmModal');
@@ -6076,7 +6267,9 @@
         } catch (_) {}
       }
 
-      // 2. Record tombstones for cleared items across BOTH verifiedBatch and recents so server sync does not resurrect cleared items
+      // 2. DO NOT delete Excel export history in localStorage - keep History section preserved.
+
+      // 3. Record tombstones for cleared items across BOTH verifiedBatch and recents so server sync does not resurrect cleared items
       const removedKey = getUserRemovedStorageKey();
       if (removedKey) {
         try {
@@ -6097,18 +6290,30 @@
         } catch (_) {}
       }
 
-      // 3. Clear verifiedBatch and persist
+      // 4. Clear verifiedBatch and persist
       verifiedBatch = [];
       saveUserBatches();
       updateBatchBadge();
       renderBatchTable();
       renderPreviousUploadsWeb();
 
-      // 4. Asynchronously notify backend server to soft-delete previous uploads for this user
+      // 5. Asynchronously notify backend server to clear user cloud JSON DB (active_batch & uploaded_lrs),
+      // while strictly PRESERVING generated_excels history (clear_history: false)
       if (currentUser) {
         try {
           const headers = { 'Content-Type': 'application/json' };
           if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+
+          await fetch('/api/user-cloud-storage/clear-all', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+              user_id: currentUser.id || null,
+              user_mobile: currentUser.mobile || null,
+              clear_history: false
+            })
+          });
+
           await fetch('/api/previous-uploads/clear-all', {
             method: 'POST',
             headers: headers,
@@ -6122,6 +6327,9 @@
           console.warn('[Clear All] Backend clear notice:', backendClearErr);
         }
       }
+
+      // 6. Refresh Excel history to show surviving backend files
+      loadAndRenderExportHistory();
     }
 
     function filterBatchTable() {
@@ -6625,6 +6833,14 @@
         if (!resp.ok) throw new Error('Failed to fetch history');
         const data = await resp.json();
         const history = data.history || [];
+
+        // Synchronize local storage with current surviving backend files
+        const expBatchesKey = getUserExportedStorageKey();
+        if (expBatchesKey) {
+          try {
+            localStorage.setItem(expBatchesKey, JSON.stringify(history));
+          } catch (_) {}
+        }
 
         if (badge) {
           badge.innerText = `${history.length} Export${history.length === 1 ? '' : 's'}`;
