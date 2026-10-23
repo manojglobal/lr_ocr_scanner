@@ -487,6 +487,13 @@ class BatchProcessingController extends ChangeNotifier {
       return false;
     }
     final fileName = path.split(RegExp(r'[/\\]')).last;
+    final file = File(path);
+    if (file.existsSync() && file.lengthSync() > 10 * 1024 * 1024) {
+      final sizeMb = (file.lengthSync() / (1024 * 1024)).toStringAsFixed(2);
+      _statusMessage = 'File "$fileName" ($sizeMb MB) exceeds the allowed limit of 10 MB.';
+      notifyListeners();
+      return false;
+    }
     final item = BatchItem(
       id: _uuid.v4(),
       imagePath: path,

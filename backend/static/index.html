@@ -2994,6 +2994,9 @@
       document.getElementById('fileInput').click();
     }
 
+    // Maximum allowed upload size per file (10 MB)
+    const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
     function setupDragDrop() {
       const dropZone = document.getElementById('dropZone');
       const fileInput = document.getElementById('fileInput');
@@ -3012,13 +3015,26 @@
           return;
         }
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          handleSelectedFiles([e.dataTransfer.files[0]]);
+          const droppedFile = e.dataTransfer.files[0];
+          if (droppedFile.size > MAX_FILE_SIZE_BYTES) {
+            const sizeMb = (droppedFile.size / (1024 * 1024)).toFixed(2);
+            alert(`File "${droppedFile.name}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`);
+            return;
+          }
+          handleSelectedFiles([droppedFile]);
         }
       });
 
       fileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
-          handleSelectedFiles([e.target.files[0]]);
+          const selectedFile = e.target.files[0];
+          if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+            const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(2);
+            alert(`File "${selectedFile.name}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`);
+            e.target.value = '';
+            return;
+          }
+          handleSelectedFiles([selectedFile]);
           e.target.value = '';
         }
       });
@@ -3140,7 +3156,14 @@
     function handleCameraCapture(event) {
       const files = event.target.files;
       if (files && files.length > 0) {
-        handleSelectedFiles([files[0]]);
+        const camFile = files[0];
+        if (camFile.size > MAX_FILE_SIZE_BYTES) {
+          const sizeMb = (camFile.size / (1024 * 1024)).toFixed(2);
+          alert(`Captured photo (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please upload a file under 10 MB.`);
+          event.target.value = '';
+          return;
+        }
+        handleSelectedFiles([camFile]);
       }
       event.target.value = '';
     }
@@ -3160,6 +3183,12 @@
 
       canvas.toBlob((blob) => {
         if (!blob) return;
+        if (blob.size > MAX_FILE_SIZE_BYTES) {
+          const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
+          alert(`Captured snapshot (${sizeMb} MB) exceeds the allowed limit of 10 MB per file.`);
+          closeWebcam();
+          return;
+        }
         const filename = `Captured_LR_${Date.now()}.jpg`;
         const capturedFile = new File([blob], filename, { type: 'image/jpeg' });
         closeWebcam();
@@ -3580,13 +3609,14 @@
       }
       if (!files || files.length === 0) return;
 
-      // Enforce upload of only 1 LR at a time
+      // Enforce upload of only 1 LR at a time and 10 MB per file size limit
       const fileList = Array.from(files).slice(0, 1);
       const validFiles = [];
 
       for (const f of fileList) {
-        if (f.size > 10 * 1024 * 1024) {
-          alert(`File "${f.name}" exceeds 10 MB limit and was skipped.`);
+        if (f.size > MAX_FILE_SIZE_BYTES) {
+          const sizeMb = (f.size / (1024 * 1024)).toFixed(2);
+          alert(`File "${f.name}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`);
         } else {
           validFiles.push(f);
         }
@@ -5964,7 +5994,18 @@
     }
 
     function clearBatch() {
-      if (!verifiedBatch || verifiedBatch.length === 0) return;
+      const recentKey = getUserRecentStorageKey();
+      let hasRecents = false;
+      if (recentKey) {
+        try {
+          const rec = JSON.parse(localStorage.getItem(recentKey) || '[]');
+          if (Array.isArray(rec) && rec.length > 0) hasRecents = true;
+        } catch (_) {}
+      }
+      if ((!verifiedBatch || verifiedBatch.length === 0) && !hasRecents) {
+        alert('No consignment data to clear.');
+        return;
+      }
       const modal = document.getElementById('clearAllConfirmModal');
       if (modal) {
         modal.classList.remove('hidden');
@@ -5977,49 +6018,65 @@
       if (modal) modal.classList.add('hidden');
     }
 
-    function proceedClearAllConfirmModal() {
+    async function proceedClearAllConfirmModal() {
       closeClearAllConfirmModal();
-      if (!verifiedBatch || verifiedBatch.length === 0) return;
-      const delTimestamp = new Date().toISOString();
-      verifiedBatch.forEach(item => {
-        item.deletedAt = delTimestamp;
-        const newVer = (item.current_version || 1) + 1;
-        item.current_version = newVer;
 
-        if (!item.versions) item.versions = [];
-        item.versions.push({
-          version: newVer,
-          timestamp: delTimestamp,
-          action: 'delete',
-          user_name: currentUser?.name || 'Logistics User',
-          user_mobile: currentUser?.mobile || '',
-          details: 'Batch queue cleared by user',
-          diff: { deleted: true },
-          snapshot_data: Object.assign({}, item.data || {})
-        });
-
-        if (!item.editHistory) item.editHistory = [];
-        item.editHistory.push({
-          timestamp: delTimestamp,
-          user: currentUser?.name || 'Logistics User',
-          mobile: currentUser?.mobile || '',
-          action: 'delete',
-          version: newVer,
-          details: 'Batch queue cleared by user'
-        });
-
-        deletedBatch.push(item);
-      });
-
-      // Clear Previous Uploaded LR section upon explicit Clear All action
       const recentKey = getUserRecentStorageKey();
+      let recents = [];
+      if (recentKey) {
+        try {
+          recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
+        } catch (_) {
+          recents = [];
+        }
+      }
+      if (!Array.isArray(recents)) recents = [];
+
+      const hasBatch = Array.isArray(verifiedBatch) && verifiedBatch.length > 0;
+      const hasRecents = recents.length > 0;
+      if (!hasBatch && !hasRecents) return;
+
+      const delTimestamp = new Date().toISOString();
+      if (hasBatch) {
+        verifiedBatch.forEach(item => {
+          item.deletedAt = delTimestamp;
+          const newVer = (item.current_version || 1) + 1;
+          item.current_version = newVer;
+
+          if (!item.versions) item.versions = [];
+          item.versions.push({
+            version: newVer,
+            timestamp: delTimestamp,
+            action: 'delete',
+            user_name: currentUser?.name || 'Logistics User',
+            user_mobile: currentUser?.mobile || '',
+            details: 'Batch queue cleared by user',
+            diff: { deleted: true },
+            snapshot_data: Object.assign({}, item.data || {})
+          });
+
+          if (!item.editHistory) item.editHistory = [];
+          item.editHistory.push({
+            timestamp: delTimestamp,
+            user: currentUser?.name || 'Logistics User',
+            mobile: currentUser?.mobile || '',
+            action: 'delete',
+            version: newVer,
+            details: 'Batch queue cleared by user'
+          });
+
+          deletedBatch.push(item);
+        });
+      }
+
+      // 1. Clear Previous Uploaded LR section upon explicit Clear All action
       if (recentKey) {
         try {
           localStorage.setItem(recentKey, JSON.stringify([]));
         } catch (_) {}
       }
 
-      // Record tombstones for cleared items so server sync does not resurrect cleared items
+      // 2. Record tombstones for cleared items across BOTH verifiedBatch and recents so server sync does not resurrect cleared items
       const removedKey = getUserRemovedStorageKey();
       if (removedKey) {
         try {
@@ -6029,7 +6086,9 @@
           } catch (_) {
             tombstones = [];
           }
-          verifiedBatch.forEach(b => {
+          const allCleared = [...(verifiedBatch || []), ...recents];
+          allCleared.forEach(b => {
+            if (!b) return;
             if (b.id && !tombstones.includes(b.id)) tombstones.push(b.id);
             if (b.saved_filename && !tombstones.includes(b.saved_filename)) tombstones.push(b.saved_filename);
             if (b.filename && !tombstones.includes(b.filename)) tombstones.push(b.filename);
@@ -6038,10 +6097,31 @@
         } catch (_) {}
       }
 
+      // 3. Clear verifiedBatch and persist
       verifiedBatch = [];
       saveUserBatches();
+      updateBatchBadge();
       renderBatchTable();
       renderPreviousUploadsWeb();
+
+      // 4. Asynchronously notify backend server to soft-delete previous uploads for this user
+      if (currentUser) {
+        try {
+          const headers = { 'Content-Type': 'application/json' };
+          if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+          await fetch('/api/previous-uploads/clear-all', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+              user_id: currentUser.id || null,
+              user_mobile: currentUser.mobile || null,
+              user_name: currentUser.name || 'Logistics User'
+            })
+          });
+        } catch (backendClearErr) {
+          console.warn('[Clear All] Backend clear notice:', backendClearErr);
+        }
+      }
     }
 
     function filterBatchTable() {
@@ -7409,7 +7489,6 @@
     }
 
     function startNewBatch() {
-      verifiedBatch = [];
       activeItem = null;
       saveUserBatches();
       updateBatchBadge();

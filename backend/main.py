@@ -844,6 +844,16 @@ async def extract_handwriting(
     raw_upload_bytes = image_bytes
     print(f"[Step 2/5] Read image file ({len(image_bytes)} bytes)")
 
+    # Enforce maximum allowed file size limit of 10 MB per file
+    MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+    if len(image_bytes) > MAX_FILE_SIZE_BYTES:
+        size_mb = len(image_bytes) / (1024 * 1024)
+        print(f"[Size Limit Error] Uploaded file '{file.filename}' ({size_mb:.2f} MB) exceeds 10 MB limit.")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File '{file.filename}' ({size_mb:.2f} MB) exceeds the allowed limit of 10 MB per file. Please upload a file under 10 MB."
+        )
+
     # 1. Strictly validate active_prompt as a string (prevent FastAPI Form parameter leaks)
     if isinstance(custom_prompt, str) and custom_prompt.strip():
         active_prompt = custom_prompt.strip()
@@ -2661,6 +2671,78 @@ async def delete_previous_upload(
                 )
 
     return {"success": True, "deleted": bool(res), "file_id_or_name": req.file_id_or_name}
+
+
+class ClearAllPreviousUploadsRequest(BaseModel):
+    user_id: str | None = None
+    user_mobile: str | None = None
+    user_name: str | None = "Logistics User"
+
+
+@app.post("/api/previous-uploads/clear-all")
+async def clear_all_previous_uploads(
+    req: ClearAllPreviousUploadsRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Soft-deletes all previous LR document uploads for the authenticated user upon
+    clicking 'Clear All', ensuring they do not reappear in previous uploads or batch on refresh.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile,
+        user_name=req.user_name
+    )
+    req_user_id = actor.get("user_id") or req.user_id or ""
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    user_display = actor.get("user_name") or req.user_name or "Logistics User"
+
+    if not req_user_id and not req_mobile:
+        return {"success": True, "cleared_count": 0}
+
+    cleared_count = 0
+    with file_lifecycle_service._lock:
+        reg = file_lifecycle_service._load_registry()
+        reg_updated = False
+        now_ts = file_lifecycle_service.get_current_timestamp()
+
+        for fid, entry in reg.items():
+            if entry.get("file_type") not in ("bilty_image", "bilty_pdf"):
+                continue
+            if entry.get("is_deleted", False):
+                continue
+
+            cm = entry.get("custom_meta") or {}
+            meta_uid = entry.get("user_id") or cm.get("user_id") or ""
+            meta_mob = entry.get("user_mobile") or cm.get("user_mobile") or ""
+
+            match_user = False
+            if req_user_id and meta_uid and req_user_id == meta_uid:
+                match_user = True
+            elif req_mobile and meta_mob and req_mobile == meta_mob:
+                match_user = True
+
+            if match_user:
+                entry["is_deleted"] = True
+                entry["deleted_at"] = now_ts
+                entry["deleted_by"] = user_display
+                entry["deletion_reason"] = "Cleared via Clear All by user"
+                if "edit_history" not in entry:
+                    entry["edit_history"] = []
+                entry["edit_history"].append({
+                    "timestamp": now_ts,
+                    "user": user_display,
+                    "action": "clear_all",
+                    "details": "Cleared via Clear All by user"
+                })
+                cleared_count += 1
+                reg_updated = True
+
+        if reg_updated:
+            file_lifecycle_service._save_registry(reg)
+
+    return {"success": True, "cleared_count": cleared_count}
 
 # =========================================================================
 # ROUTE 8: FILE LIFECYCLE & AUDIT METADATA ENDPOINTS
