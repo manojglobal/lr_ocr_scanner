@@ -287,6 +287,62 @@ class BatchProcessingController extends ChangeNotifier {
           i.status == BatchItemStatus.completed ||
           i.extractionStatus == ExtractionStatus.partial);
 
+  /// Checks whether an individual item has all mandatory (*) fields filled.
+  bool isItemVerified(BatchItem item) {
+    if (item.status == BatchItemStatus.error) return false;
+    const mandatoryKeys = [
+      'grno (*)',
+      'grdt *',
+      'Customer Name *',
+      'cngr *',
+      'cnge *',
+      'cngrgstno *',
+      'cngegstno *',
+      'Vehicle No *',
+      'Vehicle Type *',
+      'Driver Name *',
+      'Mobile no   *',
+      'Liscense No *',
+      'Valid Up to *',
+      'Loading Start date *',
+      'freight  *',
+    ];
+
+    for (final mKey in mandatoryKeys) {
+      final cleanM = mKey.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+      bool found = false;
+      for (final entry in item.record.entries) {
+        final cleanE = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+        if (cleanE == cleanM) {
+          final val = entry.value.trim();
+          if (val.isNotEmpty && val != '-' && val != 'null' && val != 'None') {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found && (cleanM == 'grno' || cleanM == 'lrno')) {
+        final lrVal = item.record['grno'] ?? item.record['LR No *'] ?? item.record['grno (*)'] ?? '';
+        if (lrVal.trim().isNotEmpty && lrVal.trim() != '-') {
+          found = true;
+        }
+      }
+      if (!found) return false;
+    }
+    return true;
+  }
+
+  /// True if all consignment notes in the batch have all mandatory fields filled.
+  bool get allItemsVerified {
+    if (_items.isEmpty) return false;
+    return _items.every((i) => isItemVerified(i));
+  }
+
+  /// Returns items that are not fully verified.
+  List<BatchItem> get unverifiedItems {
+    return _items.where((i) => !isItemVerified(i)).toList();
+  }
+
   PermissionService get permissionService => _permissionService;
   ImageService get imageService => _imageService;
   OcrService get ocrService => _ocrService;

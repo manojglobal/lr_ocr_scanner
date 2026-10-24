@@ -5,7 +5,6 @@ import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
-import 'excel_generated_screen.dart';
 
 /// Screen 8: Excel Preview (BNF GR Import Format - 50 Columns).
 class ExcelPreviewScreen extends StatefulWidget {
@@ -224,6 +223,34 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   }
 
   void _confirmAndGenerateExcel() {
+    if (!widget.controller.allItemsVerified) {
+      final unverified = widget.controller.unverifiedItems;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
+              SizedBox(width: 8),
+              Text('Excel Download Blocked', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: Text(
+            '${unverified.length} consignment note(s) in this batch are Unverified because mandatory (*) fields are not filled.\n\nExcel download is allowed only when all consignment notes are Verified. Please edit the unverified LRs and complete all mandatory fields first.',
+            style: const TextStyle(fontSize: 14),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(

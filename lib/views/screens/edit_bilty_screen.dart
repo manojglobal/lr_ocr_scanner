@@ -5,7 +5,6 @@ import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
-import 'customization_driver_screen.dart';
 import 'file_history_screen.dart';
 
 /// Screen 4 & 5: Verify & Edit (Multi-Tab Form)
@@ -303,7 +302,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                           return Image.file(
                             file,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
+                            errorBuilder: (_, _, _) => Container(
                               color: Colors.grey.shade200,
                               child: const Icon(Icons.image, size: 20, color: Colors.blueGrey),
                             ),
@@ -469,39 +468,56 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 14),
-                  child: TextField(
-                    controller: ctrl,
-                    decoration: InputDecoration(
-                      labelText: _getFieldLabel(key),
-                      labelStyle: TextStyle(
-                        fontSize: 13,
-                        color: isMandatory ? const Color(0xFF0284C7) : Colors.blueGrey,
-                        fontWeight: isMandatory ? FontWeight.bold : FontWeight.normal,
-                      ),
-                      prefixIcon: isKeyDoc
-                          ? const Icon(Icons.vpn_key_outlined, size: 18, color: Color(0xFF0284C7))
-                          : null,
-                      suffixIcon: isDate
-                          ? const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey)
-                          : isSearch
-                              ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: ctrl,
+                    builder: (context, value, _) {
+                      final isEmpty = value.text.trim().isEmpty || value.text.trim() == '-';
+                      return TextField(
+                        controller: ctrl,
+                        decoration: InputDecoration(
+                          labelText: _getFieldLabel(key),
+                          labelStyle: TextStyle(
+                            fontSize: 13,
+                            color: isEmpty
+                                ? const Color(0xFFDC2626)
+                                : (isMandatory ? const Color(0xFF0284C7) : Colors.blueGrey),
+                            fontWeight: (isEmpty || isMandatory) ? FontWeight.bold : FontWeight.normal,
+                          ),
+                          prefixIcon: isKeyDoc
+                              ? Icon(Icons.vpn_key_outlined, size: 18, color: isEmpty ? const Color(0xFFDC2626) : const Color(0xFF0284C7))
                               : null,
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
-                      ),
-                    ),
+                          suffixIcon: isDate
+                              ? const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey)
+                              : isSearch
+                                  ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
+                                  : null,
+                          filled: true,
+                          fillColor: isEmpty ? const Color(0xFFFEF2F2) : const Color(0xFFF8FAFC),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: isEmpty ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                              width: isEmpty ? 1.2 : 1.0,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: isEmpty ? const Color(0xFFEF4444) : const Color(0xFFE2E8F0),
+                              width: isEmpty ? 1.2 : 1.0,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: isEmpty ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 );
               }).toList(),

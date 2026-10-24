@@ -60,7 +60,7 @@
     "driver_name": "ANOOP KUMAR",
     "mobile_no": "7016235178",
     "license_no": "HR-2120160116071",
-    "valid_upto": "01-Feb-2029",
+    "valid_upto": "20-Jul-2036",
     "vehicle_category": "Market"
   },
   "TN88U9459": {
@@ -130,10 +130,10 @@
   "MH15KS2755": {
     "vehicle_no": "MH15KS2755",
     "driver_name": "BAPU GUNJAL",
-    "mobile_no": "",
+    "mobile_no": "hh",
     "license_no": "MH41 20110015261",
-    "valid_upto": "31-07-2028",
-    "vehicle_category": "GOODS CARRIER"
+    "valid_upto": "31-07-2029",
+    "vehicle_category": "Market"
   },
   "BR44G4606": {
     "vehicle_no": "BR44G4606",
@@ -154,9 +154,33 @@
   "UP21FT4643": {
     "vehicle_no": "UP21FT4643",
     "driver_name": "IMRAN",
-    "mobile_no": "",
-    "license_no": "",
-    "valid_upto": "",
+    "mobile_no": "8209435149",
+    "license_no": "MH38 20100004760",
+    "valid_upto": "02/08/2026",
+    "vehicle_category": "Market"
+  },
+  "AP16TG9309": {
+    "vehicle_no": "AP16TG9309",
+    "driver_name": "ANOOP KUMAR",
+    "mobile_no": "8209435149",
+    "license_no": "MH38 20100004760",
+    "valid_upto": "30/09/2026",
+    "vehicle_category": "Market"
+  },
+  "KL64N6420": {
+    "vehicle_no": "KL-64-N-6420",
+    "driver_name": "hjbjb",
+    "mobile_no": "123654789",
+    "license_no": "jbjjbbbbjjbn",
+    "valid_upto": "14/03/2025",
+    "vehicle_category": "Market"
+  },
+  "HR39F3194": {
+    "vehicle_no": "HR-39-F-3194",
+    "driver_name": "*",
+    "mobile_no": "*",
+    "license_no": "*",
+    "valid_upto": "0",
     "vehicle_category": "Market"
   }
 }

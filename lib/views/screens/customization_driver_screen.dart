@@ -33,6 +33,16 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   late final TextEditingController _licenseNoController;
   late final TextEditingController _licenseValidController;
 
+  bool _hasValidated = false;
+
+  final GlobalKey _customerKey = GlobalKey();
+  final GlobalKey _counterKey = GlobalKey();
+  final GlobalKey _categoryKey = GlobalKey();
+  final GlobalKey _driverNameKey = GlobalKey();
+  final GlobalKey _driverMobileKey = GlobalKey();
+  final GlobalKey _licenseNoKey = GlobalKey();
+  final GlobalKey _licenseValidKey = GlobalKey();
+
   String _selectedDepartment = '';
   String _selectedCounter = '';
   String _selectedVehicleCategory = 'MARKET';
@@ -142,6 +152,17 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     _licenseValidController = TextEditingController(text: dVal);
 
     _customerController.addListener(_onCustomerChanged);
+    _customerController.addListener(_onFieldChanged);
+    _driverNameController.addListener(_onFieldChanged);
+    _driverMobileController.addListener(_onFieldChanged);
+    _licenseNoController.addListener(_onFieldChanged);
+    _licenseValidController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    if (_hasValidated && mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _autoFetchDriverFromBackend(String vehNo) async {
@@ -187,15 +208,66 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   @override
   void dispose() {
     _customerController.removeListener(_onCustomerChanged);
+    _customerController.removeListener(_onFieldChanged);
     _customerController.dispose();
+    _driverNameController.removeListener(_onFieldChanged);
     _driverNameController.dispose();
+    _driverMobileController.removeListener(_onFieldChanged);
     _driverMobileController.dispose();
+    _licenseNoController.removeListener(_onFieldChanged);
     _licenseNoController.dispose();
+    _licenseValidController.removeListener(_onFieldChanged);
     _licenseValidController.dispose();
     super.dispose();
   }
 
   void _saveAndVerify() {
+    final custEmpty = _customerController.text.trim().isEmpty;
+    final counterEmpty = _selectedCounter.trim().isEmpty;
+    final categoryEmpty = _selectedVehicleCategory.trim().isEmpty;
+    final drvNameEmpty = _driverNameController.text.trim().isEmpty;
+    final drvMobileEmpty = _driverMobileController.text.trim().isEmpty;
+    final drvLicEmpty = _licenseNoController.text.trim().isEmpty;
+    final drvValidEmpty = _licenseValidController.text.trim().isEmpty;
+
+    if (custEmpty || counterEmpty || categoryEmpty || drvNameEmpty || drvMobileEmpty || drvLicEmpty || drvValidEmpty) {
+      setState(() => _hasValidated = true);
+
+      GlobalKey? targetKey;
+      if (custEmpty) {
+        targetKey = _customerKey;
+      } else if (counterEmpty) {
+        targetKey = _counterKey;
+      } else if (categoryEmpty) {
+        targetKey = _categoryKey;
+      } else if (drvNameEmpty) {
+        targetKey = _driverNameKey;
+      } else if (drvMobileEmpty) {
+        targetKey = _driverMobileKey;
+      } else if (drvLicEmpty) {
+        targetKey = _licenseNoKey;
+      } else if (drvValidEmpty) {
+        targetKey = _licenseValidKey;
+      }
+
+      if (targetKey?.currentContext != null) {
+        Scrollable.ensureVisible(
+          targetKey!.currentContext!,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          alignment: 0.2,
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete all mandatory (*) fields highlighted in red.'),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     final updated = Map<String, String>.from(widget.item.record);
     updated['Customer Name *'] = _customerController.text.trim();
@@ -214,6 +286,18 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     updated['license_no'] = _licenseNoController.text.trim();
     updated['Valid Up to *'] = _licenseValidController.text.trim();
     updated['valid_upto'] = _licenseValidController.text.trim();
+
+    final candidate = widget.item.copyWith(record: updated);
+    if (!widget.controller.isItemVerified(candidate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete all mandatory (*) LR fields before verifying.'),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     // Cache driver info in master if vehicle is present
     final vehNo = (updated['Vehicle No *'] ?? '').trim();
@@ -307,43 +391,69 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                       title: 'Customer & Department',
                       icon: Icons.business_outlined,
                       children: [
-                        _buildLabel('Customer *'),
-                        Autocomplete<String>(
-                          initialValue: TextEditingValue(text: _customerController.text),
-                          optionsBuilder: (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) {
-                              return _customerOptions;
-                            }
-                            return _customerOptions.where((option) {
-                              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                            });
-                          },
-                          onSelected: (String selection) {
-                            _customerController.text = selection;
-                          },
-                          fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
-                            if (fieldTextEditingController.text != _customerController.text) {
-                              fieldTextEditingController.text = _customerController.text;
-                            }
-                            fieldTextEditingController.addListener(() {
-                              if (_customerController.text != fieldTextEditingController.text) {
-                                _customerController.text = fieldTextEditingController.text;
+                        _buildLabel('Customer *', showError: _hasValidated && _customerController.text.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _customerKey,
+                          child: Autocomplete<String>(
+                            initialValue: TextEditingValue(text: _customerController.text),
+                            optionsBuilder: (TextEditingValue textEditingValue) {
+                              if (textEditingValue.text.isEmpty) {
+                                return _customerOptions;
                               }
-                            });
-                            return TextField(
-                              controller: fieldTextEditingController,
-                              focusNode: fieldFocusNode,
-                              decoration: InputDecoration(
-                                hintText: 'Select or enter customer from ManiFest',
-                                prefixIcon: const Icon(Icons.search, size: 20, color: Colors.blueGrey),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                              ),
-                            );
-                          },
+                              return _customerOptions.where((option) {
+                                return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                              });
+                            },
+                            onSelected: (String selection) {
+                              _customerController.text = selection;
+                            },
+                            fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
+                              if (fieldTextEditingController.text != _customerController.text) {
+                                fieldTextEditingController.text = _customerController.text;
+                              }
+                              fieldTextEditingController.addListener(() {
+                                if (_customerController.text != fieldTextEditingController.text) {
+                                  _customerController.text = fieldTextEditingController.text;
+                                }
+                              });
+                              final isCustErr = _hasValidated && _customerController.text.trim().isEmpty;
+                              return TextField(
+                                controller: fieldTextEditingController,
+                                focusNode: fieldFocusNode,
+                                decoration: InputDecoration(
+                                  hintText: 'Select or enter customer from ManiFest',
+                                  prefixIcon: Icon(Icons.search, size: 20, color: isCustErr ? const Color(0xFFEF4444) : Colors.blueGrey),
+                                  filled: true,
+                                  fillColor: isCustErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCustErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isCustErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCustErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isCustErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCustErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                         const SizedBox(height: 14),
-                        _buildLabel('Department *'),
+                        _buildLabel('Department'),
                         DropdownButtonFormField<String>(
                           initialValue: _departmentOptions.contains(_selectedDepartment) ? _selectedDepartment : null,
                           items: _departmentOptions
@@ -367,34 +477,94 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                       title: 'Counter & Vehicle Category',
                       icon: Icons.local_shipping_outlined,
                       children: [
-                        _buildLabel('Counter *'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _counterOptions.contains(_selectedCounter) ? _selectedCounter : null,
-                          items: _counterOptions
-                              .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedCounter = val);
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Select Counter from Master',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        _buildLabel('Counter *', showError: _hasValidated && _selectedCounter.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _counterKey,
+                          child: Builder(
+                            builder: (context) {
+                              final isCounterErr = _hasValidated && _selectedCounter.trim().isEmpty;
+                              return DropdownButtonFormField<String>(
+                                initialValue: _counterOptions.contains(_selectedCounter) ? _selectedCounter : null,
+                                items: _counterOptions
+                                    .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
+                                    .toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedCounter = val);
+                                },
+                                decoration: InputDecoration(
+                                  hintText: 'Select Counter from Master',
+                                  filled: true,
+                                  fillColor: isCounterErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCounterErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isCounterErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCounterErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isCounterErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCounterErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _buildLabel('Vehicle Category *'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _vehicleCategoryOptions.contains(_selectedVehicleCategory) ? _selectedVehicleCategory : null,
-                          items: _vehicleCategoryOptions
-                              .map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 13))))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedVehicleCategory = val);
-                          },
-                          decoration: InputDecoration(
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        _buildLabel('Vehicle Category *', showError: _hasValidated && _selectedVehicleCategory.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _categoryKey,
+                          child: Builder(
+                            builder: (context) {
+                              final isCatErr = _hasValidated && _selectedVehicleCategory.trim().isEmpty;
+                              return DropdownButtonFormField<String>(
+                                initialValue: _vehicleCategoryOptions.contains(_selectedVehicleCategory) ? _selectedVehicleCategory : null,
+                                items: _vehicleCategoryOptions
+                                    .map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 13))))
+                                    .toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedVehicleCategory = val);
+                                },
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: isCatErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCatErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isCatErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCatErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isCatErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isCatErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -406,49 +576,168 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                       title: 'Driver Information',
                       icon: Icons.person_pin_outlined,
                       children: [
-
-                        _buildLabel('Driver Name *'),
-                        TextField(
-                          controller: _driverNameController,
-                          decoration: InputDecoration(
-                            hintText: 'Driver Full Name',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        _buildLabel('Driver Name *', showError: _hasValidated && _driverNameController.text.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _driverNameKey,
+                          child: Builder(
+                            builder: (context) {
+                              final isDrvErr = _hasValidated && _driverNameController.text.trim().isEmpty;
+                              return TextField(
+                                controller: _driverNameController,
+                                decoration: InputDecoration(
+                                  hintText: 'Driver Full Name',
+                                  filled: true,
+                                  fillColor: isDrvErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isDrvErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isDrvErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isDrvErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isDrvErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isDrvErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _buildLabel('Mobile No. *'),
-                        TextField(
-                          controller: _driverMobileController,
-                          keyboardType: TextInputType.phone,
-                          maxLength: 10,
-                          decoration: InputDecoration(
-                            prefixText: '+91 ',
-                            counterText: '',
-                            hintText: '10-digit mobile number',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        _buildLabel('Mobile No. *', showError: _hasValidated && _driverMobileController.text.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _driverMobileKey,
+                          child: Builder(
+                            builder: (context) {
+                              final isMobErr = _hasValidated && _driverMobileController.text.trim().isEmpty;
+                              return TextField(
+                                controller: _driverMobileController,
+                                keyboardType: TextInputType.phone,
+                                maxLength: 10,
+                                decoration: InputDecoration(
+                                  prefixText: '+91 ',
+                                  counterText: '',
+                                  hintText: '10-digit mobile number',
+                                  filled: true,
+                                  fillColor: isMobErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isMobErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isMobErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isMobErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isMobErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isMobErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _buildLabel('License No. *'),
-                        TextField(
-                          controller: _licenseNoController,
-                          decoration: InputDecoration(
-                            hintText: 'e.g. KA23 20000044025',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        _buildLabel('License No. *', showError: _hasValidated && _licenseNoController.text.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _licenseNoKey,
+                          child: Builder(
+                            builder: (context) {
+                              final isLicErr = _hasValidated && _licenseNoController.text.trim().isEmpty;
+                              return TextField(
+                                controller: _licenseNoController,
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. KA23 20000044025',
+                                  filled: true,
+                                  fillColor: isLicErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isLicErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isLicErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isLicErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isLicErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isLicErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _buildLabel('License Valid Up To *'),
-                        TextField(
-                          controller: _licenseValidController,
-                          decoration: InputDecoration(
-                            hintText: 'DD/MM/YYYY',
-                            suffixIcon: const Icon(Icons.calendar_today, size: 18, color: Colors.blueGrey),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        _buildLabel('License Valid Up To *', showError: _hasValidated && _licenseValidController.text.trim().isEmpty),
+                        KeyedSubtree(
+                          key: _licenseValidKey,
+                          child: Builder(
+                            builder: (context) {
+                              final isValErr = _hasValidated && _licenseValidController.text.trim().isEmpty;
+                              return TextField(
+                                controller: _licenseValidController,
+                                decoration: InputDecoration(
+                                  hintText: 'DD/MM/YYYY',
+                                  suffixIcon: const Icon(Icons.calendar_today, size: 18, color: Colors.blueGrey),
+                                  filled: true,
+                                  fillColor: isValErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isValErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isValErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isValErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                      width: isValErr ? 1.2 : 1.0,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                      color: isValErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -513,7 +802,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     );
   }
 
-  Widget _buildLabel(String text) {
+  Widget _buildLabel(String text, {bool showError = false}) {
     final isMandatory = text.contains('*');
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -522,7 +811,9 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: isMandatory ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+          color: showError
+              ? const Color(0xFFDC2626)
+              : (isMandatory ? const Color(0xFF0F172A) : const Color(0xFF64748B)),
         ),
       ),
     );

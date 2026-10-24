@@ -823,7 +823,8 @@
             <tr id="batchTableTheadRow">
               <th class="py-2.5 px-3 w-12 text-center sticky left-0 z-20 bg-slate-100 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] border-r border-slate-200 text-xs font-bold text-slate-700">#</th>
               <!-- Populated dynamically with all 49 BNF columns via renderBatchTableHeaders() -->
-              <th class="py-2.5 px-3 w-24 text-center sticky right-0 z-20 bg-slate-100 shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] border-l border-slate-200 text-xs font-bold text-slate-700">Actions</th>
+              <th class="py-2.5 px-3 w-[104px] text-center sticky right-[96px] z-20 bg-slate-100 shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] border-l border-slate-200 text-xs font-bold text-slate-700">Status</th>
+              <th class="py-2.5 px-3 w-24 text-center sticky right-0 z-20 bg-slate-100 border-l border-slate-200 text-xs font-bold text-slate-700">Actions</th>
             </tr>
           </thead>
           <tbody id="batchTableBody" class="divide-y divide-slate-100 font-sans">
@@ -1325,14 +1326,14 @@
           <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
         </div>
         <div>
-          <h3 class="text-base font-bold text-slate-900">Clear All Data</h3>
+          <h3 class="text-base font-bold text-slate-900">Clear Consignment Data</h3>
           <span class="text-[10px] font-bold uppercase tracking-wider text-red-500 font-semibold">Warning</span>
         </div>
       </div>
 
       <!-- Message -->
       <p class="text-xs text-slate-700 leading-relaxed font-medium">
-        Are you sure you want to clear all data?
+        Are you sure you want to clear all consignment data?
       </p>
 
       <!-- Action Buttons -->
@@ -1341,6 +1342,40 @@
           Cancel
         </button>
         <button type="button" onclick="proceedClearAllConfirmModal()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modern App Dialog Modal (Custom Informational & Confirmation Dialogs) -->
+  <div id="appDialogModal" onclick="if(event.target === this) closeAppDialogModal(false)" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+      <!-- Header with Icon & Title -->
+      <div class="flex items-center space-x-3">
+        <div id="appDialogIconBg" class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 border">
+          <i id="appDialogIcon" data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 id="appDialogTitle" class="text-base font-bold text-slate-900">Dialog Title</h3>
+          <span id="appDialogSubtitle" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Notice</span>
+        </div>
+      </div>
+
+      <!-- Message -->
+      <p id="appDialogMessage" class="text-xs text-slate-700 leading-relaxed font-medium">
+        Dialog message goes here.
+      </p>
+
+      <!-- Action Buttons -->
+      <div id="appDialogActions" class="flex items-center justify-end space-x-2 pt-2">
+        <button id="appDialogCancelBtn" type="button" onclick="closeAppDialogModal(false)" class="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer">
+          Cancel
+        </button>
+        <button id="appDialogConfirmBtn" type="button" onclick="confirmAppDialogModal()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer">
+          Confirm
+        </button>
+        <button id="appDialogOkBtn" type="button" onclick="closeAppDialogModal(true)" class="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer">
           OK
         </button>
       </div>
@@ -2551,6 +2586,20 @@
       updateUserBadge();
       navigateTo('screen1_login');
 
+      // Global Escape key listener to safely dismiss modals
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const appModal = document.getElementById('appDialogModal');
+          if (appModal && !appModal.classList.contains('hidden')) {
+            closeAppDialogModal(false);
+          }
+          const clearModal = document.getElementById('clearAllConfirmModal');
+          if (clearModal && !clearModal.classList.contains('hidden')) {
+            closeClearAllConfirmModal();
+          }
+        }
+      });
+
       // Explicit click listener on both top and bottom Preview Excel buttons for 100% clickability
       const topBtnEl = document.getElementById('topPreviewExcelBtn');
       if (topBtnEl) {
@@ -2578,7 +2627,7 @@
 
     function handleFlowClick(targetScreen) {
       if (!currentUser && targetScreen !== 'screen1_login') {
-        alert('Please complete OTP verification first to unlock this step.');
+        showUploadLrValidationModal('Please complete OTP verification first to unlock this step.');
         navigateTo('screen1_login');
         return;
       }
@@ -2595,7 +2644,7 @@
           switchTab('basic');
           loadLrImagePreview(activeItem);
         } else {
-          alert('No consignment notes uploaded yet. Please upload an LR first.');
+          showUploadLrValidationModal('No LR uploaded yet. Please upload an LR first.');
         }
         return;
       }
@@ -3087,7 +3136,7 @@
     // --- SCREEN 2: Upload LR (Single LR Upload Only) ---
     function triggerFileInput() {
       if (!currentUser) {
-        alert('Please complete OTP validation first.');
+        showUploadLrValidationModal('Please complete OTP validation first.');
         navigateTo('screen1_login');
         return;
       }
@@ -3110,7 +3159,7 @@
 
       dropZone.addEventListener('drop', (e) => {
         if (!currentUser) {
-          alert('Please complete OTP validation first.');
+          showUploadLrValidationModal('Please complete OTP validation first.');
           navigateTo('screen1_login');
           return;
         }
@@ -3118,7 +3167,7 @@
           const droppedFile = e.dataTransfer.files[0];
           if (droppedFile.size > MAX_FILE_SIZE_BYTES) {
             const sizeMb = (droppedFile.size / (1024 * 1024)).toFixed(2);
-            alert(`File "${droppedFile.name}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`);
+            showFileSizeValidationModal(droppedFile.name, sizeMb);
             return;
           }
           handleSelectedFiles([droppedFile]);
@@ -3130,7 +3179,7 @@
           const selectedFile = e.target.files[0];
           if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
             const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(2);
-            alert(`File "${selectedFile.name}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`);
+            showFileSizeValidationModal(selectedFile.name, sizeMb);
             e.target.value = '';
             return;
           }
@@ -3143,7 +3192,7 @@
     // --- CAMERA CAPTURE LOGIC (Webcam Live Feed & Mobile Camera) ---
     async function openWebcam() {
       if (!currentUser) {
-        alert('Please complete OTP validation first.');
+        showUploadLrValidationModal('Please complete OTP validation first.');
         navigateTo('screen1_login');
         return;
       }
@@ -3259,7 +3308,7 @@
         const camFile = files[0];
         if (camFile.size > MAX_FILE_SIZE_BYTES) {
           const sizeMb = (camFile.size / (1024 * 1024)).toFixed(2);
-          alert(`Captured photo (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please upload a file under 10 MB.`);
+          showFileSizeValidationModal(camFile.name || 'Captured photo', sizeMb);
           event.target.value = '';
           return;
         }
@@ -3285,7 +3334,7 @@
         if (!blob) return;
         if (blob.size > MAX_FILE_SIZE_BYTES) {
           const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
-          alert(`Captured snapshot (${sizeMb} MB) exceeds the allowed limit of 10 MB per file.`);
+          showFileSizeValidationModal('Captured snapshot', sizeMb);
           closeWebcam();
           return;
         }
@@ -3335,15 +3384,53 @@
       navigateToAddMoreList();
     }
 
+    function showUnverifiedExcelBlockModal(unverifiedItems) {
+      if (!unverifiedItems || unverifiedItems.length === 0) return;
+      const count = unverifiedItems.length;
+      const lrLabels = unverifiedItems.slice(0, 5).map((item, i) => {
+        const d = item.data || {};
+        const lrNo = d['grno (*)'] || d['grno'] || d['LR No *'] || d['LR No'] || item.filename || `Item #${i + 1}`;
+        const st = getLrMandatoryStatus(item);
+        const missStr = st.missingFields.length > 3
+          ? st.missingFields.slice(0, 3).join(', ') + ` (+${st.missingFields.length - 3} more)`
+          : st.missingFields.join(', ');
+        return `• ${lrNo} — Missing: ${missStr}`;
+      });
+
+      const moreText = count > 5 ? `\n...and ${count - 5} more consignment(s).` : '';
+      const message = `${count} consignment note${count === 1 ? '' : 's'} in your batch ${count === 1 ? 'is' : 'are'} Unverified because mandatory (*) fields are not filled:\n\n${lrLabels.join('\n')}${moreText}\n\nExcel download is permitted ONLY when all consignment notes are Verified. Please edit the unverified LRs and complete all mandatory fields.`;
+
+      showAppInfoModal({
+        title: 'Excel Download Blocked',
+        subtitle: 'Unverified Consignments in Batch',
+        message: message,
+        iconType: 'warning'
+      });
+    }
+
     function directDownloadExcel() {
       if (verifiedBatch.length === 0) {
-        alert('Please add at least 1 verified consignment note before downloading Excel.');
+        showExcelDownloadValidationModal();
+        return;
+      }
+      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
+      if (unverifiedItems.length > 0) {
+        showUnverifiedExcelBlockModal(unverifiedItems);
         return;
       }
       executeGenerateExcel();
     }
 
     function confirmGenerateExcel() {
+      if (verifiedBatch.length === 0) {
+        showExcelDownloadValidationModal();
+        return;
+      }
+      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
+      if (unverifiedItems.length > 0) {
+        showUnverifiedExcelBlockModal(unverifiedItems);
+        return;
+      }
       const modal = document.getElementById('generateExcelConfirmModal');
       if (modal) {
         modal.classList.remove('hidden');
@@ -3365,7 +3452,167 @@
 
     function proceedGenerateExcelConfirmModal() {
       closeGenerateExcelConfirmModal();
+      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
+      if (unverifiedItems.length > 0) {
+        showUnverifiedExcelBlockModal(unverifiedItems);
+        return;
+      }
       executeGenerateExcel();
+    }
+
+    // --- Modern App Dialog System (Replacing 5 Browser Popups) ---
+    let _appDialogOnConfirmCallback = null;
+    let _appDialogOnOkCallback = null;
+
+    function showAppInfoModal({ title, subtitle = 'Notice', message, iconType = 'warning', onOk = null }) {
+      const modal = document.getElementById('appDialogModal');
+      if (!modal) return;
+
+      _appDialogOnConfirmCallback = null;
+      _appDialogOnOkCallback = typeof onOk === 'function' ? onOk : null;
+
+      const titleEl = document.getElementById('appDialogTitle');
+      const subEl = document.getElementById('appDialogSubtitle');
+      const msgEl = document.getElementById('appDialogMessage');
+      const iconBg = document.getElementById('appDialogIconBg');
+      const iconEl = document.getElementById('appDialogIcon');
+      const cancelBtn = document.getElementById('appDialogCancelBtn');
+      const confirmBtn = document.getElementById('appDialogConfirmBtn');
+      const okBtn = document.getElementById('appDialogOkBtn');
+
+      if (titleEl) titleEl.innerText = title || 'Notice';
+      if (subEl) subEl.innerText = subtitle || 'Notice';
+      if (msgEl) msgEl.innerText = message || '';
+
+      if (cancelBtn) cancelBtn.classList.add('hidden');
+      if (confirmBtn) confirmBtn.classList.add('hidden');
+      if (okBtn) okBtn.classList.remove('hidden');
+
+      if (iconBg && iconEl) {
+        if (iconType === 'error' || iconType === 'danger') {
+          iconBg.className = 'w-10 h-10 rounded-full bg-red-50 border border-red-200 flex items-center justify-center shrink-0 text-red-600';
+          iconEl.setAttribute('data-lucide', 'alert-circle');
+        } else if (iconType === 'info') {
+          iconBg.className = 'w-10 h-10 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0 text-sky-600';
+          iconEl.setAttribute('data-lucide', 'info');
+        } else {
+          // Warning (amber)
+          iconBg.className = 'w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0 text-amber-600';
+          iconEl.setAttribute('data-lucide', 'alert-triangle');
+        }
+      }
+
+      modal.classList.remove('hidden');
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+    }
+
+    function showAppConfirmModal({ title, subtitle = 'Confirmation', message, confirmText = 'Confirm', onConfirm = null, onCancel = null }) {
+      const modal = document.getElementById('appDialogModal');
+      if (!modal) return;
+
+      _appDialogOnConfirmCallback = typeof onConfirm === 'function' ? onConfirm : null;
+      _appDialogOnOkCallback = null;
+
+      const titleEl = document.getElementById('appDialogTitle');
+      const subEl = document.getElementById('appDialogSubtitle');
+      const msgEl = document.getElementById('appDialogMessage');
+      const iconBg = document.getElementById('appDialogIconBg');
+      const iconEl = document.getElementById('appDialogIcon');
+      const cancelBtn = document.getElementById('appDialogCancelBtn');
+      const confirmBtn = document.getElementById('appDialogConfirmBtn');
+      const okBtn = document.getElementById('appDialogOkBtn');
+
+      if (titleEl) titleEl.innerText = title || 'Confirmation';
+      if (subEl) subEl.innerText = subtitle || 'Confirmation';
+      if (msgEl) msgEl.innerText = message || '';
+
+      if (cancelBtn) cancelBtn.classList.remove('hidden');
+      if (confirmBtn) {
+        confirmBtn.classList.remove('hidden');
+        confirmBtn.innerText = confirmText || 'Confirm';
+      }
+      if (okBtn) okBtn.classList.add('hidden');
+
+      if (iconBg && iconEl) {
+        iconBg.className = 'w-10 h-10 rounded-full bg-red-50 border border-red-200 flex items-center justify-center shrink-0 text-red-600';
+        iconEl.setAttribute('data-lucide', 'alert-triangle');
+      }
+
+      modal.classList.remove('hidden');
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+    }
+
+    function closeAppDialogModal(isOkClick = false) {
+      const modal = document.getElementById('appDialogModal');
+      if (modal) modal.classList.add('hidden');
+      const cb = _appDialogOnOkCallback;
+      _appDialogOnConfirmCallback = null;
+      _appDialogOnOkCallback = null;
+      if (isOkClick && typeof cb === 'function') {
+        cb();
+      }
+    }
+
+    function confirmAppDialogModal() {
+      const modal = document.getElementById('appDialogModal');
+      if (modal) modal.classList.add('hidden');
+      const cb = _appDialogOnConfirmCallback;
+      _appDialogOnConfirmCallback = null;
+      _appDialogOnOkCallback = null;
+      if (typeof cb === 'function') {
+        cb();
+      }
+    }
+
+    // 1. Remove Consignment LR
+    function showRemoveLrConfirmModal(lrName, onConfirm) {
+      showAppConfirmModal({
+        title: 'Remove Consignment LR',
+        subtitle: 'Confirmation',
+        message: `Remove consignment LR ${lrName} from batch?`,
+        confirmText: 'Confirm',
+        onConfirm: onConfirm
+      });
+    }
+
+    // 2. File Size Validation
+    function showFileSizeValidationModal(fileName, sizeMb) {
+      showAppInfoModal({
+        title: 'File Size Validation',
+        subtitle: 'Limit Exceeded',
+        message: `File "${fileName}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`,
+        iconType: 'warning'
+      });
+    }
+
+    // 3. Excel Download Validation
+    function showExcelDownloadValidationModal() {
+      showAppInfoModal({
+        title: 'Excel Download Validation',
+        subtitle: 'Validation Notice',
+        message: 'Please add at least 1 verified LR data before downloading Excel.',
+        iconType: 'warning'
+      });
+    }
+
+    // 4. Clear Consignment Data
+    function showClearConsignmentValidationModal() {
+      showAppInfoModal({
+        title: 'Clear LR Data',
+        subtitle: 'Notice',
+        message: 'No LR data in list to clear.',
+        iconType: 'warning'
+      });
+    }
+
+    // 5. Upload LR Validation
+    function showUploadLrValidationModal(message) {
+      showAppInfoModal({
+        title: 'Upload LR Validation',
+        subtitle: 'Upload Notice',
+        message: message || 'No LR uploaded yet. Please upload an LR first.',
+        iconType: 'info'
+      });
     }
 
     // --- Duplicate LR Prevention Helpers ---
@@ -3703,7 +3950,7 @@
     // Handles single LR image/PDF selected or dropped (Upload only 1 LR at a time)
     async function handleSelectedFiles(files) {
       if (!currentUser) {
-        alert('Please complete OTP validation first.');
+        showUploadLrValidationModal('Please complete OTP validation first.');
         navigateTo('screen1_login');
         return;
       }
@@ -3716,7 +3963,7 @@
       for (const f of fileList) {
         if (f.size > MAX_FILE_SIZE_BYTES) {
           const sizeMb = (f.size / (1024 * 1024)).toFixed(2);
-          alert(`File "${f.name}" (${sizeMb} MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.`);
+          showFileSizeValidationModal(f.name, sizeMb);
         } else {
           validFiles.push(f);
         }
@@ -3771,7 +4018,7 @@
 
           // Pre-OCR duplicate check by image content hash
           if (isDuplicateWeb({ imageHash: imageHash })) {
-            alert('This LR already exists. You cannot add the same LR multiple times.');
+            showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
             navigateTo('screen2_upload');
             return;
           }
@@ -3831,7 +4078,7 @@
           // Post-OCR Duplicate Check
           const extractedLrNo = extractLrNoFromData(result?.data);
           if (isDuplicateWeb({ lrNo: extractedLrNo, data: result?.data, imageHash: imageHash })) {
-            alert('This LR already exists. You cannot add the same LR multiple times.');
+            showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
             navigateTo('screen2_upload');
             return;
           }
@@ -4134,6 +4381,219 @@
       }
     }
 
+    // --- Step 2 & Customization Form Validation & Red Highlighting ---
+    const STEP2_INPUT_CONFIG = [
+      // Tab 1: Basic Details
+      { id: 'edit_grno', tab: 'basic', label: 'LR / Consignment No. *', required: true },
+      { id: 'edit_grdt', tab: 'basic', label: 'LR Date *', required: true },
+      { id: 'edit_customer', tab: 'basic', label: 'Customer Name *', required: true },
+      { id: 'edit_org', tab: 'basic', label: 'Origin Station', required: false },
+      { id: 'edit_dest', tab: 'basic', label: 'Destination Station', required: false },
+      { id: 'edit_vehno', tab: 'basic', label: 'Vehicle No. *', required: true },
+      { id: 'edit_vehtype', tab: 'basic', label: 'Vehicle Type *', required: true },
+      // Tab 2: Consignor / Consignee
+      { id: 'edit_cngr', tab: 'parties', label: 'Consignor Name *', required: true },
+      { id: 'edit_cngrgst', tab: 'parties', label: 'Consignor GSTIN *', required: true },
+      { id: 'edit_cnge', tab: 'parties', label: 'Consignee Name *', required: true },
+      { id: 'edit_cngegst', tab: 'parties', label: 'Consignee GSTIN *', required: true },
+      // Tab 3: Cargo Details
+      { id: 'edit_goods', tab: 'goods', label: 'Goods Description', required: false },
+      { id: 'edit_pkgs', tab: 'goods', label: 'Packages', required: false },
+      { id: 'edit_packing', tab: 'goods', label: 'Packing', required: false },
+      { id: 'edit_aweight', tab: 'goods', label: 'Actual Weight', required: false },
+      { id: 'edit_cweight', tab: 'goods', label: 'Charged Weight', required: false },
+      { id: 'edit_pmark', tab: 'goods', label: 'Private Mark', required: false },
+      { id: 'edit_valgoods', tab: 'goods', label: 'Declared Value', required: false },
+      // Tab 4: Other Details
+      { id: 'edit_productcode', tab: 'other', label: 'Product Code', required: false },
+      { id: 'edit_eway', tab: 'other', label: 'E-Way Bill No', required: false },
+      { id: 'edit_validupto', tab: 'other', label: 'E-Way Bill Valid Upto', required: false },
+      { id: 'edit_invno', tab: 'other', label: 'Invoice No', required: false },
+      { id: 'edit_invdt', tab: 'other', label: 'Invoice Date', required: false },
+      { id: 'edit_grtype', tab: 'other', label: 'GR Type', required: false },
+      { id: 'edit_oamount', tab: 'other', label: 'Other Charges', required: false }
+    ];
+
+    const CUSTOMIZATION_INPUT_CONFIG = [
+      { id: 'custom_customer', label: 'Customer Name *', required: true },
+      { id: 'custom_counter', label: 'Counter *', required: true },
+      { id: 'custom_veh_category', label: 'Vehicle Category *', required: true },
+      { id: 'custom_driver_name', label: 'Driver Name *', required: true },
+      { id: 'custom_driver_mobile', label: 'Driver Mobile No *', required: true },
+      { id: 'custom_license_no', label: 'Driver License No *', required: true },
+      { id: 'custom_license_valid', label: 'Driver License Valid Up to *', required: true }
+    ];
+
+    function applyRedFieldHighlight(el) {
+      if (!el) return;
+      el.classList.add('border-red-500', 'bg-red-50/70', 'ring-1', 'ring-red-400', 'text-red-900');
+      el.classList.remove('border-slate-200', 'border-slate-300', 'bg-slate-50', 'bg-white', 'text-slate-800');
+    }
+
+    function removeRedFieldHighlight(el) {
+      if (!el) return;
+      el.classList.remove('border-red-500', 'bg-red-50/70', 'ring-1', 'ring-red-400', 'text-red-900');
+      el.classList.add('border-slate-200');
+    }
+
+    function isFieldValueEmpty(el) {
+      if (!el) return true;
+      const val = (el.value || '').trim();
+      return (!val || val === '-' || val === 'null' || val === 'None');
+    }
+
+    // Requirement: Highlight all fields in Step 2 that have empty values in red
+    function highlightEmptyFieldsStep2() {
+      STEP2_INPUT_CONFIG.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (!el) return;
+        if (isFieldValueEmpty(el)) {
+          applyRedFieldHighlight(el);
+        } else {
+          removeRedFieldHighlight(el);
+        }
+      });
+    }
+
+    function highlightEmptyCustomizationFields() {
+      CUSTOMIZATION_INPUT_CONFIG.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (!el) return;
+        if (isFieldValueEmpty(el)) {
+          applyRedFieldHighlight(el);
+        } else {
+          removeRedFieldHighlight(el);
+        }
+      });
+    }
+
+    function clearAllFormValidationHighlights() {
+      STEP2_INPUT_CONFIG.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (el) removeRedFieldHighlight(el);
+      });
+      CUSTOMIZATION_INPUT_CONFIG.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (el) removeRedFieldHighlight(el);
+      });
+    }
+
+    function attachStep2RealtimeValidation() {
+      STEP2_INPUT_CONFIG.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (!el || el.dataset.redValBound) return;
+        el.dataset.redValBound = 'true';
+
+        const updateHighlight = () => {
+          if (isFieldValueEmpty(el)) {
+            applyRedFieldHighlight(el);
+          } else {
+            removeRedFieldHighlight(el);
+          }
+        };
+
+        el.addEventListener('input', updateHighlight);
+        el.addEventListener('change', updateHighlight);
+      });
+
+      CUSTOMIZATION_INPUT_CONFIG.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (!el || el.dataset.redValBound) return;
+        el.dataset.redValBound = 'true';
+
+        const updateHighlight = () => {
+          if (isFieldValueEmpty(el)) {
+            applyRedFieldHighlight(el);
+          } else {
+            removeRedFieldHighlight(el);
+          }
+        };
+
+        el.addEventListener('input', updateHighlight);
+        el.addEventListener('change', updateHighlight);
+      });
+    }
+
+    function getEmptyMandatoryFields() {
+      const emptyList = [];
+
+      // 1. Mandatory Step 2 inputs
+      const mandatoryStep2 = STEP2_INPUT_CONFIG.filter(c => c.required);
+      mandatoryStep2.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (el && isFieldValueEmpty(el)) {
+          emptyList.push({ ...cfg, screen: 'step2', element: el });
+        }
+      });
+
+      // 2. Mandatory Customization inputs
+      const mandatoryCustom = CUSTOMIZATION_INPUT_CONFIG.filter(c => c.required);
+      mandatoryCustom.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if (el && isFieldValueEmpty(el)) {
+          emptyList.push({ ...cfg, screen: 'custom', element: el });
+        }
+      });
+
+      return emptyList;
+    }
+
+    function handleInvalidVerifyAndSave(emptyMandatory) {
+      if (!emptyMandatory || emptyMandatory.length === 0) return;
+
+      // Ensure all empty fields across both screens reflect red highlight
+      highlightEmptyFieldsStep2();
+      highlightEmptyCustomizationFields();
+
+      const first = emptyMandatory[0];
+
+      const focusTarget = () => {
+        const el = document.getElementById(first.id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          try { el.focus(); } catch (_) {}
+        }
+      };
+
+      if (first.screen === 'step2') {
+        // If currently on Customization Screen (Screen 4b), return to Step 2
+        const customScreen = document.getElementById('screen4b_customization');
+        if (customScreen && customScreen.style.display !== 'none' && !customScreen.hidden) {
+          handleCustomizationBackToScanData();
+        } else {
+          navigateTo('screen4_edit');
+        }
+
+        // Switch to the specific tab containing the first empty field
+        if (first.tab && typeof switchTab === 'function') {
+          switchTab(first.tab);
+        }
+
+        setTimeout(focusTarget, 180);
+
+      } else if (first.screen === 'custom') {
+        // If currently on Step 2, open customization screen
+        const editScreen = document.getElementById('screen4_edit');
+        if (editScreen && editScreen.style.display !== 'none' && !editScreen.hidden) {
+          openCustomizationScreen();
+        } else {
+          navigateTo('screen4b_customization');
+        }
+
+        setTimeout(focusTarget, 180);
+      }
+
+      showAppInfoModal({
+        title: 'Mandatory Fields Incomplete',
+        subtitle: 'Required Details Missing',
+        // message: `${emptyMandatory.length} mandatory (*) field${emptyMandatory.length === 1 ? '' : 's'} must be completed before verifying. Missing fields are highlighted in red.`,
+        message: `${emptyMandatory.length} field${emptyMandatory.length === 1 ? '' : 's'} must be completed before verifying. Missing fields are highlighted in red.`,
+
+        iconType: 'warning',
+        onOk: focusTarget
+      });
+    }
+
     // --- SCREEN 4: Edit View Form Populator (4 Tabs) ---
     function populateEditForm(item) {
       if (!item) return;
@@ -4203,6 +4663,10 @@
 
       switchTab('basic');
       loadLrImagePreview(item);
+
+      // Attach dynamic listeners and highlight all empty fields in Step 2 in red
+      attachStep2RealtimeValidation();
+      highlightEmptyFieldsStep2();
     }
 
     function switchTab(tabId) {
@@ -4218,6 +4682,9 @@
       const activeBtn = document.getElementById(`tabBtn_${tabId}`);
       if (activeEl) activeEl.classList.remove('hidden');
       if (activeBtn) activeBtn.className = "flex-1 min-w-[110px] py-1.5 rounded-lg bg-white shadow-xs text-sky-600 font-bold transition";
+
+      // Re-evaluate empty fields on the active tab so red highlights are always visible
+      highlightEmptyFieldsStep2();
 
       const btnBack = document.getElementById('btnEditBack');
       const btnBackTop = document.getElementById('btnEditBackTop');
@@ -4789,6 +5256,8 @@
       populateCustomizationForm(activeItem);
       navigateTo('screen4b_customization');
       loadLrImagePreview(activeItem);
+      attachStep2RealtimeValidation();
+      highlightEmptyCustomizationFields();
     }
 
     function getAllMasterDepartmentsWeb() {
@@ -5177,9 +5646,17 @@
       };
 
       if (isDuplicateWeb({ lrNo: editGrno, data: candidateData, excludeId: activeItem.id })) {
-        alert('This LR already exists. You cannot add the same LR multiple times.');
+        showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
         return;
       }
+
+      // Check mandatory fields validation
+      const emptyMandatory = getEmptyMandatoryFields();
+      if (emptyMandatory.length > 0) {
+        handleInvalidVerifyAndSave(emptyMandatory);
+        return; // PREVENT SAVE & NAVIGATION
+      }
+      clearAllFormValidationHighlights();
 
       // Sync edit form inputs
       syncEditFormToActiveItem();
@@ -5796,6 +6273,9 @@
       if (pBtn) pBtn.innerText = `Preview Excel (${verifiedBatch.length} LRs)`;
       const dBtn = document.getElementById('directDownloadExcelBtnText');
       if (dBtn) dBtn.innerText = `Download Excel (${verifiedBatch.length} LRs)`;
+      if (typeof updateExportButtonsVerificationState === 'function') {
+        updateExportButtonsVerificationState();
+      }
     }
 
     function updateDeletedBadgeCount() {
@@ -5879,6 +6359,99 @@
       renderBatchTable();
     }
 
+    function getLrMandatoryStatus(item) {
+      if (!item) return { isVerified: false, statusLabel: 'Unverified', missingFields: [] };
+      const d = item.data || {};
+      const mandatoryCols = BNF_49_COLUMNS.filter(col => col.includes('*'));
+      const missing = [];
+
+      for (const col of mandatoryCols) {
+        const val = getBnfFieldValue(d, col);
+        const hasVal = (
+          val !== undefined &&
+          val !== null &&
+          String(val).trim() !== '' &&
+          String(val).trim() !== '-' &&
+          String(val).trim() !== 'null' &&
+          String(val).trim() !== 'None'
+        );
+        if (!hasVal) {
+          missing.push(col);
+        }
+      }
+
+      const isVerified = (missing.length === 0);
+      return {
+        isVerified,
+        statusLabel: isVerified ? 'Verified' : 'Unverified',
+        missingFields: missing
+      };
+    }
+
+    function updateExportButtonsVerificationState() {
+      const dBtn = document.getElementById('directDownloadExcelBtn');
+      const s8Btn = document.getElementById('s8Sheet1GenExcelBtn');
+      const btn = document.getElementById('genExcelBtn');
+
+      const totalCount = verifiedBatch.length;
+      if (totalCount === 0) {
+        if (dBtn) {
+          dBtn.disabled = true;
+          dBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          dBtn.title = 'No LR data to download';
+        }
+        if (s8Btn) {
+          s8Btn.disabled = true;
+          s8Btn.classList.add('opacity-50', 'cursor-not-allowed');
+          s8Btn.title = 'No LR data to generate';
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.classList.add('opacity-50', 'cursor-not-allowed');
+          btn.title = 'No LR data to generate';
+        }
+        return;
+      }
+
+      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
+      const isAllVerified = (unverifiedItems.length === 0);
+
+      if (!isAllVerified) {
+        const tooltip = `Cannot download Excel: ${unverifiedItems.length} of ${totalCount} LR(s) are Unverified. Fill all mandatory (*) fields first.`;
+        if (dBtn) {
+          dBtn.disabled = true;
+          dBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          dBtn.title = tooltip;
+        }
+        if (s8Btn) {
+          s8Btn.disabled = true;
+          s8Btn.classList.add('opacity-50', 'cursor-not-allowed');
+          s8Btn.title = tooltip;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.classList.add('opacity-50', 'cursor-not-allowed');
+          btn.title = tooltip;
+        }
+      } else {
+        if (dBtn) {
+          dBtn.disabled = false;
+          dBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          dBtn.title = 'Download Excel (.xlsx)';
+        }
+        if (s8Btn) {
+          s8Btn.disabled = false;
+          s8Btn.classList.remove('opacity-50', 'cursor-not-allowed');
+          s8Btn.title = 'Generate Excel (.xlsx)';
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('opacity-50', 'cursor-not-allowed');
+          btn.title = 'Generate Excel (.xlsx)';
+        }
+      }
+    }
+
     function renderBatchTableHeaders() {
       const theadRow = document.getElementById('batchTableTheadRow');
       if (!theadRow) return;
@@ -5889,7 +6462,8 @@
       theadRow.innerHTML = `
         <th class="py-2.5 px-3 w-12 text-center sticky left-0 z-20 bg-slate-100 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] border-r border-slate-200 text-xs font-bold text-slate-700">#</th>
         ${colThs}
-        <th class="py-2.5 px-3 w-24 text-center sticky right-0 z-20 bg-slate-100 shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] border-l border-slate-200 text-xs font-bold text-slate-700">Actions</th>
+        <th class="py-2.5 px-3 w-[104px] text-center sticky right-[96px] z-20 bg-slate-100 shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] border-l border-slate-200 text-xs font-bold text-slate-700">Status</th>
+        <th class="py-2.5 px-3 w-24 text-center sticky right-0 z-20 bg-slate-100 border-l border-slate-200 text-xs font-bold text-slate-700">Actions</th>
       `;
     }
 
@@ -5911,12 +6485,13 @@
       if (!tbody) return;
 
       if (verifiedBatch.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 2}" class="py-8 text-center text-slate-400 text-sm">No verified bilties in current batch. Click "Add More LR" to upload.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 3}" class="py-8 text-center text-slate-400 text-sm">No verified bilties in current batch. Click "Add More LR" to upload.</td></tr>`;
         const badge = document.getElementById('filterStatsBadge');
         if (badge) {
           badge.innerText = 'Total: 0 LR';
           badge.className = 'text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap';
         }
+        updateExportButtonsVerificationState();
         return;
       }
 
@@ -6002,13 +6577,19 @@
       }
 
       if (filteredList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 2}" class="py-8 text-center text-slate-400 text-sm">No matching LR records found for the selected filters. <button onclick="resetBatchFilters()" class="text-sky-600 underline font-semibold ml-1 cursor-pointer">Reset Filters</button></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 3}" class="py-8 text-center text-slate-400 text-sm">No matching LR records found for the selected filters. <button onclick="resetBatchFilters()" class="text-sky-600 underline font-semibold ml-1 cursor-pointer">Reset Filters</button></td></tr>`;
+        updateExportButtonsVerificationState();
         return;
       }
 
       tbody.innerHTML = filteredList.map(({ item, origIdx }, rowNum) => {
         const d = item.data || {};
         const isFallback = item.ocrEngine === 'ml_fallback';
+
+        const statusObj = getLrMandatoryStatus(item);
+        const statusBadge = statusObj.isVerified
+          ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="All mandatory (*) fields are filled"><i data-lucide="check-circle-2" class="w-3 h-3 mr-1 text-emerald-600 inline"></i>Verified</span>`
+          : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 cursor-help" title="Missing mandatory fields: ${statusObj.missingFields.join(', ')}"><i data-lucide="alert-circle" class="w-3 h-3 mr-1 text-amber-600 inline"></i>Unverified</span>`;
 
         const dataCells = BNF_49_COLUMNS.map(colKey => {
           let val = getBnfFieldValue(d, colKey);
@@ -6029,7 +6610,10 @@
           <tr class="hover:bg-sky-50/40 transition group">
             <td class="py-2.5 px-3 text-center font-normal text-slate-500 text-xs sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] border-r border-slate-200">${rowNum + 1}</td>
             ${dataCells}
-            <td class="py-2.5 px-3 text-center sticky right-0 z-10 bg-white group-hover:bg-slate-50 transition shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] border-l border-slate-200">
+            <td class="py-2.5 px-3 text-center sticky right-[96px] z-10 bg-white group-hover:bg-slate-50 transition shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] border-l border-slate-200">
+              ${statusBadge}
+            </td>
+            <td class="py-2.5 px-3 text-center sticky right-0 z-10 bg-white group-hover:bg-slate-50 transition border-l border-slate-200">
               <div class="flex items-center justify-center space-x-1.5">
                 <button onclick="viewBatchItem(${origIdx})" class="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition cursor-pointer" title="View / Edit LR">
                   <i data-lucide="edit-3" class="w-4 h-4"></i>
@@ -6043,6 +6627,7 @@
         `;
       }).join('');
       lucide.createIcons();
+      updateExportButtonsVerificationState();
     }
 
     function viewBatchItem(idx) {
@@ -6064,7 +6649,7 @@
       if (actualIdx < 0 || actualIdx >= verifiedBatch.length) return;
       const target = verifiedBatch[actualIdx];
       const lrName = target.data?.['grno'] || target.data?.['LR No *'] || target.filename || 'item';
-      if (confirm(`Remove consignment LR ${lrName} from batch?`)) {
+      showRemoveLrConfirmModal(lrName, () => {
         const delTimestamp = new Date().toISOString();
         target.deletedAt = delTimestamp;
         const newVer = (target.current_version || 1) + 1;
@@ -6181,7 +6766,7 @@
         }
 
         if (window.lucide && lucide.createIcons) lucide.createIcons();
-      }
+      });
     }
 
     function clearBatch() {
@@ -6194,7 +6779,7 @@
         } catch (_) {}
       }
       if ((!verifiedBatch || verifiedBatch.length === 0) && !hasRecents) {
-        alert('No consignment data in LR list to clear.');
+        showClearConsignmentValidationModal();
         return;
       }
       const modal = document.getElementById('clearAllConfirmModal');
@@ -6651,6 +7236,9 @@
       const s8Btn = document.getElementById('s8Sheet1GenExcelBtnText');
       if (s8Btn) {
         s8Btn.innerText = `Generate Excel (${verifiedBatch.length} LRs)`;
+      }
+      if (typeof updateExportButtonsVerificationState === 'function') {
+        updateExportButtonsVerificationState();
       }
     }
 
@@ -7144,7 +7732,7 @@
       const restored = deletedBatch[idx];
 
       if (isDuplicateWeb({ lrNo: extractLrNoFromData(restored.data), data: restored.data, imageHash: restored.imageHash, excludeId: restored.id })) {
-        alert('This LR already exists. You cannot add the same LR multiple times.');
+        showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
         return;
       }
 
@@ -7271,12 +7859,19 @@
         }
       }
       if (window.lucide && lucide.createIcons) lucide.createIcons();
+      updateExportButtonsVerificationState();
     }
 
     // --- SCREEN 9: Execute Generate Excel & Snapshot ---
     async function executeGenerateExcel() {
       if (verifiedBatch.length === 0) {
-        alert('Please add at least 1 verified consignment note before downloading Excel.');
+        showExcelDownloadValidationModal();
+        return;
+      }
+
+      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
+      if (unverifiedItems.length > 0) {
+        showUnverifiedExcelBlockModal(unverifiedItems);
         return;
       }
 
