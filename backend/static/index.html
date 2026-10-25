@@ -1578,6 +1578,21 @@
 
     function getBnfFieldValue(data, fieldKey) {
       if (!data) return '';
+      if (fieldKey === 'grno (*)' || fieldKey === 'grno' || fieldKey === 'LR No *' || fieldKey === 'LR No') {
+        const raw = String(data['grno (*)'] || data['grno'] || data['LR No *'] || data['LR No'] || data['lrno'] || data['biltyno'] || '').trim();
+        if (!raw || raw.toLowerCase() === 'none' || raw.toLowerCase() === 'null') return '';
+        const m5 = raw.match(/(?<!\d)(\d{5})(?!\d)/);
+        if (m5 && m5[1]) return m5[1];
+        const cleaned = raw.replace(/^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)/i, '').trim();
+        return cleaned || raw;
+      }
+      if (fieldKey === 'igst') {
+        return '0.00';
+      }
+      if (fieldKey === 'pmark') {
+        const rawPm = String(data['pmark'] || data['Private Mark'] || data['seal_no'] || data['seal'] || '').trim();
+        return rawPm.replace(/^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+/i, '').replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '');
+      }
       if (data[fieldKey] !== undefined && data[fieldKey] !== '') return String(data[fieldKey]);
       const normKey = cleanKeyStr(fieldKey);
       for (const [k, v] of Object.entries(data)) {
@@ -1590,7 +1605,33 @@
       if (fieldKey === 'LR No *') return data['LR No *'] || data['LR No'] || data['grno (*)'] || data['grno'] || data['biltyno'] || '';
       if (fieldKey === 'BNF LR No') return data['BNF LR No'] || data['bnf lr no'] || data['bnflrno'] || data['bnflr'] || '';
       if (fieldKey === 'Counter name' || fieldKey === 'counter name') return data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || data['Booking Counter'] || data['booking counter'] || data['branchrefcode'] || 'delhi';
-      if (fieldKey === 'Transit Days' || fieldKey === 'transit days') return data['Transit Days'] || data['transit_days'] || data['transit days'] || 2;
+      if (fieldKey === 'Transit Days' || fieldKey === 'transit days') {
+        const startStr = data['grdt *'] || data['grdt'] || data['stockdt'] || data['stockdt '] || '';
+        const endStr = data['Valid Upto'] || data['validupto'] || data['Valid Up to *'] || '';
+        if (startStr && endStr) {
+          const parseD = (val) => {
+            if (!val) return null;
+            const s = String(val).trim().split(/[\sT]/)[0];
+            const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+            if (m) {
+              let d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, yr = parseInt(m[3], 10);
+              if (yr < 100) yr += 2000;
+              const dt = new Date(yr, mo, d);
+              return isNaN(dt.getTime()) ? null : dt;
+            }
+            const dt2 = new Date(s);
+            return isNaN(dt2.getTime()) ? null : dt2;
+          };
+          const d1 = parseD(startStr);
+          const d2 = parseD(endStr);
+          if (d1 && d2) {
+            const diffDays = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 0) return diffDays;
+          }
+        }
+        const exp = data['Transit Days'] || data['transit_days'] || data['transit days'];
+        return (exp !== undefined && exp !== null && String(exp).trim() !== '') ? exp : '';
+      }
       if (fieldKey === 'Loading Start date *') return data['Loading Start date *'] || data['grdt'] || data['date'] || '';
       if (fieldKey === 'Valid Upto') return data['Valid Upto'] || data['validupto'] || '';
       if (fieldKey === 'stockdt ' || fieldKey === 'stockdt') return data['stockdt '] || data['stockdt'] || data['grdt'] || '';
@@ -1606,7 +1647,10 @@
       if (fieldKey === 'valgoods') return data['valgoods'] || data['Invoice Value'] || data['declared_value'] || '';
       if (fieldKey === 'ewaybillno') return data['ewaybillno'] || data['E-way Bill No'] || data['eway_bill_no'] || '';
       if (fieldKey === 'productcode') return data['productcode'] || data['Product Code'] || '';
-      if (fieldKey === 'pmark') return data['pmark'] || data['Private Mark'] || data['seal_no'] || '';
+      if (fieldKey === 'pmark') {
+        const rawPm = String(data['pmark'] || data['Private Mark'] || data['seal_no'] || data['seal'] || '').trim();
+        return rawPm.replace(/^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+/i, '').replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '');
+      }
       if (fieldKey === 'grtype(Don’t know)' || fieldKey === 'grtype') return data['grtype(Don’t know)'] || data['grtype'] || data['Payment Term'] || data['Freight Term'] || '';
       if (fieldKey === 'freight  *' || fieldKey === 'freight') {
         const fr = data['freight  *'] || data['freight'] || data['Freight Charge'] || data['basic freight'] || data['total freight'] || '';
@@ -1631,7 +1675,7 @@
         return data['sgst'] || data['sgst amount'] || data['state gst'] || '0';
       }
       if (fieldKey === 'igst') {
-        return data['igst'] || data['igst amount'] || data['integrated gst'] || '';
+        return '0.00';
       }
       if (fieldKey === 'received') {
         const r = data['received'] || data['amount received'] || data['received amount'];
@@ -4118,32 +4162,10 @@
             }
           } catch (_) {}
 
-          // Client-side auto-enrichment of driver details from fleet registry if missing
-          const vNum = (result?.data?.['Vehicle No *'] || result?.data?.['vehno'] || '').trim();
-          if (vNum && result && result.data) {
-            const cleanV = vNum.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-            const localD = getLocalDriverCache()[cleanV] || KNOWN_FLEET_DRIVERS[cleanV];
-            if (localD) {
-              if (!result.data['Driver Name *']) {
-                result.data['Driver Name *'] = localD.driverName;
-                result.data['driver_name'] = localD.driverName;
-              }
-              if (!result.data['Mobile no   *'] || result.data['Mobile no   *'] === '9999999999') {
-                result.data['Mobile no   *'] = localD.mobileNo;
-                result.data['mobile_no'] = localD.mobileNo;
-              }
-              if (!result.data['Liscense No *']) {
-                result.data['Liscense No *'] = localD.licenseNo;
-                result.data['license_no'] = localD.licenseNo;
-              }
-              if (!result.data['Valid Up to *']) {
-                result.data['Valid Up to *'] = localD.validUpTo;
-                result.data['valid_upto'] = localD.validUpTo;
-              }
-              if (!result.data['Vehicle Category']) {
-                result.data['Vehicle Category'] = localD.vehicleCategory;
-                result.data['Vehicle Type *'] = localD.vehicleCategory;
-              }
+          // Ensure driver details remain empty if not captured by OCR (auto-fill from registry disabled)
+          for (const drvK of ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
+            if (!result?.data?.[drvK]) {
+              if (result && result.data) result.data[drvK] = '';
             }
           }
 
@@ -5474,106 +5496,11 @@
     }
 
     async function autoFetchAndFillMasterDriverWeb() {
-      if (!activeItem) return;
-      const d = activeItem.data || {};
-      const vehNo = (d['Vehicle No *'] || d['vehno'] || document.getElementById('edit_vehno')?.value || '').trim();
-      if (!vehNo) return;
-
-      const cleanVeh = vehNo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-      let found = null;
-
-      // 1. Check local persistent cache
-      const localCache = getLocalDriverCache();
-      if (localCache[cleanVeh]) {
-        found = localCache[cleanVeh];
-      }
-
-      // 2. Check built-in fleet registry
-      if (!found) {
-        for (const [k, v] of Object.entries(KNOWN_FLEET_DRIVERS)) {
-          if (k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === cleanVeh) {
-            found = { ...v };
-            break;
-          }
-        }
-      }
-
-      // 3. Check other items in active batch queue
-      if (!found) {
-        for (const it of verifiedBatch) {
-          if (it.id === activeItem.id) continue;
-          const otherV = (it.data['Vehicle No *'] || it.data['vehno'] || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-          const otherDriver = (it.data['Driver Name *'] || it.data['driver_name'] || '').trim();
-          if (cleanVeh === otherV && otherDriver) {
-            found = {
-              driverName: otherDriver,
-              mobileNo: (it.data['Mobile no   *'] || it.data['Mobile no *'] || it.data['mobile_no'] || '').trim(),
-              licenseNo: (it.data['Liscense No *'] || it.data['License No *'] || it.data['license_no'] || '').trim(),
-              validUpTo: (it.data['Valid Up to *'] || it.data['valid_upto'] || '').trim(),
-              vehicleCategory: it.data['Vehicle Category'] || it.data['Vehicle Type *'] || 'Market'
-            };
-            break;
-          }
-        }
-      }
-
-      // 4. Check backend master registry API
-      if (!found) {
-        try {
-          const resp = await fetch(`/api/master/driver?vehicle_no=${encodeURIComponent(vehNo)}`);
-          const json = await resp.json();
-          if (json.success && json.driver) {
-            found = {
-              driverName: json.driver.driver_name || '',
-              mobileNo: json.driver.mobile_no || '',
-              licenseNo: json.driver.license_no || '',
-              validUpTo: json.driver.valid_upto || '',
-              vehicleCategory: json.driver.vehicle_category || 'Market'
-            };
-            saveLocalDriverCache(vehNo, found);
-          }
-        } catch (err) {
-          console.warn('Driver lookup API notice:', err);
-        }
-      }
-
-      if (found) {
-        const drvNameEl = document.getElementById('custom_driver_name');
-        if (drvNameEl && (!drvNameEl.value || !drvNameEl.value.trim())) {
-          drvNameEl.value = found.driverName;
-        }
-        const drvMobEl = document.getElementById('custom_driver_mobile');
-        if (drvMobEl && (!drvMobEl.value || !drvMobEl.value.trim() || drvMobEl.value === '9999999999')) {
-          drvMobEl.value = found.mobileNo;
-        }
-        const drvLicEl = document.getElementById('custom_license_no');
-        if (drvLicEl && (!drvLicEl.value || !drvLicEl.value.trim())) {
-          drvLicEl.value = found.licenseNo;
-        }
-        const drvValEl = document.getElementById('custom_license_valid');
-        if (drvValEl && (!drvValEl.value || !drvValEl.value.trim())) {
-          drvValEl.value = found.validUpTo;
-        }
-        const vehCatEl = document.getElementById('custom_veh_category');
-        const rawFoundCat = (found.vehicleCategory || 'Market').trim();
-        const normFoundCat = rawFoundCat.charAt(0).toUpperCase() + rawFoundCat.slice(1).toLowerCase();
-        if (vehCatEl && (!vehCatEl.value || vehCatEl.value.toLowerCase() === 'market')) {
-          vehCatEl.value = normFoundCat;
-        }
-
-        // Sync into activeItem.data
-        if (!activeItem.data['Driver Name *']) activeItem.data['Driver Name *'] = found.driverName;
-        activeItem.data['driver_name'] = activeItem.data['Driver Name *'];
-        if (!activeItem.data['Mobile no   *'] || activeItem.data['Mobile no   *'] === '9999999999') activeItem.data['Mobile no   *'] = found.mobileNo;
-        activeItem.data['mobile_no'] = activeItem.data['Mobile no   *'];
-        if (!activeItem.data['Liscense No *']) activeItem.data['Liscense No *'] = found.licenseNo;
-        activeItem.data['license_no'] = activeItem.data['Liscense No *'];
-        if (!activeItem.data['Valid Up to *']) activeItem.data['Valid Up to *'] = found.validUpTo;
-        activeItem.data['valid_upto'] = activeItem.data['Valid Up to *'];
-        if (!activeItem.data['Vehicle Category']) activeItem.data['Vehicle Category'] = normFoundCat;
-        activeItem.data['Vehicle Type *'] = activeItem.data['Vehicle Category'];
-      }
+      // Driver auto-lookup from driver_master.json is disabled.
+      // Driver details must come from the LR document itself; if absent, fields remain empty for manual entry.
+      return;
     }
+    
 
 
     function handleCustomizationCancel() {
@@ -5705,28 +5632,7 @@
         }
       }
 
-      // Register driver in master if vehicle is present
-      if (editVehno && drvNameVal) {
-        saveLocalDriverCache(editVehno, {
-          driverName: drvNameVal,
-          mobileNo: drvMobVal,
-          licenseNo: drvLicVal,
-          validUpTo: drvValVal,
-          vehicleCategory: vehCatVal
-        });
-        fetch('/api/master/register-driver', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            vehicle_no: editVehno,
-            driver_name: drvNameVal,
-            mobile_no: drvMobVal,
-            license_no: drvLicVal,
-            valid_upto: drvValVal,
-            vehicle_category: vehCatVal
-          })
-        }).catch(() => {});
-      }
+
 
 
       const editTimestamp = new Date().toISOString();

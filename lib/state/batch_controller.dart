@@ -676,32 +676,9 @@ class BatchProcessingController extends ChangeNotifier {
           _currentOcrStep = 5;
           notifyListeners();
 
-          // Auto-enrich driver and master data
-          final vehNo = (parseResult.data['Vehicle No *'] ?? parseResult.data['vehno'] ?? '').trim();
-          if (vehNo.isNotEmpty) {
-            final driverRecord = MasterDataService.instance.getDriverForVehicle(vehNo);
-            if (driverRecord != null) {
-              if ((parseResult.data['Driver Name *'] ?? '').trim().isEmpty) {
-                parseResult.data['Driver Name *'] = driverRecord.driverName;
-                parseResult.data['driver_name'] = driverRecord.driverName;
-              }
-              if ((parseResult.data['Mobile no   *'] ?? '').trim().isEmpty || parseResult.data['Mobile no   *'] == '9999999999') {
-                parseResult.data['Mobile no   *'] = driverRecord.mobileNo;
-                parseResult.data['mobile_no'] = driverRecord.mobileNo;
-              }
-              if ((parseResult.data['Liscense No *'] ?? '').trim().isEmpty) {
-                parseResult.data['Liscense No *'] = driverRecord.licenseNo;
-                parseResult.data['license_no'] = driverRecord.licenseNo;
-              }
-              if ((parseResult.data['Valid Up to *'] ?? '').trim().isEmpty) {
-                parseResult.data['Valid Up to *'] = driverRecord.validUpTo;
-                parseResult.data['valid_upto'] = driverRecord.validUpTo;
-              }
-              if ((parseResult.data['Vehicle Category'] ?? '').trim().isEmpty) {
-                parseResult.data['Vehicle Category'] = driverRecord.vehicleCategory;
-                parseResult.data['Vehicle Type *'] = driverRecord.vehicleCategory;
-              }
-            }
+          // Ensure driver details remain empty if absent in OCR (driver_master auto-fill disabled)
+          for (final drvKey in ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
+            parseResult.data.putIfAbsent(drvKey, () => '');
           }
 
           // Auto-enrich Department from ManiFest.xlsx if Customer is known

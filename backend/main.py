@@ -210,8 +210,8 @@ DOCUMENT & MULTI-PAGE EXTRACTION RULES:
 This document may contain a single page or multiple pages (e.g. Consignment Note, Vehicle RC, Permit, Insurance, Pollution Test, and Driving Licence). Examine ALL pages thoroughly:
 
 1. Consignment & Billing Details (from Consignment Note / Bilty if present):
-- "grno": Consignment Note No (written in 'CONSIGNMENT NOTE: No.', 'C Note No.', or 'LR No.' box, e.g. 9421736, 30035, 9415364).
-- "LR No *": Same printed Consignment Note / LR Number.
+- "grno": Consignment Note number printed in the 'CONSIGNMENT NOTE: No.' box. If it's a 5-digit number (e.g., 32760, 30135, 32754, 33118) or any valid consignment serial, capture it accurately without dropping it. (Do NOT confuse the vehicle registration number written in 'Tempo/Truck No.' like TG08U9828 with the Consignment Note number).
+- "LR No *": Same Consignment Note number.
 - "grdt": Consignment Note Date (written in 'Date' box, e.g. 05 Oct 26, 05/08/2026).
 - "stockdt": Date of entry or Consignment Note Date (same as grdt).
 - "Customer Name *": Billed customer / party name (e.g. 'PATANJALI FOODS LTD BISCUIT (Formerly RSIL)', 'Himalaya Wellness Company').
@@ -231,13 +231,13 @@ This document may contain a single page or multiple pages (e.g. Consignment Note
 - "Valid Upto": E-way bill validity date (look for 'Valid =', e.g. 08 Oct 26, 14/08/2026).
 - "bookedaweight": Actual Weight in KG (written in Weight box, e.g. 6300, 6500, 15057).
 - "bookedcweight": Charged Weight in KG (same as bookedaweight or charged weight).
-- "pmark": Seal Number / Private Mark (look for 'Seal No =', e.g. '001678').
+- "pmark": Seal Number / Private Mark (Extract ONLY the actual seal code or digits, e.g., CJ007567 or 00153. Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, No, =, or :).
 - "grtype(Don’t know)": Payment term (written in Freight box, e.g. 'TBB', 'TO B', 'TO PAY').
 - "freight  *": Numerical freight charge from the transporter/bilty charges table. If not specified or left blank, return null or 0.
 - "oamount": Total invoice amount (rounded off / gross invoice value). Prefer the Grand Total from the Tax Invoice or "Value of Goods" from the E-Way Bill (e.g., 5802888, 6102872, 4017285).
 - "cgst": Central GST amount from invoice tax summary. If the supply is interstate (IGST charged), return 0.00.
 - "sgst": State GST amount from invoice tax summary. If the supply is interstate (IGST charged), return 0.00.
-- "igst": Total Integrated GST amount from the invoice tax summary (e.g., 706796.16, 433434.20). If intrastate, return 0.00.
+- "igst": Integrated GST amount. Always output 0.00 (or 0) for manual data entry purposes.
 - "received": Amount already received against the freight/consignment note. If blank, return 0.00.
 - "advance": Advance amount paid to transporter/driver on the bilty. If blank, return 0.00.
 - "collectionstncode": Station code or city of origin/dispatch (e.g., from "From" station on LR or dispatch PIN/city, like HYDERABAD, Bangalore).
@@ -256,16 +256,17 @@ This document may contain a single page or multiple pages (e.g. Consignment Note
 - "Depatment Name": Department name if mentioned (e.g. 'TRANSPORT DEPARTMENT', 'SURGICAL').
 
 3. Driver Details (from Driving Licence / Pollution Certificate / Driver Signature):
-- "Driver Name *": Driver full name. Extract ONLY if explicitly visible and written on a Driving Licence card, driver box, or signature in this document. If NOT written, leave as empty string "". NEVER guess or invent names.
+- "Driver Name *": Driver full name. Extract ONLY if explicitly visible and written on a Driving Licence card, driver box, or signature in this document. If NOT written or not present, leave as empty string "". NEVER guess or invent names.
 - "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if a genuine mobile number is written for the driver or transporter. If NOT written, leave as empty string "". NEVER output dummy numbers like "9999999999".
 - "Liscense No *": Driving Licence number. Extract ONLY if explicitly written on Driving Licence card or document. If NOT written, leave as empty string "".
 - "Valid Up to *": Driving Licence or permit validity date (DD/MM/YYYY or DD-Mon-YY). Extract ONLY if written. If NOT written, leave as empty string "".
 
-4. DOCUMENT TYPE & BNF LR NO. EXTRACTION RULES:
-* Orange/Yellow handwritten-image: Extract only the LR No.; do not treat any number as BNF LR No. "BNF LR No" MUST BE an empty string "".
-* White printed page: If a number is handwritten/penciled at top-left or top-right, treat it as BNF LR No.
-* If there is no handwritten/pencil number on the white page, leave BNF LR No blank ("").
-* Never copy the printed consignment note number into BNF LR No.
+4. ZERO-HALLUCINATION & STRICT EMPTY FIELD RULES:
+* "grno" / "LR No *": Extract the Consignment Note number from the 'CONSIGNMENT NOTE: No.' box. If it's a 5-digit number or any valid consignment serial, capture it accurately without dropping it. Never confuse the truck registration number (e.g. TG... / KA...) with the Consignment Note number.
+* Note on 'BNF LR': The 'BNF LR' column has been completely removed from the Excel format. Do not extract or map any number as BNF LR.
+* "pmark": Extract ONLY the actual seal code or digits (e.g., CJ007567 or 00153). Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, No, =, or : from the extracted value. Never confuse seal number with LR number.
+* "igst": Always output 0.00 or 0 for manual data entry purposes.
+* STRICT EMPTY FIELD RULE: If any driver details (Driver Name, Mobile No, License No, Valid Up to) or vehicle details are not visibly present in the document or attached credentials, LEAVE THEM STRICTLY AS AN EMPTY STRING "" so the operator can enter them manually. NEVER auto-fill or guess missing values.
 * IF ANY FIELD IS MISSING OR NOT WRITTEN IN THE DOCUMENT, LEAVE IT AS AN EMPTY STRING "" (DO NOT GUESS OR INVENT FAKE DATA).
 """
 
@@ -285,6 +286,94 @@ def is_orange_yellow_image(pil_img: Image.Image) -> bool:
         return (orange_yellow_count / len(pixels)) > 0.15
     except Exception:
         return False
+
+
+def _clean_pmark(raw) -> str:
+    """
+    Extract ONLY the actual seal code or digits (e.g., CJ007567 or 00153).
+    Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, No, =, or : from the extracted value.
+    """
+    if raw is None:
+        return ""
+    import re
+    s = str(raw).strip()
+    if not s or s.lower() in ("none", "null", "nan"):
+        return ""
+    # Strip prefixes like Seal, Sealv0, Seal No, No, =, :, -, #
+    s2 = re.sub(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', '', s, flags=re.IGNORECASE).strip()
+    s3 = re.sub(r'^[^a-zA-Z0-9]+', '', s2).strip()
+    return re.sub(r'[^a-zA-Z0-9]+$', '', s3).strip()
+
+
+def _clean_grno(raw) -> str:
+    """
+    Extract the Consignment Note number from the 'CONSIGNMENT NOTE: No.' box.
+    If it's a 5-digit number or any valid consignment serial, capture it accurately without dropping it.
+    """
+    if raw is None:
+        return ""
+    import re
+    s = str(raw).strip()
+    if not s or s.lower() in ("none", "null", "nan"):
+        return ""
+    # If it contains an exact standalone 5-digit number (e.g. 32760, 30135, 32754)
+    m5 = re.search(r'(?<!\d)(\d{5})(?!\d)', s)
+    if m5:
+        return m5.group(1)
+    # Strip label prefixes like 'CONSIGNMENT NOTE: No.', 'No:', 'CN No.', 'LR No.', 'LR:'
+    cleaned = re.sub(
+        r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)',
+        '',
+        s,
+        flags=re.IGNORECASE
+    ).strip()
+    return cleaned or s
+
+
+def _calculate_transit_days(start_val, end_val) -> int | str:
+    """
+    Calculates 'transit_days' by finding the integer difference in days between
+    'grdt' (booking date) and 'Valid Upto' (E-Way Bill expiry date) formatted as DD/MM/YYYY.
+    If either date is missing, unparseable, or invalid, returns an empty string ("").
+    """
+    if not start_val or not end_val:
+        return ""
+    import re
+    from datetime import datetime
+
+    def _parse_d(d):
+        if not d:
+            return None
+        s = str(d).strip()
+        if not s or s.lower() in ("none", "null", "nan", ""):
+            return None
+        # Discard time portions if attached (e.g. '08/10/2026 11:59:00 PM' -> '08/10/2026')
+        s = re.split(r'[\sT]', s)[0].strip()
+        # Primary pattern: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+        m = re.match(r'^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$', s)
+        if m:
+            day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if year < 100:
+                year += 2000
+            try:
+                return datetime(year, month, day).date()
+            except ValueError:
+                return None
+        # Alternate patterns (e.g. YYYY-MM-DD or DD-Mon-YYYY)
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%b-%Y", "%d %b %Y", "%d-%b-%y", "%d %B %Y"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                pass
+        return None
+
+    d1 = _parse_d(start_val)
+    d2 = _parse_d(end_val)
+    if d1 and d2:
+        diff = (d2 - d1).days
+        if diff >= 0:
+            return diff
+    return ""
 
 
 def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
@@ -347,7 +436,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         return s
 
     # Base GR fields
-    grno = get_val("grno", "grno (*)", "gr number", "bilty no", "bilty number", "lr no", "lr number", "consignment no", "cn no")
+    grno = _clean_grno(get_val("grno", "grno (*)", "LR No *", "LR No", "gr number", "bilty no", "bilty number", "lr no", "lr number", "consignment no", "cn no"))
     grdt = get_val("grdt", "grdt *", "gr date", "bilty date", "lr date", "booking date", "date")
     stockdt = get_val("stockdt", "stockdt ", "stock date", "entry date", default=grdt)
     branch = get_val("branchrefcode", "branch", "branch code")
@@ -358,7 +447,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     cngrgst = get_val("cngrgstno", "cngrgstno *", "consignor gst", "consignor gstin", "sender gst")
     cngegst = get_val("cngegstno", "cngegstno *", "consignee gst", "consignee gstin", "receiver gst")
     packing = get_val("packing", "packaging", "package type")
-    pmark = get_val("pmark", "private mark", "p mark", "brand mark", "seal no", "seal")
+    pmark = _clean_pmark(get_val("pmark", "private mark", "p mark", "brand mark", "seal no", "seal"))
     goods = get_val("goods", "goods description", "commodity", "item description", "material")
     freight = clean_num(get_val("freight", "freight  *", "freight amount", "basic freight", "total freight", "freight charge", "total_freight", "basic_freight", "total freight charge"))
     if freight is None or freight == "":
@@ -399,13 +488,23 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     valid_up_to = get_val("Valid Up to *", "Valid Up to", "valid up to", "valid upto", "fitness valid", "permit valid", "license valid", "dl valid till", "valid till", "valid_upto")
     loading_date = get_val("Loading Start date *", "Loading Start date", "loading start date", "loading date", "dispatch date", default=grdt)
     customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
-    lrno = get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)
+    lrno = _clean_grno(get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)) or grno
     bnflr = get_val("BNF LR No", "bnf lr no", "bnf lr", "bnf no")
     dept = get_val("Depatment Name", "department name", "department", "dept", "depatment name")
     counter_name = get_val("Counter name", "counter name", "counter", "booking counter", "branchrefcode", "branch", default="delhi")
-    transit_days = clean_num(get_val("Transit Days", "transit days", "transit_days", default=2))
-    grtype = get_val("grtype", "grtype(Don’t know)", "grtype(don't know)", "payment type", "pay type", "paid type")
     valid_upto = get_val("Valid Upto", "valid upto", "valid up to", "ewb valid upto", default=valid_up_to)
+
+    # Calculate 'transit_days' by finding the integer difference in days between 'grdt' (booking date)
+    # and 'Valid Upto' (E-Way Bill expiry date) formatted as DD/MM/YYYY.
+    # If either date is missing, unparseable, or invalid, return an empty string ("") instead of any default fallback number.
+    calc_days = _calculate_transit_days(grdt, valid_upto)
+    if calc_days != "":
+        transit_days = calc_days
+    else:
+        explicit_transit = clean_num(get_val("Transit Days", "transit days", "transit_days"))
+        transit_days = explicit_transit if explicit_transit is not None and str(explicit_transit).strip() != "" else ""
+
+    grtype = get_val("grtype", "grtype(Don’t know)", "grtype(don't know)", "payment type", "pay type", "paid type")
     branch = get_val("branchrefcode", "branch", "branch code", "counter", "booking counter")
 
     # Derivations & fallbacks for the 15 affected fields
@@ -478,59 +577,35 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     if stock_cwt is None or stock_cwt == "":
         stock_cwt = cweight or aweight or 0
 
-    # Interstate vs Intra-state Tax Handling
-    is_interstate = False
-    if igst is not None and isinstance(igst, (int, float)) and igst > 0:
-        is_interstate = True
-    else:
-        cngr_gst_clean = re.sub(r'[^0-9]', '', str(cngrgst or "")[:2])
-        cnge_gst_clean = re.sub(r'[^0-9]', '', str(cngegst or "")[:2])
-        if cngr_gst_clean and cnge_gst_clean and len(cngr_gst_clean) == 2 and len(cnge_gst_clean) == 2:
-            if cngr_gst_clean != cnge_gst_clean:
-                is_interstate = True
-        elif org and dest and str(org).strip().upper() != str(dest).strip().upper():
-            is_interstate = True
-
-    if is_interstate:
-        cgst = 0
-        sgst = 0
-        if igst is None or igst == "":
-            total_tax = clean_num(get_val("tax", "gst", "total tax", "tax amount", "gst amount"))
-            if total_tax and isinstance(total_tax, (int, float)) and total_tax > 0:
-                igst = total_tax
-            else:
-                igst = 0
-    else:
-        if igst is None or igst == "":
-            igst = 0
-        if cgst is None and sgst is None:
-            total_tax = clean_num(get_val("tax", "gst", "total tax", "tax amount", "gst amount"))
-            if total_tax and isinstance(total_tax, (int, float)) and total_tax > 0:
-                half = round(total_tax / 2, 2)
-                cgst = int(half) if half.is_integer() else half
-                sgst = int(half) if half.is_integer() else half
-            else:
-                cgst = 0
-                sgst = 0
+    # igst: Always output 0.00 or 0 for manual data entry purposes
+    igst = "0.00"
+    if cgst is None and sgst is None:
+        total_tax = clean_num(get_val("tax", "gst", "total tax", "tax amount", "gst amount"))
+        if total_tax and isinstance(total_tax, (int, float)) and total_tax > 0:
+            half = round(total_tax / 2, 2)
+            cgst = int(half) if half.is_integer() else half
+            sgst = int(half) if half.is_integer() else half
         else:
-            if cgst is None or cgst == "":
-                cgst = 0
-            if sgst is None or sgst == "":
-                sgst = 0
+            cgst = 0
+            sgst = 0
+    else:
+        if cgst is None or cgst == "":
+            cgst = 0
+        if sgst is None or sgst == "":
+            sgst = 0
 
     val_map = {
         "stockdt": stockdt,
         "stockdt ": stockdt,
         "branchrefcode": branch,
-        "grno": grno,
-        "grno (*)": grno,
+        "grno": grno or lrno,
+        "grno (*)": grno or lrno,
         "grdt": grdt,
         "grdt *": grdt,
         "grtype": grtype,
         "grtype(Don’t know)": grtype,
         "Customer Name *": customer,
-        "LR No *": lrno,
-        "BNF LR No": bnflr,
+        "LR No *": lrno or grno,
         "Depatment Name": dept,
         "Counter name": counter_name,
         "Transit Days": transit_days,
@@ -592,15 +667,26 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     norm_val_map = {clean(k): v for k, v in val_map.items()}
     row = []
     for h in headers:
+        if h == "igst":
+            row.append("0.00")
+            continue
         v = val_map.get(h)
         if v is None and h is not None:
             v = norm_val_map.get(clean(str(h)))
+        if h in ("grno", "grno (*)", "LR No *", "LR No"):
+            v = _clean_grno(v or val_map.get("grno (*)") or val_map.get("LR No *") or val_map.get("grno")) or None
+        if h == "pmark":
+            v = _clean_pmark(v) or None
         if v is not None and isinstance(v, str):
             v_str = v.strip()
             if not v_str or v_str.lower() in ("none", "null", "nan"):
                 v = None
             elif v_str.isdigit():
-                v = int(v_str)
+                # Preserve leading zeros for seal numbers, codes, and identifiers (e.g. '00153', '00105')
+                if v_str.startswith("0") and len(v_str) > 1:
+                    v = v_str
+                else:
+                    v = int(v_str)
             else:
                 try:
                     v_float = float(v_str)
@@ -983,39 +1069,33 @@ async def extract_handwriting(
         kv_pairs = raw_result.get("key_value_pairs", [])
         data_dict = {item["key"]: item["value"] for item in kv_pairs}
 
-        # Document Type Logic for BNF LR No:
-        # * Orange/Yellow handwritten-image: Extract only the LR No.; do not treat any number as BNF LR No.
-        # * White printed page: If a number is handwritten/penciled at top-left or top-right, treat it as BNF LR No.
-        #   If there is no handwritten/pencil number on the white page, leave BNF LR No blank ("").
-        if is_yellow_image:
-            data_dict["BNF LR No"] = ""
+        # Ensure Driver details remain strictly empty if absent from the document (driver_master auto-fetch disabled)
+        for drv_key in ("Driver Name *", "Mobile no   *", "Liscense No *", "Valid Up to *"):
+            if not data_dict.get(drv_key):
+                data_dict[drv_key] = ""
             for item in kv_pairs:
-                if item.get("key") == "BNF LR No":
+                if item.get("key") == drv_key and not item.get("value"):
                     item["value"] = ""
 
         # Sanitize any dummy/placeholder values
         if str(data_dict.get("Mobile no   *") or "").strip() in ("9999999999", "0000000000", "99999 99999"):
             data_dict["Mobile no   *"] = ""
+            for item in kv_pairs:
+                if item.get("key") == "Mobile no   *":
+                    item["value"] = ""
 
-        # Auto-lookup driver details from Master Registry if Vehicle No is present
-        v_num = (data_dict.get("Vehicle No *") or data_dict.get("Vehicle No") or "").strip()
-        if v_num:
-            v_clean = "".join(c for c in v_num.upper() if c.isalnum())
-            for reg_k, reg_v in MASTER_DRIVER_REGISTRY.items():
-                if "".join(c for c in reg_k.upper() if c.isalnum()) == v_clean:
-                    if not data_dict.get("Driver Name *"):
-                        data_dict["Driver Name *"] = reg_v.get("driver_name", "")
-                    if not data_dict.get("Mobile no   *"):
-                        data_dict["Mobile no   *"] = reg_v.get("mobile_no", "")
-                    if not data_dict.get("Liscense No *"):
-                        data_dict["Liscense No *"] = reg_v.get("license_no", "")
-                    if not data_dict.get("Valid Up to *"):
-                        data_dict["Valid Up to *"] = reg_v.get("valid_upto", "")
-                    if not data_dict.get("Vehicle Category"):
-                        data_dict["Vehicle Category"] = reg_v.get("vehicle_category", "Market")
-                    if not data_dict.get("Vehicle Type *"):
-                        data_dict["Vehicle Type *"] = reg_v.get("vehicle_category", "Market")
-                    break
+        # Clean pmark: Extract ONLY actual seal code or digits (strip Seal, Sealv0, No, =, :, etc.)
+        if data_dict.get("pmark"):
+            data_dict["pmark"] = _clean_pmark(data_dict["pmark"])
+            for item in kv_pairs:
+                if item.get("key") == "pmark":
+                    item["value"] = data_dict["pmark"]
+
+        # igst: Always output 0.00 or 0 for manual data entry purposes
+        data_dict["igst"] = "0.00"
+        for item in kv_pairs:
+            if item.get("key") == "igst":
+                item["value"] = "0.00"
 
         # Ensure Vehicle Type defaults consistently to "Market"
         current_veh_type = str(data_dict.get("Vehicle Type *") or data_dict.get("Vehicle Category") or "").strip()
@@ -1153,18 +1233,29 @@ async def extract_handwriting(
             fallback_oamt = data_dict.get("valgoods") or data_dict.get("declared value") or data_dict.get("other amount") or data_dict.get("other charges") or data_dict.get("hamali") or "0"
             data_dict["oamount"] = fallback_oamt
 
-        ig_val = str(data_dict.get("igst") or "").strip()
-        has_igst = ig_val and ig_val not in ("0", "0.0", "0.00", "none", "null")
-        if has_igst:
-            data_dict["cgst"] = "0.00"
-            data_dict["sgst"] = "0.00"
-        else:
-            if not data_dict.get("cgst"):
-                data_dict["cgst"] = "0"
-            if not data_dict.get("sgst"):
-                data_dict["sgst"] = "0"
-            if not data_dict.get("igst"):
-                data_dict["igst"] = "0.00"
+        # Clean pmark according to rule (strip prefixes/labels)
+        pmark_raw = data_dict.get("pmark") or data_dict.get("seal no") or data_dict.get("seal")
+        if pmark_raw is not None:
+            data_dict["pmark"] = _clean_pmark(pmark_raw)
+
+        # Clean grno / LR No * to strictly 5-digit numeric (strip TG... prefixes)
+        raw_lr = data_dict.get("grno") or data_dict.get("grno (*)") or data_dict.get("LR No *") or data_dict.get("lrno")
+        if raw_lr:
+            cleaned_lr = _clean_grno(raw_lr)
+            if cleaned_lr:
+                if "grno" in data_dict:
+                    data_dict["grno"] = cleaned_lr
+                if "grno (*)" in data_dict:
+                    data_dict["grno (*)"] = cleaned_lr
+                if "LR No *" in data_dict:
+                    data_dict["LR No *"] = cleaned_lr
+
+        # igst: Always output 0.00 or 0 for manual data entry purposes
+        data_dict["igst"] = "0.00"
+        if not data_dict.get("cgst"):
+            data_dict["cgst"] = "0"
+        if not data_dict.get("sgst"):
+            data_dict["sgst"] = "0"
 
         # Sync kv_pairs with fully enriched data_dict
         kv_pairs = [{"key": k, "value": v} for k, v in data_dict.items()]
@@ -2104,20 +2195,7 @@ async def api_export_excel_meta(req: ExportMetaRequest):
             user_name = session_user.get("name", user_name)
             user_mobile = session_user.get("mobile", user_mobile)
 
-    # Auto-learn and persist driver details from exported documents
-    for doc in docs:
-        d_map = _get_doc_data(doc)
-        v_no = str(d_map.get("Vehicle No *") or d_map.get("vehno") or "").strip()
-        d_name = str(d_map.get("Driver Name *") or d_map.get("driver_name") or "").strip()
-        if v_no and d_name:
-            _save_driver_master({
-                "vehicle_no": v_no,
-                "driver_name": d_name,
-                "mobile_no": str(d_map.get("Mobile no   *") or d_map.get("mobile_no") or "").strip(),
-                "license_no": str(d_map.get("Liscense No *") or d_map.get("license_no") or "").strip(),
-                "valid_upto": str(d_map.get("Valid Up to *") or d_map.get("valid_upto") or "").strip(),
-                "vehicle_category": str(d_map.get("Vehicle Category") or d_map.get("Vehicle Type *") or "MARKET").strip(),
-            })
+
 
     now = datetime.now()
     export_date = now.strftime("%d-%b-%Y")

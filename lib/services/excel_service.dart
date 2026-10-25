@@ -148,10 +148,49 @@ class ExcelService {
 
           String getVal(DocumentField f) {
             if (f.key == 'Customer Name *') return normRecord['cngr'] ?? normRecord['consignor'] ?? '';
-            if (f.key == 'LR No *') return normRecord['grno'] ?? normRecord['biltyno'] ?? '';
+            if (f.key == 'LR No *' || f.key == 'grno (*)' || f.key == 'grno') {
+              final raw = normRecord['grno'] ?? normRecord['lrno'] ?? normRecord['biltyno'] ?? normRecord['grno (*)'] ?? normRecord['lr no *'] ?? '';
+              final s = raw.trim();
+              if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null') return '';
+              final m5 = RegExp(r'(?<!\d)(\d{5})(?!\d)').firstMatch(s);
+              if (m5 != null && m5.group(1) != null) return m5.group(1)!;
+              final cleaned = s.replaceAll(RegExp(r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)', caseSensitive: false), '').trim();
+              return cleaned.isNotEmpty ? cleaned : s;
+            }
+            if (f.key == 'pmark') {
+              final rawPm = normRecord['pmark'] ?? normRecord['privatemark'] ?? normRecord['sealno'] ?? normRecord['seal'] ?? '';
+              return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
+            }
             if (f.key == 'BNF LR No') return normRecord['bnflrno'] ?? normRecord['bnflr'] ?? normRecord['bnfno'] ?? '';
             if (f.key == 'Loading Start date *') return normRecord['grdt'] ?? normRecord['date'] ?? '';
             if (f.key == 'Valid Upto') return normRecord['validupto'] ?? '';
+            if (f.key == 'Transit Days') {
+              final startStr = normRecord['grdt'] ?? normRecord['stockdt'] ?? '';
+              final endStr = normRecord['validupto'] ?? '';
+              if (startStr.isNotEmpty && endStr.isNotEmpty) {
+                DateTime? parseD(String s) {
+                  final cleanS = s.trim().split(RegExp(r'[\sT]'))[0];
+                  final parts = cleanS.split(RegExp(r'[\/\-\.]'));
+                  if (parts.length == 3) {
+                    final d = int.tryParse(parts[0]);
+                    final m = int.tryParse(parts[1]);
+                    var y = int.tryParse(parts[2]);
+                    if (d != null && m != null && y != null) {
+                      if (y < 100) y += 2000;
+                      return DateTime(y, m, d);
+                    }
+                  }
+                  return DateTime.tryParse(cleanS);
+                }
+                final d1 = parseD(startStr);
+                final d2 = parseD(endStr);
+                if (d1 != null && d2 != null) {
+                  final diff = d2.difference(d1).inDays;
+                  if (diff >= 0) return diff.toString();
+                }
+              }
+              return normRecord['transitdays'] ?? '';
+            }
             if (f.key == 'stockdt' || f.key == 'stockdt ') return normRecord['stockdt'] ?? normRecord['grdt'] ?? '';
 
             // 15 Affected Fields Systematic Derivations & Fallbacks
@@ -182,7 +221,7 @@ class ExcelService {
               return normRecord['sgst'] ?? normRecord['sgstamount'] ?? normRecord['stategst'] ?? '0';
             }
             if (f.key == 'igst') {
-              return normRecord['igst'] ?? normRecord['igstamount'] ?? normRecord['integratedgst'] ?? '';
+              return '0.00';
             }
             if (f.key == 'received') {
               final r = normRecord['received'] ?? normRecord['amountreceived'] ?? normRecord['receivedamount'];
@@ -872,10 +911,49 @@ class ExcelService {
 
     String getVal(Map<String, String> data, DocumentField f) {
       if (f.key == 'Customer Name *') return data['cngr'] ?? data['consignor'] ?? '';
-      if (f.key == 'LR No *') return data['grno'] ?? data['biltyno'] ?? '';
+      if (f.key == 'LR No *' || f.key == 'grno (*)' || f.key == 'grno') {
+        final raw = data['grno'] ?? data['lrno'] ?? data['LR No *'] ?? data['biltyno'] ?? data['grno (*)'] ?? '';
+        final s = raw.trim();
+        if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null') return '';
+        final m5 = RegExp(r'(?<!\d)(\d{5})(?!\d)').firstMatch(s);
+        if (m5 != null && m5.group(1) != null) return m5.group(1)!;
+        final cleaned = s.replaceAll(RegExp(r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)', caseSensitive: false), '').trim();
+        return cleaned.isNotEmpty ? cleaned : s;
+      }
+      if (f.key == 'pmark') {
+        final rawPm = data['pmark'] ?? data['Private Mark'] ?? data['seal_no'] ?? data['seal'] ?? '';
+        return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
+      }
       if (f.key == 'BNF LR No') return data['BNF LR No'] ?? data['bnflrno'] ?? data['bnflr'] ?? data['bnfno'] ?? '';
       if (f.key == 'Loading Start date *') return data['grdt'] ?? data['date'] ?? '';
       if (f.key == 'Valid Upto') return data['validupto'] ?? '';
+      if (f.key == 'Transit Days') {
+        final startStr = data['grdt *'] ?? data['grdt'] ?? data['stockdt'] ?? '';
+        final endStr = data['Valid Upto'] ?? data['validupto'] ?? '';
+        if (startStr.isNotEmpty && endStr.isNotEmpty) {
+          DateTime? parseD(String s) {
+            final cleanS = s.trim().split(RegExp(r'[\sT]'))[0];
+            final parts = cleanS.split(RegExp(r'[\/\-\.]'));
+            if (parts.length == 3) {
+              final d = int.tryParse(parts[0]);
+              final m = int.tryParse(parts[1]);
+              var y = int.tryParse(parts[2]);
+              if (d != null && m != null && y != null) {
+                if (y < 100) y += 2000;
+                return DateTime(y, m, d);
+              }
+            }
+            return DateTime.tryParse(cleanS);
+          }
+          final d1 = parseD(startStr);
+          final d2 = parseD(endStr);
+          if (d1 != null && d2 != null) {
+            final diff = d2.difference(d1).inDays;
+            if (diff >= 0) return diff.toString();
+          }
+        }
+        return data['Transit Days'] ?? data['transit_days'] ?? '';
+      }
       if (f.key == 'stockdt' || f.key == 'stockdt ') return data['stockdt'] ?? data['grdt'] ?? '';
 
       // 15 Affected Fields Systematic Derivations & Fallbacks
@@ -906,7 +984,7 @@ class ExcelService {
         return data['sgst'] ?? data['sgst amount'] ?? data['state gst'] ?? '0';
       }
       if (f.key == 'igst') {
-        return data['igst'] ?? data['igst amount'] ?? data['integrated gst'] ?? '';
+        return '0.00';
       }
       if (f.key == 'received') {
         final r = data['received'] ?? data['amount received'] ?? data['received amount'];

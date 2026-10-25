@@ -182,5 +182,13 @@
     "license_no": "*",
     "valid_upto": "0",
     "vehicle_category": "Market"
+  },
+  "MP09HH0836": {
+    "vehicle_no": "MP09HH0836",
+    "driver_name": "0",
+    "mobile_no": "0",
+    "license_no": "0",
+    "valid_upto": "0",
+    "vehicle_category": "Market"
   }
 }
