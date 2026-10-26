@@ -1,7 +1,7 @@
 # Auto-Sync script: Watches the Android emulator for new Excel exports
 # and automatically copies them to your laptop project folder and emulator Downloads folder.
 
-$targetDir = "D:\AndroidDev\Projects\ocr_to_excel"
+$targetDir = if (Test-Path "D:\AndroidDev\Projects\ocr_to_excel") { "D:\AndroidDev\Projects\ocr_to_excel" } else { (Resolve-Path "$PSScriptRoot\..").Path }
 $remoteDir = "/sdcard/Android/data/com.example.ocr_to_excel/files"
 
 Write-Host "==========================================================" -ForegroundColor Cyan

@@ -1346,7 +1346,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 TextField(
                   controller: textController,
                   decoration: const InputDecoration(
-                    hintText: 'http://192.168.0.224:8000',
+                    hintText: 'http://192.168.1.2:8000',
                     border: OutlineInputBorder(),
                     isDense: true,
                   ),

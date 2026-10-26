@@ -3498,26 +3498,28 @@
     }
 
     function directDownloadExcel() {
-      if (verifiedBatch.length === 0) {
-        showExcelDownloadValidationModal();
-        return;
-      }
-      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
-      if (unverifiedItems.length > 0) {
-        showUnverifiedExcelBlockModal(unverifiedItems);
+      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      if (verifiedOnly.length === 0) {
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'No verified LRs available for download.',
+          iconType: 'warning'
+        });
         return;
       }
       executeGenerateExcel();
     }
 
     function confirmGenerateExcel() {
-      if (verifiedBatch.length === 0) {
-        showExcelDownloadValidationModal();
-        return;
-      }
-      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
-      if (unverifiedItems.length > 0) {
-        showUnverifiedExcelBlockModal(unverifiedItems);
+      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      if (verifiedOnly.length === 0) {
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'No verified LRs available for download.',
+          iconType: 'warning'
+        });
         return;
       }
       const modal = document.getElementById('generateExcelConfirmModal');
@@ -3541,9 +3543,14 @@
 
     function proceedGenerateExcelConfirmModal() {
       closeGenerateExcelConfirmModal();
-      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
-      if (unverifiedItems.length > 0) {
-        showUnverifiedExcelBlockModal(unverifiedItems);
+      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      if (verifiedOnly.length === 0) {
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'No verified LRs available for download.',
+          iconType: 'warning'
+        });
         return;
       }
       executeGenerateExcel();
@@ -3571,7 +3578,10 @@
 
       if (titleEl) titleEl.innerText = title || 'Notice';
       if (subEl) subEl.innerText = subtitle || 'Notice';
-      if (msgEl) msgEl.innerText = message || '';
+      if (msgEl) {
+        msgEl.style.whiteSpace = 'pre-line';
+        msgEl.innerText = message || '';
+      }
 
       if (cancelBtn) cancelBtn.classList.add('hidden');
       if (confirmBtn) confirmBtn.classList.add('hidden');
@@ -4001,7 +4011,18 @@
       try {
         if (typeof Tesseract !== 'undefined') {
           document.getElementById('ocrProcessingSub').innerText = `Processing ${file.name}...`;
-          const ret = await Tesseract.recognize(file, 'eng', {
+          let targetInput = file;
+          if (file && file.name && file.name.toLowerCase().endsWith('.pdf') && typeof renderPdfPageDataUrl === 'function') {
+            try {
+              const pdfRender = await renderPdfPageDataUrl(file, 1);
+              if (pdfRender && pdfRender.dataUrl) {
+                targetInput = pdfRender.dataUrl;
+              }
+            } catch (pErr) {
+              console.warn('PDF client render for fallback error:', pErr);
+            }
+          }
+          const ret = await Tesseract.recognize(targetInput, 'eng', {
             logger: m => {
               if (m.status === 'recognizing text') {
                 const pct = Math.round((m.progress || 0) * 100);
@@ -4451,34 +4472,34 @@
     // --- Step 2 & Customization Form Validation & Red Highlighting ---
     const STEP2_INPUT_CONFIG = [
       // Tab 1: Basic Details
-      { id: 'edit_grno', tab: 'basic', label: 'LR / Consignment No. *', required: true },
-      { id: 'edit_grdt', tab: 'basic', label: 'LR Date *', required: true },
-      { id: 'edit_customer', tab: 'basic', label: 'Customer Name *', required: true },
-      { id: 'edit_org', tab: 'basic', label: 'Origin Station', required: false },
-      { id: 'edit_dest', tab: 'basic', label: 'Destination Station', required: false },
-      { id: 'edit_vehno', tab: 'basic', label: 'Vehicle No. *', required: true },
-      { id: 'edit_vehtype', tab: 'basic', label: 'Vehicle Type *', required: true },
+      { id: 'edit_grno', tab: 'basic', tabLabel: 'Basic Details', label: 'LR / Consignment No. *', required: true },
+      { id: 'edit_grdt', tab: 'basic', tabLabel: 'Basic Details', label: 'LR Date *', required: true },
+      { id: 'edit_customer', tab: 'basic', tabLabel: 'Basic Details', label: 'Customer Name *', required: true },
+      { id: 'edit_org', tab: 'basic', tabLabel: 'Basic Details', label: 'Origin Station', required: false },
+      { id: 'edit_dest', tab: 'basic', tabLabel: 'Basic Details', label: 'Destination Station', required: false },
+      { id: 'edit_vehno', tab: 'basic', tabLabel: 'Basic Details', label: 'Vehicle No. *', required: true },
+      { id: 'edit_vehtype', tab: 'basic', tabLabel: 'Basic Details', label: 'Vehicle Type *', required: true },
       // Tab 2: Consignor / Consignee
-      { id: 'edit_cngr', tab: 'parties', label: 'Consignor Name *', required: true },
-      { id: 'edit_cngrgst', tab: 'parties', label: 'Consignor GSTIN *', required: true },
-      { id: 'edit_cnge', tab: 'parties', label: 'Consignee Name *', required: true },
-      { id: 'edit_cngegst', tab: 'parties', label: 'Consignee GSTIN *', required: true },
+      { id: 'edit_cngr', tab: 'parties', tabLabel: 'Consignor / Consignee', label: 'Consignor Name *', required: true },
+      { id: 'edit_cngrgst', tab: 'parties', tabLabel: 'Consignor / Consignee', label: 'Consignor GSTIN *', required: true },
+      { id: 'edit_cnge', tab: 'parties', tabLabel: 'Consignor / Consignee', label: 'Consignee Name *', required: true },
+      { id: 'edit_cngegst', tab: 'parties', tabLabel: 'Consignor / Consignee', label: 'Consignee GSTIN *', required: true },
       // Tab 3: Cargo Details
-      { id: 'edit_goods', tab: 'goods', label: 'Goods Description', required: false },
-      { id: 'edit_pkgs', tab: 'goods', label: 'Packages', required: false },
-      { id: 'edit_packing', tab: 'goods', label: 'Packing', required: false },
-      { id: 'edit_aweight', tab: 'goods', label: 'Actual Weight', required: false },
-      { id: 'edit_cweight', tab: 'goods', label: 'Charged Weight', required: false },
-      { id: 'edit_pmark', tab: 'goods', label: 'Private Mark', required: false },
-      { id: 'edit_valgoods', tab: 'goods', label: 'Declared Value', required: false },
+      { id: 'edit_goods', tab: 'goods', tabLabel: 'Cargo Details', label: 'Goods Description', required: false },
+      { id: 'edit_pkgs', tab: 'goods', tabLabel: 'Cargo Details', label: 'Packages', required: false },
+      { id: 'edit_packing', tab: 'goods', tabLabel: 'Cargo Details', label: 'Packing', required: false },
+      { id: 'edit_aweight', tab: 'goods', tabLabel: 'Cargo Details', label: 'Actual Weight', required: false },
+      { id: 'edit_cweight', tab: 'goods', tabLabel: 'Cargo Details', label: 'Charged Weight', required: false },
+      { id: 'edit_pmark', tab: 'goods', tabLabel: 'Cargo Details', label: 'Private Mark', required: false },
+      { id: 'edit_valgoods', tab: 'goods', tabLabel: 'Cargo Details', label: 'Declared Value', required: false },
       // Tab 4: Other Details
-      { id: 'edit_productcode', tab: 'other', label: 'Product Code', required: false },
-      { id: 'edit_eway', tab: 'other', label: 'E-Way Bill No', required: false },
-      { id: 'edit_validupto', tab: 'other', label: 'E-Way Bill Valid Upto', required: false },
-      { id: 'edit_invno', tab: 'other', label: 'Invoice No', required: false },
-      { id: 'edit_invdt', tab: 'other', label: 'Invoice Date', required: false },
-      { id: 'edit_grtype', tab: 'other', label: 'GR Type', required: false },
-      { id: 'edit_oamount', tab: 'other', label: 'Other Charges', required: false }
+      { id: 'edit_productcode', tab: 'other', tabLabel: 'Other Details', label: 'Product Code', required: false },
+      { id: 'edit_eway', tab: 'other', tabLabel: 'Other Details', label: 'E-Way Bill No', required: false },
+      { id: 'edit_validupto', tab: 'other', tabLabel: 'Other Details', label: 'E-Way Bill Valid Upto', required: false },
+      { id: 'edit_invno', tab: 'other', tabLabel: 'Other Details', label: 'Invoice No', required: false },
+      { id: 'edit_invdt', tab: 'other', tabLabel: 'Other Details', label: 'Invoice Date', required: false },
+      { id: 'edit_grtype', tab: 'other', tabLabel: 'Other Details', label: 'GR Type', required: false },
+      { id: 'edit_oamount', tab: 'other', tabLabel: 'Other Details', label: 'Other Charges', required: false }
     ];
 
     const CUSTOMIZATION_INPUT_CONFIG = [
@@ -4509,12 +4530,12 @@
       return (!val || val === '-' || val === 'null' || val === 'None');
     }
 
-    // Requirement: Highlight all fields in Step 2 that have empty values in red
+    // Highlight ONLY missing or invalid mandatory fields in red. Optional fields must never appear red.
     function highlightEmptyFieldsStep2() {
       STEP2_INPUT_CONFIG.forEach(cfg => {
         const el = document.getElementById(cfg.id);
         if (!el) return;
-        if (isFieldValueEmpty(el)) {
+        if (cfg.required && isFieldValueEmpty(el)) {
           applyRedFieldHighlight(el);
         } else {
           removeRedFieldHighlight(el);
@@ -4526,7 +4547,7 @@
       CUSTOMIZATION_INPUT_CONFIG.forEach(cfg => {
         const el = document.getElementById(cfg.id);
         if (!el) return;
-        if (isFieldValueEmpty(el)) {
+        if (cfg.required && isFieldValueEmpty(el)) {
           applyRedFieldHighlight(el);
         } else {
           removeRedFieldHighlight(el);
@@ -4552,8 +4573,12 @@
         el.dataset.redValBound = 'true';
 
         const updateHighlight = () => {
-          if (isFieldValueEmpty(el)) {
-            applyRedFieldHighlight(el);
+          if (cfg.required) {
+            if (isFieldValueEmpty(el)) {
+              applyRedFieldHighlight(el);
+            } else {
+              removeRedFieldHighlight(el);
+            }
           } else {
             removeRedFieldHighlight(el);
           }
@@ -4569,8 +4594,12 @@
         el.dataset.redValBound = 'true';
 
         const updateHighlight = () => {
-          if (isFieldValueEmpty(el)) {
-            applyRedFieldHighlight(el);
+          if (cfg.required) {
+            if (isFieldValueEmpty(el)) {
+              applyRedFieldHighlight(el);
+            } else {
+              removeRedFieldHighlight(el);
+            }
           } else {
             removeRedFieldHighlight(el);
           }
@@ -4584,7 +4613,7 @@
     function getEmptyMandatoryFields() {
       const emptyList = [];
 
-      // 1. Mandatory Step 2 inputs
+      // 1. Mandatory Step 2 inputs across all 4 tabs
       const mandatoryStep2 = STEP2_INPUT_CONFIG.filter(c => c.required);
       mandatoryStep2.forEach(cfg => {
         const el = document.getElementById(cfg.id);
@@ -4615,47 +4644,50 @@
       const first = emptyMandatory[0];
 
       const focusTarget = () => {
-        const el = document.getElementById(first.id);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          try { el.focus(); } catch (_) {}
+        if (first.screen === 'step2') {
+          // If currently on Customization Screen (Screen 4b), return to Step 2
+          const customScreen = document.getElementById('screen4b_customization');
+          if (customScreen && customScreen.style.display !== 'none' && !customScreen.hidden) {
+            handleCustomizationBackToScanData();
+          } else {
+            navigateTo('screen4_edit');
+          }
+
+          // Switch to the specific tab containing the first empty field
+          if (first.tab && typeof switchTab === 'function') {
+            switchTab(first.tab);
+          }
+        } else if (first.screen === 'custom') {
+          // If currently on Step 2, open customization screen
+          const editScreen = document.getElementById('screen4_edit');
+          if (editScreen && editScreen.style.display !== 'none' && !editScreen.hidden) {
+            openCustomizationScreen();
+          } else {
+            navigateTo('screen4b_customization');
+          }
         }
+
+        setTimeout(() => {
+          const el = document.getElementById(first.id);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            try { el.focus(); } catch (_) {}
+          }
+        }, 180);
       };
 
-      if (first.screen === 'step2') {
-        // If currently on Customization Screen (Screen 4b), return to Step 2
-        const customScreen = document.getElementById('screen4b_customization');
-        if (customScreen && customScreen.style.display !== 'none' && !customScreen.hidden) {
-          handleCustomizationBackToScanData();
-        } else {
-          navigateTo('screen4_edit');
-        }
+      const count = emptyMandatory.length;
+      const listItems = emptyMandatory.map((item, idx) => {
+        const tabStr = item.tabLabel ? ` (${item.tabLabel})` : (item.screen === 'custom' ? ' (Master Data)' : '');
+        return `${idx + 1}. ${item.label}${tabStr}`;
+      }).join('\n');
 
-        // Switch to the specific tab containing the first empty field
-        if (first.tab && typeof switchTab === 'function') {
-          switchTab(first.tab);
-        }
-
-        setTimeout(focusTarget, 180);
-
-      } else if (first.screen === 'custom') {
-        // If currently on Step 2, open customization screen
-        const editScreen = document.getElementById('screen4_edit');
-        if (editScreen && editScreen.style.display !== 'none' && !editScreen.hidden) {
-          openCustomizationScreen();
-        } else {
-          navigateTo('screen4b_customization');
-        }
-
-        setTimeout(focusTarget, 180);
-      }
+      const msg = `Total: ${count} missing mandatory field${count === 1 ? '' : 's'} across tabs:\n\n${listItems}`;
 
       showAppInfoModal({
         title: 'Mandatory Fields Incomplete',
         subtitle: 'Required Details Missing',
-        // message: `${emptyMandatory.length} mandatory (*) field${emptyMandatory.length === 1 ? '' : 's'} must be completed before verifying. Missing fields are highlighted in red.`,
-        message: `${emptyMandatory.length} field${emptyMandatory.length === 1 ? '' : 's'} must be completed before verifying. Missing fields are highlighted in red.`,
-
+        message: msg,
         iconType: 'warning',
         onOk: focusTarget
       });
@@ -5259,6 +5291,13 @@
     }
 
     function handleEditNext() {
+      // Validate mandatory fields across all four tabs
+      const emptyMandatory = getEmptyMandatoryFields().filter(f => f.screen === 'step2');
+      if (emptyMandatory.length > 0) {
+        handleInvalidVerifyAndSave(emptyMandatory);
+        return;
+      }
+
       const idx = EDIT_TABS.indexOf(currentEditTab);
       if (idx < EDIT_TABS.length - 1) {
         switchTab(EDIT_TABS[idx + 1]);
@@ -6222,8 +6261,9 @@
 
       const pBtn = document.getElementById('previewExcelBtnText');
       if (pBtn) pBtn.innerText = `Preview Excel (${verifiedBatch.length} LRs)`;
+      const vCount = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified).length;
       const dBtn = document.getElementById('directDownloadExcelBtnText');
-      if (dBtn) dBtn.innerText = `Download Excel (${verifiedBatch.length} LRs)`;
+      if (dBtn) dBtn.innerText = `Download Excel (${vCount} LRs)`;
       if (typeof updateExportButtonsVerificationState === 'function') {
         updateExportButtonsVerificationState();
       }
@@ -6344,13 +6384,16 @@
       const s8Btn = document.getElementById('s8Sheet1GenExcelBtn');
       const btn = document.getElementById('genExcelBtn');
 
+      // Requirement: Keep the Download Excel button always visible and clickable, even when unverified LRs exist
+      if (dBtn) {
+        dBtn.disabled = false;
+        dBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        dBtn.classList.add('cursor-pointer');
+        dBtn.title = 'Download Verified LRs (.xlsx)';
+      }
+
       const totalCount = verifiedBatch.length;
       if (totalCount === 0) {
-        if (dBtn) {
-          dBtn.disabled = true;
-          dBtn.classList.add('opacity-50', 'cursor-not-allowed');
-          dBtn.title = 'No LR data to download';
-        }
         if (s8Btn) {
           s8Btn.disabled = true;
           s8Btn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -6364,16 +6407,9 @@
         return;
       }
 
-      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
-      const isAllVerified = (unverifiedItems.length === 0);
-
-      if (!isAllVerified) {
-        const tooltip = `Cannot download Excel: ${unverifiedItems.length} of ${totalCount} LR(s) are Unverified. Fill all mandatory (*) fields first.`;
-        if (dBtn) {
-          dBtn.disabled = true;
-          dBtn.classList.add('opacity-50', 'cursor-not-allowed');
-          dBtn.title = tooltip;
-        }
+      const verifiedCount = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified).length;
+      if (verifiedCount === 0) {
+        const tooltip = 'No verified LRs available for download. Fill all mandatory (*) fields first.';
         if (s8Btn) {
           s8Btn.disabled = true;
           s8Btn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -6385,11 +6421,6 @@
           btn.title = tooltip;
         }
       } else {
-        if (dBtn) {
-          dBtn.disabled = false;
-          dBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-          dBtn.title = 'Download Excel (.xlsx)';
-        }
         if (s8Btn) {
           s8Btn.disabled = false;
           s8Btn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -7815,14 +7846,14 @@
 
     // --- SCREEN 9: Execute Generate Excel & Snapshot ---
     async function executeGenerateExcel() {
-      if (verifiedBatch.length === 0) {
-        showExcelDownloadValidationModal();
-        return;
-      }
-
-      const unverifiedItems = verifiedBatch.filter(item => !getLrMandatoryStatus(item).isVerified);
-      if (unverifiedItems.length > 0) {
-        showUnverifiedExcelBlockModal(unverifiedItems);
+      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      if (verifiedOnly.length === 0) {
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'No verified LRs available for download.',
+          iconType: 'warning'
+        });
         return;
       }
 
@@ -7845,7 +7876,7 @@
 
       const exportIso = new Date().toISOString();
       const payload = {
-        documents: verifiedBatch.map(b => ({
+        documents: verifiedOnly.map(b => ({
           filename: b.filename || 'consignment_note.pdf',
           document_title: b.document_title || 'Consignment Note',
           data: (b.data && typeof b.data === 'object') ? b.data : {},
@@ -7881,7 +7912,7 @@
         const res = await resp.json();
 
         // Update local items with exportedAt
-        verifiedBatch.forEach(b => {
+        verifiedOnly.forEach(b => {
           b.exportedAt = exportIso;
         });
 
@@ -7893,7 +7924,7 @@
         const s9Date = document.getElementById('s9_date');
         if (s9Date) s9Date.innerText = res.generated_on || exportIso;
         const s9Created = document.getElementById('s9_created_at');
-        if (s9Created) s9Created.innerText = verifiedBatch[0]?.createdAt ? new Date(verifiedBatch[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
+        if (s9Created) s9Created.innerText = verifiedOnly[0]?.createdAt ? new Date(verifiedOnly[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
         const s9File = document.getElementById('s9_filename');
         if (s9File) s9File.innerText = res.filename;
 
@@ -7911,7 +7942,7 @@
         triggerDirectDownload(res.download_url, res.filename);
 
         // Mark corresponding batch as completed/exported and remove from pending lists
-        const exportedDocsSnapshot = [...verifiedBatch];
+        const exportedDocsSnapshot = [...verifiedOnly];
         try {
           markBatchAsCompletedAndClearPending(exportedDocsSnapshot, res);
         } catch (markErr) {
@@ -7935,7 +7966,7 @@
             fn.title = res.filename;
           }
           if (tl) {
-            tl.innerText = `${res.total_lrs || verifiedBatch.length}`;
+            tl.innerText = `${res.total_lrs || verifiedOnly.length}`;
           }
           if (dt) {
             dt.innerText = formatGeneratedOn(res.generated_on || res.exported_at || exportIso);
@@ -7975,8 +8006,20 @@
         return;
       }
 
+      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      if (verifiedOnly.length === 0) {
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'No verified LRs available for download.',
+          iconType: 'warning'
+        });
+        stopExportButtonsLoading(false);
+        return;
+      }
+
       // Update local items with exportedAt
-      verifiedBatch.forEach(b => {
+      verifiedOnly.forEach(b => {
         b.exportedAt = exportIso;
       });
 
@@ -7987,7 +8030,7 @@
       const userName = currentUser?.name || 'Ruchita Patel';
 
       // Sheet 1: gr_bnf_49 (Clean business data only for user download)
-      const s1Rows = verifiedBatch.map(item => {
+      const s1Rows = verifiedOnly.map(item => {
         return BNF_49_COLUMNS.map(col => getBnfFieldValue(item.data, col));
       });
       const ws1 = XLSX.utils.aoa_to_sheet([BNF_49_COLUMNS, ...s1Rows]);
@@ -8002,13 +8045,13 @@
 
       // Safely populate Screen 9 fields if present
       const s9Total = document.getElementById('s9_total');
-      if (s9Total) s9Total.innerText = `${verifiedBatch.length} LRs`;
+      if (s9Total) s9Total.innerText = `${verifiedOnly.length} LRs`;
       const s9Size = document.getElementById('s9_size');
       if (s9Size) s9Size.innerText = `${Math.max(1, Math.round(blob.size / 1024))} KB`;
       const s9Date = document.getElementById('s9_date');
       if (s9Date) s9Date.innerText = new Date().toLocaleString();
       const s9Created = document.getElementById('s9_created_at');
-      if (s9Created) s9Created.innerText = verifiedBatch[0]?.createdAt ? new Date(verifiedBatch[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
+      if (s9Created) s9Created.innerText = verifiedOnly[0]?.createdAt ? new Date(verifiedOnly[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
       const s9File = document.getElementById('s9_filename');
       if (s9File) s9File.innerText = filename;
 
@@ -8017,7 +8060,7 @@
 
       renderScreen9SnapshotPreview({
         filename: filename,
-        total_lrs: verifiedBatch.length,
+        total_lrs: verifiedOnly.length,
         generated_by: currentUser?.name || 'Logistics User',
         user_mobile: currentUser?.mobile || '',
         generated_on: new Date().toLocaleString()
@@ -8027,7 +8070,7 @@
       triggerDirectDownload(downloadUrl, filename);
 
       // Mark corresponding batch as completed/exported and remove from pending lists
-      const clientDocsSnapshot = [...verifiedBatch];
+      const clientDocsSnapshot = [...verifiedOnly];
       try {
         markBatchAsCompletedAndClearPending(clientDocsSnapshot, {
           export_id: 'client_' + Date.now(),
@@ -8043,7 +8086,8 @@
         dBtn.disabled = false;
         dBtn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">Downloaded!</span>`;
         setTimeout(() => {
-          const countTxt = verifiedBatch.length > 0 ? ` (${verifiedBatch.length} LRs)` : '';
+          const vOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+          const countTxt = vOnly.length > 0 ? ` (${vOnly.length} LRs)` : ' (0 LRs)';
           dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">Download Excel${countTxt}</span>`;
           if (window.lucide && lucide.createIcons) lucide.createIcons();
         }, 3000);
@@ -8064,7 +8108,7 @@
           fn.title = filename;
         }
         if (tl) {
-          tl.innerText = `${verifiedBatch.length}`;
+          tl.innerText = `${verifiedOnly.length}`;
         }
         if (dt) {
           dt.innerText = formatGeneratedOn(now);

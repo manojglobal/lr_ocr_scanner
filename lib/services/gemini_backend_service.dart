@@ -8,7 +8,7 @@ import '../models/extraction_result.dart';
 /// Client service that connects to the FastAPI main.py Gemini OCR backend.
 class GeminiBackendService {
   static const String _prefKeyServerUrl = 'gemini_backend_server_url';
-  static const String defaultServerUrl = 'http://192.168.0.224:8000';
+  static const String defaultServerUrl = 'http://192.168.1.2:8000';
 
   String _currentServerUrl = defaultServerUrl;
 

@@ -204,269 +204,525 @@ TEMPLATE_BNF_49 = _resolve_project_file("GR IMport format_BNF (1) (1) (1).xlsx")
 TEMPLATE_STOCK_38 = _resolve_project_file("ImportGRStockExcelFormat.xlsx")
 
 DEFAULT_HANDWRITTEN_OCR_PROMPT = """
-You are an expert OCR and document information scraping engine specialized in reading transport bilties, consignment notes, lorry receipts, and associated vehicle/driver compliance documents (including 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' bilties, Vehicle Registration Certificate Form 23A / RC, National/State Goods Permits, Pollution Test Certificates, and Driving Licences).
+You are the Master OCR and Document Information Scraping Engine for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and its enterprise logistics clients.
+Inspect ALL pages in the provided document dossier thoroughly (including Consignment Note Bilty, Commercial Tax Invoices, GST E-Way Bills, Vehicle RC Form 23A, and Commercial Driving Licences DL) and map the extracted data strictly into the 49 standardized columns:
 
-DOCUMENT & MULTI-PAGE EXTRACTION RULES:
-This document may contain a single page or multiple pages (e.g. Consignment Note, Vehicle RC, Permit, Insurance, Pollution Test, and Driving Licence). Examine ALL pages thoroughly:
+### STEP 1: AUTOMATIC COMPANY & DOCUMENT PROFILE IDENTIFICATION
+Visually examine the document header, company logo, billing parties, and stamps to classify the customer profile:
+- UNICHARM PROFILE: Headers, Tax Invoices, or consignor/consignee mention 'UNICHARM INDIA PVT. LTD.', 'Vuicharm', 'Uvicharm', or 'GLOBAL MARKETING-MT'.
+- PATANJALI PROFILE: Headers mention 'PATANJALI PARIVAHAN PVT. LTD.', 'PATANJALI FOODS LIMITED', 'Ruchi Soya', or display Patanjali C Note layout.
+- HIMALAYA PROFILE: Headers mention 'Himalaya Wellness Company' or 'Makali Bangalore'.
+- GOLD PLUS PROFILE: Headers, Tax Invoices, or gate passes mention 'GOLD PLUS FLOAT GLASS PVT. LTD.' or 'Kanagala Belagavi'.
+- GENERIC BNF PROFILE: Standard Box N Freight printed bilty or other enterprise customer from the manifest.
 
-1. Consignment & Billing Details (from Consignment Note / Bilty if present):
-- "grno": Primary Consignment / LR Tracking Number.
-  * For PATANJALI (PATANJALI PARIVAHAN / PATANJALI FOODS):
-    Check the top-left and top-right outer sections (margins outside the printed borders) for an independent number written with a pen or pencil (e.g. 21348, 21349).
-    If a handwritten or penciled number is written in the top-left or top-right section, extract that exact number.
-    If NOTHING has been written with a pencil or pen in the top-left or top-right section, leave it strictly empty ("") so the record cannot be saved until manually entered (never output "0").
-    DO NOT fall back to the printed 'C Note No.' (e.g. 9325382, 9325388, 9421832).
-    NEVER copy or confuse vehicle registration numbers (e.g. RJ32GC5386, UP21FT4643, BR03K4305).
-  * For HIMALAYA / BNF:
-    Consignment Note number printed in the 'CONSIGNMENT NOTE: No.' box. If it's a 5-digit number (e.g., 32760, 30135, 32754, 33118) or any valid consignment serial, capture it accurately without dropping it. (Do NOT confuse the vehicle registration number written in 'Tempo/Truck No.' like TG08U9828 with the Consignment Note number).
-  * For other transporters:
-    Extract the primary Consignment Note number or LR serial from the document header.
-- "LR No *": Same primary Consignment / LR Tracking Number as "grno".
-- "grdt": Consignment Note Date (written in 'Date' box, strictly formatted as DD/MM/YYYY, e.g. 12/10/2026, 05/08/2026. NEVER output month names like 12-OCT-2026 or 05 Oct 26).
-- "stockdt": Date of entry or Consignment Note Date (same as grdt, formatted as DD/MM/YYYY).
-- "Customer Name *": Billed customer / party name (e.g. 'PATANJALI FOODS LTD BISCUIT (Formerly RSIL)', 'Himalaya Wellness Company').
-- "cngr *": Consignor Name & Address (written in 'Consignor\'s Name & Address' box).
-- "cnge *": Consignee Name & Address (written in 'Consignee\'s Name & Address' box).
-- "cngrgstno *": Consignor 15-digit GSTIN (if printed/written, else empty).
-- "cngegstno *": Consignee 15-digit GSTIN (if printed/written, else empty).
-- "orgrefcode": Origin station / city (written in 'From' box, e.g. 'KOLKATA', 'KARNPURA SSRM', 'HYDERABAD').
-- "destrefcode": Destination station / city (written in 'To' box, e.g. 'SUPAUL', 'Haryana (Ambada)', 'Bangalore').
-- "bookedpckgs": Number of packages (written under 'No. of Packages', numeric, e.g. 808, 2632, 980).
-- "packing": Packaging unit (e.g. 'Carton box', 'Box', 'Ctn').
-- "goods": Description of Goods (written under 'Description (Said to Contain)', e.g. 'BISCUITS', 'Himalaya Products').
-- "valgoods": Invoice Value (numeric without commas, e.g. 699909, 5446344).
-- "invoiceno": Invoice Number (look for 'INVO =', 'Invoice No', e.g. 8604510266, 5616700769).
-- "invoiedt": Invoice Date (look for 'Dt' or consignment date, e.g. 05 Oct 26, 01/08/2026).
-- "ewaybillno": E-way Bill Number (digits only, e.g. 811749749318, 102509410411).
-- "Valid Upto": E-way bill validity date (look for 'Valid =', e.g. 08 Oct 26, 14/08/2026).
-- "bookedaweight": Actual Weight in KG (written in Weight box, e.g. 6300, 6500, 15057).
-- "bookedcweight": Charged Weight in KG (same as bookedaweight or charged weight).
-- "pmark": Seal Number / Private Mark (Extract ONLY the actual seal code or digits, e.g., CJ007567, 00153, 002765. Note: In some cases, the seal number appears right in the middle of the "LR" image/goods table, such as 'Seal no: 002765'. Always extract the seal number into pmark, and strictly strip and ignore prefixes like Seal, Seal no, No, =, or :).
-- "grtype(Don’t know)": Payment term (written in Freight box, e.g. 'TBB', 'TO B', 'TO PAY').
-- "freight  *": Numerical freight charge from the transporter/bilty charges table. If not specified, left blank, or printed as 'xxxx' (Patanjali FTL contract), return 0.
-- "oamount": Total invoice amount (rounded off / gross invoice value). Prefer the Grand Total from the Tax Invoice or "Value of Goods" from the E-Way Bill (e.g., 5802888, 6102872, 4017285).
-- "cgst": Central GST amount from invoice tax summary. If printed as 'xxxx' or supply is interstate, return 0.00.
-- "sgst": State GST amount from invoice tax summary. If printed as 'xxxx' or supply is interstate, return 0.00.
-- "igst": Integrated GST amount. Always output 0.00 (or 0) for manual data entry purposes.
-- "received": Amount already received against the freight/consignment note. If blank, return 0.00.
-- "advance": Advance amount paid to transporter/driver on the bilty. If blank, return 0.00.
-- "collectionstncode": Station code or city of origin/dispatch (e.g., from "From" station on LR or dispatch PIN/city, like HYDERABAD, Bangalore).
-- "ftl": Vehicle load type (e.g., "FTL" if dedicated truck/dimensions like "32 FT", "7 MT", or "LTL"/"Part Load" if parcel/carton consignment).
-- "custrefcode": Customer reference/account code (e.g., Party code like "C7056", "C7006", "C7008", "C7030" from the invoice header).
-- "staxpaidby": Party responsible for paying service tax / GST on freight: 'C' (Consignor), 'E' (Consignee), or 'T' (Transporter under RCM). Inspect 'GST payable under form 38 Charges merchandise by: CONSIGNOR [ ] CONSIGNEE [ ] TRANSPORTER [ ]' or payment term.
-- "dlvtype": Delivery type: 'D' (Door Delivery) or 'G' (Godown Delivery) based on whether consignee premises address is specified.
-- "stockpckgs": Total number of packages/cartons (matches bookedpckgs / box count).
-- "stockaweight": Actual gross weight of the cargo in KG (from invoice Gross Weight or LR Declared Weight).
-- "stockcweight": Charged weight of the cargo in KG (matches stockaweight or charged weight from LR).
-- "productcode": Product code (if printed/written, else empty).
+### STEP 2: APPLY CUSTOMER EXTRACTION RULES (1. Present, 2. partially Present, 3. absent)
 
-2. Vehicle & Compliance Details (from Vehicle RC / Permit / Pollution / Bilty):
-- "Vehicle No *": Vehicle registration number (written in 'Tempo/Truck No.', RC 'REG NO', or Permit, e.g. KA23B5235, BR29GA2038).
-- "Vehicle Type *": Vehicle category or body type (e.g. 'GOODS CARRIER', 'FTL', 'CAB CHASSIS', '32 FT MXL'). If not explicitly specified or uncertain, return 'Market'.
-- "Depatment Name": Department name if mentioned (e.g. 'TRANSPORT DEPARTMENT', 'SURGICAL').
+================================================================================
+A. UNICHARM (COMPANY NAME)
+================================================================================
+1. Present:
+- "grno" / "LR No *": Primary Consignment / LR Tracking Number. Extract bold 5-digit number printed in 'CONSIGNMENT NOTE: No.' box at top right of the Box N Freight bilty (e.g. 32298, 32299, 32300, 33306), or verify from 'Transporter LR No' on the Unicharm Tax Invoice / E-Way Bill Part B.
+- "grdt": Consignment booking date in 'Date' box (strictly DD/MM/YYYY, e.g., 27/09/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": Corporate billed entity: "UNICHARM INDIA PVT. LTD.".
+- "cngr": "UNICHARM INDIA PVT. LTD., Village Mau, Tehsil Pataudi, District Gurugram, Haryana - 122414" (or Sanand, Gujarat).
+- "cngrgstno": "06AABCU0113A2ZA".
+- "cnge": "GLOBAL MARKETING-MT, Khasra No. 240, Hamidpur Narela Village, New Delhi - 110036" (or Ambala).
+- "cngegstno": "07AJYPK4522G1ZX".
+- "orgrefcode": "MAU", "GURGAON", or "SANAND". "destrefcode": "DELHI", "SOUTH DELHI", or "AMBALA".
+- "collectionstncode": Matches orgrefcode.
+- "bookedpckgs" / "stockpckgs": Integer package count from Tax Invoice 'Total Cases' or bilty 'No. of Packages' (e.g. 1375, 2064, 1251, 797).
+- "packing": "Cases" or "Carton box".
+- "goods": Commodity description from Tax Invoice (e.g., "Baby Diapers", "MPP All Night Absorb COCO L40"). (Do NOT include seal numbers or invoice numbers in the goods description).
+- "bookedaweight" / "stockaweight": Actual gross weight in KG from Tax Invoice or bilty.
+- "bookedcweight" / "stockcweight": Charged weight in KG from bilty or Tax Invoice.
+- "invoiceno": Commercial invoice number from Tax Invoice (e.g., 10906I26-001898, 10906F26-001407, 3324726-000484).
+- "invoiedt": Commercial invoice date from Tax Invoice (DD/MM/YYYY).
+- "valgoods": Total declared invoice value of goods from Tax Invoice (numeric without commas, e.g. 2112307.00, 2817236.00).
+- "ewaybillno": 12-digit GST E-Way Bill number from E-Way Bill page (e.g., 362343603918).
+- "Valid Upto": E-Way Bill validity expiry date (strictly DD/MM/YYYY, e.g., 28/09/2026).
+- "Transit Days": Calculated integer difference between grdt and Valid Upto.
+- "Vehicle No *": Indian motor vehicle registration plate from bilty 'Tempo/Truck No.', mParivahan RC status, or truck photo (e.g., HR55AX5490, RJ18GB7132, NL01AFS826).
+- "Vehicle Type *": Vehicle body type: "Market" (or "32 FT CONTAINER").
+- "Loading Start date *": Booking date (matches grdt).
+- "ftl": Vehicle container/service type: "FTL" (Dedicated 32 FT container).
+- "staxpaidby": GST on freight paying party: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery).
+- "grtype": Payment terms from bilty: "TBB" (To Be Billed).
 
-3. Driver Details (from Driving Licence / Pollution Certificate / Driver Signature):
-- "Driver Name *": Driver full name. Extract ONLY if explicitly visible and written on a Driving Licence card, driver box, or signature in this document. If NOT written or not present, leave as empty string "". NEVER guess or invent names.
-- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if a genuine mobile number is written for the driver or transporter. If NOT written, leave as empty string "". NEVER output dummy numbers like "9999999999".
-- "Liscense No *": Driving Licence number. Extract ONLY if explicitly written on Driving Licence card or document. If NOT written, leave as empty string "".
-- "Valid Up to *": Driving Licence or permit validity date (DD/MM/YYYY or DD-Mon-YY). Extract ONLY if written. If NOT written, leave as empty string "".
+2. partially Present:
+- "pmark" (Container / Transit Seal Number):
+  * TOP HEADER/MARGIN CASE: Written near top right header/logo (e.g. 'Seal. No- 03386', 'Seal No - 03330') -> extract pure digits ('03386').
+  * MIDDLE OF LR/GOODS TABLE CASE: Stamped or written in the middle of 'Description (Said to Contain)' goods area (e.g. 'Seal no: 002765') -> extract pure digits ('002765') into pmark. NEVER treat this middle seal as LR No, and NEVER keep it inside goods description.
+  * If no physical container seal was applied, return strictly empty string "".
+- "Driver Name *": Driver full legal name. Extracted ONLY if an official Commercial Driving Licence (DL) is attached in the multi-page dossier (e.g., "OM PRAKASH", "JITENDRA JHA"). If no DL is attached, leave strictly as empty string "" for manual operator entry.
+- "Mobile no   *": Driver 10-digit mobile number. Extracted ONLY if explicitly written for the driver. If absent, leave strictly as "". Shipper contact numbers are never auto-filled.
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "UP33 20170006650"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, strictly DD/MM/YYYY, e.g., "27/03/2027"). If absent, leave strictly as "".
+- "productcode": Product / HSN code from Tax Invoice (e.g., "96190030"). Left empty "" if not itemized.
+- "custrefcode": Customer reference code (e.g., "UNICHARM" or party code). Left empty "" if omitted.
+- "Depatment Name": Designated warehouse department name (e.g., "GLOBAL-BANGLORE", "GLOBAL MARKETING-MT"). Left empty "" if not specified.
+- "branchrefcode" / "Counter name": Hub center code (e.g., "GURGAON", "DELHI", "SANAND") if specified in bilty header.
+- "oamount": Gross total amount (matches valgoods unless specific unloading charge is noted).
 
-4. ZERO-HALLUCINATION & STRICT EMPTY FIELD RULES:
-* "grno" / "LR No *": Extract the Consignment Note number from the 'CONSIGNMENT NOTE: No.' box. If it's a 5-digit number or any valid consignment serial, capture it accurately without dropping it. Never confuse the truck registration number (e.g. TG... / KA...) with the Consignment Note number.
-* Note on 'BNF LR': The 'BNF LR' column has been completely removed from the Excel format. Do not extract or map any number as BNF LR.
-* "pmark": Extract ONLY the actual seal code or digits (e.g., CJ007567 or 00153). Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, No, =, or : from the extracted value. Never confuse seal number with LR number.
-* "igst": Always output 0.00 or 0 for manual data entry purposes.
-* STRICT EMPTY FIELD RULE: If any driver details (Driver Name, Mobile No, License No, Valid Up to) or vehicle details are not visibly present in the document or attached credentials, LEAVE THEM STRICTLY AS AN EMPTY STRING "" so the operator can enter them manually. NEVER auto-fill or guess missing values.
-* IF ANY FIELD IS MISSING OR NOT WRITTEN IN THE DOCUMENT, LEAVE IT AS AN EMPTY STRING "" (DO NOT GUESS OR INVENT FAKE DATA).
+3. absent:
+- "BNF LR No": Permanently removed / discontinued from Excel schema. Never extract.
+- "freight  *": Full Truck Load (FTL) contract billed centrally -> return 0.
+- "cgst", "sgst": Freight tax -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Cash received/advanced at booking -> return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt": Industrial contract metrics -> return strictly empty string "".
+- "viaborder": Transit border checkpost -> return strictly empty string "".
+
+================================================================================
+B. PATANJALI (COMPANY NAME)
+================================================================================
+1. Present:
+- "grdt": Consignment booking date printed in 'Bkg. Date' box (strictly DD/MM/YYYY, e.g., 05/02/2026, 09/10/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)" or "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)".
+- "custrefcode": Billing customer/party code (e.g., "BL653", "BL652", or default "CM001").
+- "branchrefcode" / "Counter name": Center or branch code printed above title (e.g., "INDORE", "KOLKATA").
+- "orgrefcode": Origin station / city printed in 'From City' box (e.g., "INDORE", "KARNPURA SSRM").
+- "destrefcode": Destination station / city printed in 'To City' box (e.g., "BANGALORE", "VARANASI", "SUGAULI").
+- "collectionstncode": Matches orgrefcode.
+- "cngr": Consignor name and full street address printed in 'CONSIGNOR' box (e.g., "PFL20 : PATANJALI FOODS LTD - INDORE, TALAWALI CHANDA OPP MANGALIYAGAON RLY STATION INDUSTRIAL AREA A.B. ROAD INDORE, 453771").
+- "cngrgstno": Consignor 15-character GSTIN (e.g., "05AAFCF1505P1ZD").
+- "cnge": Consignee name and destination address printed in 'CONSIGNEE' box (e.g., "8888 : PATANJALI FOODS LIMITED, BANGALORE").
+- "bookedpckgs": Integer package count printed under 'No. of Package' or 'Total Charged No of Packages' (e.g., 410, 419, 845).
+- "packing": Packaging type under 'Packaging Type' (e.g., "BAG", "Carton box").
+- "goods": Commodity description under 'Said to Contain' (e.g., "SOYABADI", "BISCUITS").
+- "bookedaweight": Actual gross weight in KG printed under 'Actual Wt(Kgs)' (e.g., 7500, 6567).
+- "bookedcweight": Charged weight in KG printed under 'Total Charged Weight' (e.g., 7500, 7000).
+- "invoiceno": Commercial invoice number from INVOICE DETAILS table (e.g., 8501817437, 8501817324, 8604510455).
+- "invoiedt": Commercial invoice date (strictly DD/MM/YYYY).
+- "valgoods": Declared invoice value of goods printed under 'Declared Value' without commas (e.g., 476204, 519158).
+- "ewaybillno": 12-digit GST E-Way Bill number printed under 'Eway Bill No' (e.g., 612053161654, 811752253963).
+- "Vehicle No *": Indian motor vehicle registration plate printed in 'Vehicle Number' box or attached RC Form 23A (e.g., RJ32GC5386, UP21FT4643, BR03K4305).
+- "Vehicle Type *": Vehicle body type: "Market".
+- "Loading Start date *": Booking date (matches grdt).
+- "grtype": Payment terms printed under 'Payment Type': "TBB".
+- "ftl": Vehicle load type: "FTL".
+- "staxpaidby": Service tax / GST paying party: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery) or "G" (Godown).
+
+2. partially Present:
+- "grno" / "LR No *" (Strict Pen/Pencil Outer Margin Rule):
+  * Check top-left and top-right outer sections (margins outside printed borders) for an independent handwritten/penciled number (e.g., 21349, 21348).
+  * If present, extract that exact number.
+  * If NOTHING is written in pen/pencil in the outer margins, leave strictly empty ("").
+  * CRITICAL: DO NOT fall back to printed 7-digit 'C Note No.' (e.g. 9325388, 9421832) - this is an internal SAP number, NOT the LR number.
+  * NEVER confuse vehicle registration numbers with LR number.
+- "pmark": Extract ONLY if an explicit seal code is stamped (e.g., CJ007567). If only generic notes appear ('all seal ok'), return strictly "".
+- "Driver Name *": Driver full name. Extract ONLY if an official Commercial DL is attached in the multi-page dossier (e.g., "MANOJ SINGH"). If absent, leave strictly as "".
+- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if explicitly written for the driver. Consignor telephone (8209435149) or dummy numbers (9999999999) are strictly ignored.
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "BR44 20110036047"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on attached DL card (DD/MM/YYYY, e.g., "10/02/2027"). If absent, leave strictly as "".
+- "cngegstno": Consignee 15-character GSTIN if printed; else "".
+- "Depatment Name": Destination depot name if printed in Consignee block (e.g., "Depot Popular -Varanasi"); else "".
+- "Valid Upto": E-Way Bill validity date from attached E-Way Bill page (DD/MM/YYYY); else "".
+- "Transit Days": Integer difference between grdt and Valid Upto; else "".
+- "oamount": If handwritten notes at bottom specify unloading charge (e.g., 'Unloading charge 1000/-'), capture numeric (1000), else matches valgoods.
+- "productcode": Product code if itemized; else "".
+
+3. absent:
+- "BNF LR No": Permanently removed from schema. Never extract.
+- "freight  *": Printed as 'xxxx' across all rows on bilty face (FTL TBB contract) -> return 0.
+- "cgst", "sgst": Printed as 'xxxx' -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Printed as 'xxxx' -> return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt", "viaborder": Return strictly empty string "".
+
+================================================================================
+C. HIMALAYA (COMPANY NAME)
+================================================================================
+1. Present:
+- "grno" / "LR No *": Primary Consignment / LR Tracking Number. Bold printed 5-digit number in 'CONSIGNMENT NOTE: No.' box at top right (e.g., 32752, 32754, 32760, 32978, 33118). Never confuse truck plate with LR number.
+- "grdt": Consignment booking date written in 'Date' box (strictly DD/MM/YYYY, e.g., 12/10/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": Corporate billed account: "Himalaya Wellness Company".
+- "cngr": Full Consignor Name & street address from 'Consignor's Name & Address' box or attached Tax Invoice/E-Way Bill (e.g., Makali Bangalore central warehouse).
+- "cngrgstno": Consignor 15-character GSTIN: "29AADFT3025B2ZK" for Makali Bangalore.
+- "cnge": Full Consignee Name & destination address (e.g., Indore CFA, Kolkata CFA).
+- "cngegstno": Consignee 15-character GSTIN ("23AADFT3025B1ZX" for Indore, "19AADFT3025B1ZM" for Kolkata).
+- "orgrefcode": Origin station / city in 'From' box (e.g., "Bangalore (MWH)", "Prithampur", "Jalgaon").
+- "destrefcode": Destination station / city in 'To' box (e.g., "Indore (MWH)", "Kolkata (MWH)", "Bangalore").
+- "collectionstncode": Matches orgrefcode.
+- "bookedpckgs": Integer count under 'No. of Packages' (e.g., 2812, 2750, 650).
+- "packing": Packaging format ("Box", "Cartons", "Barrels").
+- "goods": Nature of commodity ("AYURVEDIC MEDICINES & BABY CARE PRODUCTS").
+- "bookedaweight": Actual gross cargo weight in KG. (If specified as '15 mt' on bilty face -> convert to 15000; or record exact KG from Tax Invoice like 14979).
+- "bookedcweight": Charged weight in KG.
+- "invoiceno": Commercial shipper invoice number (e.g., 5526701832, 5526701889, MPR 2627/BOS01035).
+- "invoiedt": Commercial invoice date (DD/MM/YYYY).
+- "valgoods": Declared invoice value of goods in INR (numeric without commas, e.g., 11488522.00, 7646623.00).
+- "ewaybillno": 12-digit GST E-Way Bill number from bilty or attached E-Way Bill (e.g., 102566549518).
+- "Valid Upto": E-Way Bill validity date from E-Way Bill header (DD/MM/YYYY).
+- "Transit Days": Calculated integer difference between grdt and Valid Upto.
+- "Vehicle No *": Indian motor vehicle registration plate (e.g., GJ05BZ0237, RJ14GT3819, MP09HH0830).
+- "Vehicle Type *": Vehicle body type: "32FT CONTAINER", "22FT / 6 MT", "32FT MXL", or "Market".
+- "Loading Start date *": Booking date (matches grdt).
+- "ftl": Vehicle load type: "FTL".
+- "staxpaidby": Party paying GST on freight: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery).
+- "grtype": Payment terms: "TBB" (To Be Billed).
+
+2. partially Present:
+- "pmark" (Container Seal Number / Private Mark):
+  * Extract ONLY pure digits or seal code (e.g., 00153, 00105, CJ007567) from top margin, description notes, or attached bottle seal photograph.
+  * Strictly strip and ignore prefixes like 'Seal', 'Seal No', 'No', '=', ':'.
+  * CRITICAL: The seal number must NEVER be mapped into the LR number.
+  * If no physical seal is present, leave strictly as empty string "".
+- "Driver Name *": Driver full legal name. Extract ONLY if an official Commercial Driving Licence (DL) or PAN card is attached in the multi-page dossier (e.g., "JAYMANGAL RAI", "AARIF"). If absent (e.g. single-page uploads), leave strictly as empty string "".
+- "Mobile no   *": Driver 10-digit phone number. Extract ONLY if explicitly written for the driver; else "".
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "MH02 20040039639"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, DD/MM/YYYY, e.g., "27/08/2030"). If absent, leave strictly as "".
+- "oamount": Other charges. If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). Otherwise matches valgoods or 0.00.
+- "Depatment Name": Destination department name matched against manifest (e.g., "HIMALAYA-INDORE", "HIMALAYA-KOLKATA").
+- "custrefcode", "productcode", "branchrefcode" / "Counter name": Extract if present; else "".
+
+3. absent:
+- "BNF LR No": Permanently removed from schema. Never extract.
+- "freight  *": Contracted under Full Truck Load (FTL) -> return 0.
+- "cgst", "sgst": Freight tax under FTL / RCM -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Cash received/advanced at booking -> return 0.00.
+- "stcharges", "fuelcharges", "handlingcharges", "hamali", "doorcharges", "insurancecharges": Return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt", "viaborder": Return strictly empty string "".
+
+================================================================================
+D. GOLD PLUS (COMPANY NAME)
+================================================================================
+1. Present:
+- "grno" / "LR No *": Primary Consignment / LR Tracking Number. Bold printed 5-digit number in 'CONSIGNMENT NOTE: No.' box at top right of Box N Freight bilty (e.g., 31745, 31746, 31744, 31878), or from Tax Invoice 'LR No'.
+- "grdt": Consignment booking date in 'Date' box (strictly DD/MM/YYYY, e.g., 01/10/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": Corporate billed entity: "GOLD PLUS FLOAT GLASS PRIVATE LIMITED".
+- "cngr": "M/S. GOLD PLUS FLOAT GLASS PVT. LTD., Road No. 10-14, Kanagala Industrial Area Kiadb, Tal. Hukkeri, Dist. Belagavi, Karnataka - 591225".
+- "cngrgstno": "29AAICG7897C1Z1".
+- "cnge": Full Consignee Name & destination address from bilty or Tax Invoice (e.g., "M/S. FORTUNE SAFETY GLASS, Udupi, Karnataka").
+- "cngegstno": Consignee 15-character GSTIN (e.g., "29AAFFF7172H1Z5").
+- "orgrefcode": Origin station / city from 'From' box on bilty: "Kanagal" (or "Belgaum" / "Belagavi").
+- "destrefcode": Destination station / city from 'To' box on bilty: "Udupi" (or "Mangalore", "Bangalore").
+- "collectionstncode": Matches orgrefcode.
+- "bookedpckgs" / "stockpckgs": Package count under 'No. of Packages' (e.g., 12).
+- "packing": Packaging format: "Boxes" or "Frames".
+- "goods": Commodity description: "Float Glass" or "Clear Float Glass".
+- "bookedaweight" / "stockaweight": Actual cargo gross weight in KG. Bilty specifies Metric Tons (e.g., '29.460 MT'), convert to exact kilograms: 29460. Cross-verified against Weighment Slip Net Weight.
+- "bookedcweight" / "stockcweight": Charged weight in KG (matches actual weight 29460).
+- "invoiceno": Commercial invoice number from bilty or Tax Invoice (e.g., 26271010344 or 262710344).
+- "invoiedt": Commercial invoice date from Tax Invoice (DD/MM/YYYY, e.g., 01/10/2026).
+- "valgoods": Declared invoice value / Total invoice amount without commas (e.g., 1285094.81).
+- "ewaybillno": 12-digit GST E-Way Bill number from bilty or E-Way Bill page (e.g., 132567309121).
+- "Valid Upto": E-Way Bill validity expiry date from E-Way Bill header (DD/MM/YYYY, e.g., 04/10/2026).
+- "Transit Days": Calculated integer difference between booking date (01/10/2026) and E-Way validity (04/10/2026) = 3.
+- "Vehicle No *": Indian motor vehicle registration plate from bilty, Gate Pass, or Weighment Slip (e.g., KA25AB2955, KA22D0257, KA23A5937).
+- "Vehicle Type *": Vehicle body type: "Market".
+- "Loading Start date *": Booking date (matches grdt).
+- "ftl": Vehicle load type: "FTL" (Full Truck Load).
+- "staxpaidby": Party paying GST on freight: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery).
+- "grtype": Payment terms: "TBB" (To Be Billed).
+
+2. partially Present:
+- "Mobile no   *": Driver 10-digit mobile number. In Gold Plus dossiers, inspect the Tax Invoice header under 'Driver No:' (e.g., 7338673806). Extract if printed; else "".
+- "pmark": Extract seal or stencil mark if printed/stamped on bilty; else "".
+- "Driver Name *": Driver full name. Captured ONLY if an official Driving Licence (DL) is attached or driver signature/name is written; otherwise strictly "".
+- "Liscense No *" & "Valid Up to *": Captured ONLY from attached DL card; otherwise strictly "".
+- "Depatment Name": Destination department matched against manifest ("GOLD PLUS-BELGUAM").
+- "branchrefcode" / "Counter name": Hub center code (e.g., "BEL" / "BELGAUM") if printed.
+- "custrefcode": Customer account code (e.g., "GOLDPLUS" or party code) if printed.
+- "productcode": Product / HSN code if itemized (e.g., "7005" for float glass).
+- "oamount": Matches valgoods unless special handling or unloading charges appear.
+
+3. absent:
+- "BNF LR No": Permanently removed from schema. Never extract.
+- "freight  *": Full Truck Load (FTL) contract billed centrally -> return 0.
+- "cgst", "sgst": Freight tax under FTL / RCM -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Cash received/advanced at booking -> return 0.00.
+- "stcharges", "fuelcharges", "handlingcharges", "hamali", "doorcharges", "insurancecharges": Return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt", "viaborder": Return strictly empty string "".
+
+================================================================================
+E. GENERIC BNF & OTHER CLIENTS (MANI-FEST)
+================================================================================
+- Apply standard Box N Freight layout extraction.
+- Extract primary bold printed Consignment Note number as "grno" and "LR No *".
+- For orange/yellow paper bilties: BNF LR No is permanently removed / blank.
+- Capture driver credentials ONLY if explicitly written or attached; never invent.
+- Under FTL freight contracts, return 0 for freight.
+
+### STEP 3: STRICT ZERO-HALLUCINATION ENFORCEMENT
+1. If any field is classified as absent or is not visibly present in the document/attachments, return strictly empty string "" (or 0.00 / 0 for numeric amounts).
+2. Never auto-fill fake or dummy driver names, license numbers, or phone numbers.
+3. Return valid JSON matching all 49 keys exactly.
 """
-DEFAULT_HIMALAYA_OCR_PROMPT = DEFAULT_HANDWRITTEN_OCR_PROMPT
+
+DEFAULT_HIMALAYA_OCR_PROMPT = """
+You are an expert OCR and document information scraping engine specialized in reading transport bilties, consignment notes, and associated multi-page vehicle/driver compliance packets for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and 'Himalaya Wellness Company'.
+
+DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
+This document dossier contains:
+- Primary BNF Consignment Note / Bilty.
+- GST E-Way Bill (12-digit tracking, dispatch addresses, exact distance).
+- Himalaya Wellness Company Tax Invoice (commercial invoice number, billing party, gross weight in KG, declared value).
+- Vehicle Registration Certificate (RC Form 23A) and Commercial Driving Licence (DL).
+- Physical container bottle-seal lock photograph.
+Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
+
+1. Present:
+- "grno" / "LR No *": Primary Consignment / LR Tracking Number. Bold printed 5-digit number in the 'CONSIGNMENT NOTE: No.' box at top right (e.g., 32752, 32754, 32760, 32978, 33118). Never confuse the truck registration number with the Consignment Note number. Note: 'BNF LR' is discontinued.
+- "grdt": Consignment booking date written in 'Date' box (strictly DD/MM/YYYY, e.g., 12/10/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": Corporate billed account: "Himalaya Wellness Company".
+- "cngr": Full Consignor Name & street address from 'Consignor's Name & Address' box or attached Tax Invoice/E-Way Bill (e.g., Makali Bangalore central warehouse).
+- "cngrgstno": Consignor 15-character GSTIN: "29AADFT3025B2ZK" for Makali Bangalore.
+- "cnge": Full Consignee Name & destination address (e.g., Indore CFA, Kolkata CFA).
+- "cngegstno": Consignee 15-character GSTIN ("23AADFT3025B1ZX" for Indore, "19AADFT3025B1ZM" for Kolkata).
+- "orgrefcode": Origin station / city in 'From' box (e.g., "Bangalore (MWH)", "Prithampur", "Jalgaon").
+- "destrefcode": Destination station / city in 'To' box (e.g., "Indore (MWH)", "Kolkata (MWH)", "Bangalore").
+- "collectionstncode": Matches orgrefcode.
+- "bookedpckgs": Integer count under 'No. of Packages' (e.g., 2812, 2750, 650).
+- "packing": Packaging format ("Box", "Cartons", "Barrels").
+- "goods": Nature of commodity ("AYURVEDIC MEDICINES & BABY CARE PRODUCTS").
+- "bookedaweight": Actual gross cargo weight in KG. (If specified as '15 mt' on bilty face -> convert to 15000; or record exact KG from Tax Invoice like 14979).
+- "bookedcweight": Charged weight in KG.
+- "invoiceno": Commercial shipper invoice number (e.g., 5526701832, 5526701889, MPR 2627/BOS01035).
+- "invoiedt": Commercial invoice date (DD/MM/YYYY).
+- "valgoods": Declared invoice value of goods in INR (numeric without commas, e.g., 11488522.00, 7646623.00).
+- "ewaybillno": 12-digit GST E-Way Bill number from bilty or attached E-Way Bill (e.g., 102566549518).
+- "Valid Upto": E-Way Bill validity date from E-Way Bill header (DD/MM/YYYY).
+- "Transit Days": Calculated integer difference between grdt and Valid Upto.
+- "Vehicle No *": Indian motor vehicle registration plate (e.g., GJ05BZ0237, RJ14GT3819, MP09HH0830).
+- "Vehicle Type *": Vehicle body type: "32FT CONTAINER", "22FT / 6 MT", "32FT MXL", or "Market".
+- "Loading Start date *": Booking date (matches grdt).
+- "ftl": Vehicle load type: "FTL".
+- "staxpaidby": Party paying GST on freight: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery).
+- "grtype": Payment terms: "TBB" (To Be Billed).
+
+2. partially Present:
+- "pmark" (Container Seal Number / Private Mark):
+  * Extract ONLY pure digits or seal code (e.g., 00153, 00105, CJ007567) from top margin, description notes, or attached bottle seal photograph.
+  * Strictly strip and ignore prefixes like 'Seal', 'Seal No', 'No', '=', ':'.
+  * CRITICAL: The seal number must NEVER be mapped into the LR number.
+  * If no physical seal is present, leave strictly as empty string "".
+- "Driver Name *": Driver full legal name. Extract ONLY if an official Commercial Driving Licence (DL) or PAN card is attached in the multi-page dossier (e.g., "JAYMANGAL RAI", "AARIF"). If absent (e.g. single-page uploads), leave strictly as empty string "".
+- "Mobile no   *": Driver 10-digit phone number. Extract ONLY if explicitly written for the driver; else "".
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "MH02 20040039639"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, DD/MM/YYYY, e.g., "27/08/2030"). If absent, leave strictly as "".
+- "oamount": Other charges. If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). Otherwise matches valgoods or 0.00.
+- "Depatment Name": Destination department name matched against manifest (e.g., "HIMALAYA-INDORE", "HIMALAYA-KOLKATA").
+- "custrefcode", "productcode", "branchrefcode" / "Counter name": Extract if present; else "".
+
+3. absent:
+- "BNF LR No": Permanently removed from schema. Never extract.
+- "freight  *": Contracted under Full Truck Load (FTL) -> return 0.
+- "cgst", "sgst": Freight tax under FTL / RCM -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Cash received/advanced at booking -> return 0.00.
+- "stcharges", "fuelcharges", "handlingcharges", "hamali", "doorcharges", "insurancecharges": Return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt", "viaborder": Return strictly empty string "".
+
+Produce valid JSON object matching all 49 keys exactly.
+"""
+
+DEFAULT_GOLD_PLUS_OCR_PROMPT = """
+You are an expert OCR and document information scraping engine specialized in reading transport bilties, commercial tax invoices, returnable gate passes, E-Way bills, and weighbridge slips for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and 'GOLD PLUS FLOAT GLASS PRIVATE LIMITED'.
+
+DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
+This document dossier contains:
+- Box N Freight Consignment Note (Bilty).
+- Returnable Gate Pass (Out).
+- Official Tax Invoice (with Driver No explicitly listed).
+- GST E-Way Bill (with distance and validity date).
+- Weighment Slip (Gross, Tare, Net weights in MT).
+Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
+
+1. Present:
+- "grno" / "LR No *": Primary Consignment / LR Tracking Number. Bold printed 5-digit number in 'CONSIGNMENT NOTE: No.' box at top right of Box N Freight bilty (e.g., 31745, 31746, 31744, 31878), or from Tax Invoice 'LR No'.
+- "grdt": Consignment booking date in 'Date' box (strictly DD/MM/YYYY, e.g., 01/10/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": Corporate billed entity: "GOLD PLUS FLOAT GLASS PRIVATE LIMITED".
+- "cngr": "M/S. GOLD PLUS FLOAT GLASS PVT. LTD., Road No. 10-14, Kanagala Industrial Area Kiadb, Tal. Hukkeri, Dist. Belagavi, Karnataka - 591225".
+- "cngrgstno": "29AAICG7897C1Z1".
+- "cnge": Full Consignee Name & destination address from bilty or Tax Invoice (e.g., "M/S. FORTUNE SAFETY GLASS, Udupi, Karnataka").
+- "cngegstno": Consignee 15-character GSTIN (e.g., "29AAFFF7172H1Z5").
+- "orgrefcode": Origin station / city from 'From' box on bilty: "Kanagal" (or "Belgaum" / "Belagavi").
+- "destrefcode": Destination station / city from 'To' box on bilty: "Udupi" (or "Mangalore", "Bangalore").
+- "collectionstncode": Matches orgrefcode.
+- "bookedpckgs" / "stockpckgs": Package count under 'No. of Packages' (e.g., 12).
+- "packing": Packaging format: "Boxes" or "Frames".
+- "goods": Commodity description: "Float Glass" or "Clear Float Glass".
+- "bookedaweight" / "stockaweight": Actual cargo gross weight in KG. Bilty specifies Metric Tons (e.g., '29.460 MT'), convert to exact kilograms: 29460. Cross-verified against Weighment Slip Net Weight.
+- "bookedcweight" / "stockcweight": Charged weight in KG (matches actual weight 29460).
+- "invoiceno": Commercial invoice number from bilty or Tax Invoice (e.g., 26271010344 or 262710344).
+- "invoiedt": Commercial invoice date from Tax Invoice (DD/MM/YYYY, e.g., 01/10/2026).
+- "valgoods": Declared invoice value / Total invoice amount without commas (e.g., 1285094.81).
+- "ewaybillno": 12-digit GST E-Way Bill number from bilty or E-Way Bill page (e.g., 132567309121).
+- "Valid Upto": E-Way Bill validity expiry date from E-Way Bill header (DD/MM/YYYY, e.g., 04/10/2026).
+- "Transit Days": Calculated integer difference between booking date (01/10/2026) and E-Way validity (04/10/2026) = 3.
+- "Vehicle No *": Indian motor vehicle registration plate from bilty, Gate Pass, or Weighment Slip (e.g., KA25AB2955, KA22D0257, KA23A5937).
+- "Vehicle Type *": Vehicle body type: "Market".
+- "Loading Start date *": Booking date (matches grdt).
+- "ftl": Vehicle load type: "FTL" (Full Truck Load).
+- "staxpaidby": Party paying GST on freight: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery).
+- "grtype": Payment terms: "TBB" (To Be Billed).
+
+2. partially Present:
+- "Mobile no   *": Driver 10-digit mobile number. In Gold Plus dossiers, inspect the Tax Invoice header under 'Driver No:' (e.g., 7338673806). Extract if printed; else "".
+- "pmark": Extract seal or stencil mark if printed/stamped on bilty; else "".
+- "Driver Name *": Driver full name. Captured ONLY if an official Driving Licence (DL) is attached or driver signature/name is written; otherwise strictly "".
+- "Liscense No *" & "Valid Up to *": Captured ONLY from attached DL card; otherwise strictly "".
+- "Depatment Name": Destination department matched against manifest ("GOLD PLUS-BELGUAM").
+- "branchrefcode" / "Counter name": Hub center code (e.g., "BEL" / "BELGAUM") if printed.
+- "custrefcode": Customer account code (e.g., "GOLDPLUS" or party code) if printed.
+- "productcode": Product / HSN code if itemized (e.g., "7005" for float glass).
+- "oamount": Matches valgoods unless special handling or unloading charges appear.
+
+3. absent:
+- "BNF LR No": Permanently removed from schema. Never extract.
+- "freight  *": Full Truck Load (FTL) contract billed centrally -> return 0.
+- "cgst", "sgst": Freight tax under FTL / RCM -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Cash received/advanced at booking -> return 0.00.
+- "stcharges", "fuelcharges", "handlingcharges", "hamali", "doorcharges", "insurancecharges": Return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt", "viaborder": Return strictly empty string "".
+
+Produce valid JSON object matching all 49 keys exactly.
+"""
 
 DEFAULT_PATANJALI_OCR_PROMPT = """
 You are an expert OCR and document information scraping engine specialized in reading transport bilties, consignment notes, and driver/vehicle compliance credentials for 'PATANJALI PARIVAHAN PVT. LTD.' and 'PATANJALI FOODS LIMITED' (formerly Ruchi Soya Industries Limited).
 
 DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
-This document may contain a single page (white printed consignment note) or multiple pages (including Form 23A Vehicle Registration Certificate RC and Commercial Driving Licence DL). Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
+This document may contain a single page (white printed consignment note) or multiple pages (including Form 23A Vehicle Registration Certificate RC and Commercial Driving Licence DL).
+Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
 
-1. CONSIGNMENT IDENTIFIERS & BOOKING SEQUENCE NUMBER:
-- "grno": Primary Consignment / LR Tracking Number.
-  * RULE: Check the top-left and top-right outer sections (margins outside the printed borders) for an independent number written with a pen or pencil (e.g., 21349, 21348).
-  * If a handwritten or penciled number is written in the top-left or top-right section, extract that exact number.
-  * If NOTHING has been written with a pencil or pen in the top-left or top-right section, leave it strictly empty ("").
-    DO NOT output "0" and DO NOT fall back to the printed 'C Note No.' (e.g. 9325388, 9325382, 9421832). Leaving the field empty ensures the record cannot be saved until the operator manually enters the LR No.
-  * NEVER copy or confuse vehicle registration numbers (e.g. RJ32GC5386, BR03K4305).
-- "LR No *": Same primary LR number (pen/pencil margin number or empty string "").
-- "pmark": Seal Number / Private Mark. Extract ONLY if an explicit seal code or container seal stamp is written (e.g., CJ007567). Strictly strip and ignore prefixes like 'Seal', 'Seal No', 'No', '='. If only generic text like 'all seal good and ok' appears or no physical seal code is written, return empty string "".
-
-2. ROUTING & STATIONS:
-- "branchrefcode": Center or branch code printed above the CONSIGNMENT NOTE title (e.g., "INDORE", "KOLKATA").
-- "Counter name": Booking counter or center (matches branchrefcode, e.g., "INDORE", "KOLKATA").
-- "orgrefcode": Origin station or city printed in 'From City' box (e.g., "INDORE", "KARNPURA SSRM").
-- "destrefcode": Destination station or city printed in 'To City' box (e.g., "BANGALORE", "VARANASI", "SUGAULI").
-- "collectionstncode": Dispatch station code (same as orgrefcode).
-- "viaborder": Via border route if printed, else empty string "".
-
-3. DATES & TRANSIT TIME:
-- "grdt": Consignment booking date printed in 'Bkg. Date' box (strictly formatted as DD/MM/YYYY, e.g. 12/10/2026, 05/02/2026. NEVER output month names like 12-OCT-2026 or 05 Oct 26).
-- "stockdt": Consignment entry date printed in 'C Note Entry Date' (defaults to grdt).
-- "Loading Start date *": Dispatch or loading date (same as grdt).
-- "Valid Upto": E-Way Bill validity expiry date if present on an attached E-Way Bill page (formatted as DD/MM/YYYY), else empty string "".
-- "Transit Days": Calculate the integer difference in days between 'grdt' and 'Valid Upto'. If either date is missing, unparseable, or invalid, return strictly empty string "" (DO NOT default to 2).
-
-4. PARTIES & MASTER DATA:
-- "Customer Name *": Corporate billed entity printed under 'Billing Party' (e.g., "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)", "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)").
-- "custrefcode": Billing customer/party code printed before the party name (e.g., "BL653", "BL652", or default "CM001").
-- "cngr": Consignor name and street address printed in the 'CONSIGNOR' box (e.g., "PFL20 : PATANJALI FOODS LTD - INDORE, TALAWALI CHANDA OPP MANGALIYAGAON RLY STATION INDUSTRIAL AREA A.B. ROAD INDORE, 453771").
-- "cngrgstno": Consignor 15-character GSTIN printed in the transporter/works header block or tax invoice (e.g., "05AAFCF1505P1ZD").
-- "cnge": Consignee name and destination address printed in the 'CONSIGNEE' box (e.g., "8888 : PATANJALI FOODS LIMITED, Maruthi Main Road nearby Sridhara Srigud Kengeri Satellite Town, BANGALORE, 560060").
-- "cngegstno": Consignee 15-character GSTIN if printed/present, else empty string "".
-- "Depatment Name": Destination depot name if printed in Consignee block (e.g., "Depot Popular -Varanasi"), else empty string "".
-
-5. GOODS, PACKAGING & WEIGHT QUANTIFICATION:
+1. Present:
+- "grdt": Consignment booking date printed in 'Bkg. Date' box (strictly DD/MM/YYYY, e.g., 05/02/2026, 09/10/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)" or "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)".
+- "custrefcode": Billing customer/party code (e.g., "BL653", "BL652", or default "CM001").
+- "branchrefcode" / "Counter name": Center or branch code printed above title (e.g., "INDORE", "KOLKATA").
+- "orgrefcode": Origin station / city printed in 'From City' box (e.g., "INDORE", "KARNPURA SSRM").
+- "destrefcode": Destination station / city printed in 'To City' box (e.g., "BANGALORE", "VARANASI", "SUGAULI").
+- "collectionstncode": Matches orgrefcode.
+- "cngr": Consignor name and full street address printed in 'CONSIGNOR' box (e.g., "PFL20 : PATANJALI FOODS LTD - INDORE, TALAWALI CHANDA OPP MANGALIYAGAON RLY STATION INDUSTRIAL AREA A.B. ROAD INDORE, 453771").
+- "cngrgstno": Consignor 15-character GSTIN (e.g., "05AAFCF1505P1ZD").
+- "cnge": Consignee name and destination address printed in 'CONSIGNEE' box (e.g., "8888 : PATANJALI FOODS LIMITED, BANGALORE").
 - "bookedpckgs": Integer package count printed under 'No. of Package' or 'Total Charged No of Packages' (e.g., 410, 419, 845).
-- "stockpckgs": Total stock packages (matches bookedpckgs).
-- "packing": Packaging type printed under 'Packaging Type' in CONSIGNMENT DETAILS (e.g., "BAG", "Carton box").
-- "goods": Commodity name printed under 'Said to Contain' in CONSIGNMENT DETAILS (e.g., "SOYABADI", "BISCUITS").
-- "productcode": Product code if specified, else empty string "".
+- "packing": Packaging type under 'Packaging Type' (e.g., "BAG", "Carton box").
+- "goods": Commodity description under 'Said to Contain' (e.g., "SOYABADI", "BISCUITS").
 - "bookedaweight": Actual gross weight in KG printed under 'Actual Wt(Kgs)' (e.g., 7500, 6567).
-- "stockaweight": Actual cargo weight (matches bookedaweight).
 - "bookedcweight": Charged weight in KG printed under 'Total Charged Weight' (e.g., 7500, 7000).
-- "stockcweight": Charged stock weight (matches bookedcweight).
-- "Order Weight": Weight if specified separately, else empty string "".
-- "Contract wt": Contract weight if specified, else empty string "".
-- "Extra Mt": Extra metric tons if specified, else empty string "".
+- "invoiceno": Commercial invoice number from INVOICE DETAILS table (e.g., 8501817437, 8501817324, 8604510455).
+- "invoiedt": Commercial invoice date (strictly DD/MM/YYYY).
+- "valgoods": Declared invoice value of goods printed under 'Declared Value' without commas (e.g., 476204, 519158).
+- "ewaybillno": 12-digit GST E-Way Bill number printed under 'Eway Bill No' (e.g., 612053161654, 811752253963).
+- "Vehicle No *": Indian motor vehicle registration plate printed in 'Vehicle Number' box or attached RC Form 23A (e.g., RJ32GC5386, UP21FT4643, BR03K4305).
+- "Vehicle Type *": Vehicle body type: "Market".
+- "Loading Start date *": Booking date (matches grdt).
+- "grtype": Payment terms printed under 'Payment Type': "TBB".
+- "ftl": Vehicle load type: "FTL".
+- "staxpaidby": Service tax / GST paying party: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery) or "G" (Godown).
 
-6. COMMERCIAL INVOICE & E-WAY BILL:
-- "invoiceno": Commercial shipper invoice number printed under 'Invoice No.' in the INVOICE DETAILS table (e.g., 8501817437, 8501817324, 8604510455).
-- "invoiedt": Commercial invoice date printed under 'Inv. Date' (formatted as DD/MM/YYYY).
-- "valgoods": Declared invoice value of goods printed under 'Declared Value' without commas (e.g., 476204, 519158, 725770).
-- "oamount": Total invoice amount or declared value. If receiver notes at the bottom specify an unloading charge (e.g., 'Unloading charge 1000/-'), capture that charge numeric (1000), otherwise map to valgoods.
-- "ewaybillno": 12-digit GST E-Way Bill number printed under 'Eway Bill No' (e.g., 612053161654, 652051661257, 811752253963).
+2. partially Present:
+- "grno" / "LR No *" (Strict Pen/Pencil Outer Margin Rule):
+  * Check top-left and top-right outer sections (margins outside printed borders) for an independent handwritten/penciled number (e.g., 21349, 21348).
+  * If present, extract that exact number.
+  * If NOTHING is written in pen/pencil in the outer margins, leave strictly empty ("").
+  * CRITICAL: DO NOT fall back to printed 7-digit 'C Note No.' (e.g. 9325388, 9421832) - this is an internal SAP number, NOT the LR number.
+  * NEVER confuse vehicle registration numbers with LR number.
+- "pmark": Extract ONLY if an explicit seal code is stamped (e.g., CJ007567). If only generic notes appear ('all seal ok'), return strictly "".
+- "Driver Name *": Driver full name. Extract ONLY if an official Commercial DL is attached in the multi-page dossier (e.g., "MANOJ SINGH"). If absent, leave strictly as "".
+- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if explicitly written for the driver. Consignor telephone (8209435149) or dummy numbers (9999999999) are strictly ignored.
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "BR44 20110036047"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on attached DL card (DD/MM/YYYY, e.g., "10/02/2027"). If absent, leave strictly as "".
+- "cngegstno": Consignee 15-character GSTIN if printed; else "".
+- "Depatment Name": Destination depot name if printed in Consignee block (e.g., "Depot Popular -Varanasi"); else "".
+- "Valid Upto": E-Way Bill validity date from attached E-Way Bill page (DD/MM/YYYY); else "".
+- "Transit Days": Integer difference between grdt and Valid Upto; else "".
+- "oamount": If handwritten notes at bottom specify unloading charge (e.g., 'Unloading charge 1000/-'), capture numeric (1000), else matches valgoods.
+- "productcode": Product code if itemized; else "".
 
-7. CHARGES & TAX BREAKDOWN (FTL CONTRACT RULES):
-- "grtype(Don’t know)": Payment terms printed under 'Payment Type' (e.g., "TBB").
-- "freight  *": Return 0. On Patanjali bilties, all freight charges are printed as 'xxxx' (Full Truck Load TBB contract).
-- "cgst": Central GST. Printed as 'xxxx' -> return 0.00.
-- "sgst": State GST. Printed as 'xxxx' -> return 0.00.
-- "igst": Integrated GST. Always output 0.00 (or 0) for manual data entry purposes.
-- "received": Freight received amount -> return 0.00.
-- "advance": Advance paid to transporter -> return 0.00.
-- "ftl": Vehicle load type. If Service Type is 'FTL', return "FTL", else "N".
-- "staxpaidby": Party paying service tax / GST on freight: 'C' (Consignor), 'E' (Consignee), or 'T' (Transporter). For TBB/FTL movements, default to "C".
-- "dlvtype": Delivery type. If PickUp/Delivery is 'Door/Door', return "D" (Door Delivery), else "G" (Godown).
+3. absent:
+- "BNF LR No": Permanently removed from schema. Never extract.
+- "freight  *": Printed as 'xxxx' across all rows on bilty face (FTL TBB contract) -> return 0.
+- "cgst", "sgst": Printed as 'xxxx' -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Printed as 'xxxx' -> return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt", "viaborder": Return strictly empty string "".
 
-8. VEHICLE & DRIVER CREDENTIAL RESOLUTION:
-- "Vehicle No *": Indian motor vehicle registration plate printed under 'Vehicle Number' in the header table or attached RC Form 23A (e.g., RJ32GC5386, UP21FT4643, BR03K4305).
-- "Vehicle Type *": Vehicle body type. If FTL or unspecified, return "Market".
-- "Driver Name *": Driver full name. Extract ONLY if explicitly visible on an attached Driving Licence (DL) card (e.g., "MANOJ SINGH"). If NO DL card is attached, leave STRICTLY as an empty string "". NEVER guess or invent names.
-- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if explicitly written for the driver. NEVER copy the consignor phone (8209435149) or dummy phone (9999999999) into the driver phone field. If absent, leave STRICTLY as an empty string "".
-- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "BR44 20110036047"). If not attached, leave STRICTLY as an empty string "".
-- "Valid Up to *": Transport validity expiry date of the driving licence ('TR' validity date on DL card, e.g., "10/02/2027"). If not attached, leave STRICTLY as an empty string "".
-
-9. ZERO-HALLUCINATION & STRICT EMPTY FIELD RULES:
-* The 'BNF LR' column has been permanently removed from the Excel schema. Never extract or output any value as BNF LR.
-* Auto-fetching from driver_master.json is completely disabled. If driver details are absent from the document, keep them strictly as empty strings ("") for manual entry.
-* If any field is missing, illegible, or not present on the document, leave it as an empty string "" (never invent placeholder data).
+Produce valid JSON object matching all 49 keys exactly.
 """
 
 DEFAULT_UNICHARM_OCR_PROMPT = """
 You are an expert OCR and document information scraping engine specialized in reading transport bilties, commercial tax invoices, E-Way bills, and driver/vehicle compliance credentials for 'UNICHARM INDIA PVT. LTD.' (Vuicharm / Uvicharm) transported by 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.'.
 
 DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
-This document dossier contains multiple pages (including Box N Freight Consignment Note Bilty, Unicharm Tax Invoice, E-Way Bill, mParivahan Vehicle RC Status, Truck Photo, and Commercial Driving Licence DL). Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
+This document dossier contains multiple pages (including Box N Freight Consignment Note Bilty, Unicharm Tax Invoice, E-Way Bill, mParivahan Vehicle RC Status, Truck Photo, and Commercial Driving Licence DL).
+Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
 
-1. CONSIGNMENT IDENTIFIERS & CRITICAL SEAL NUMBER RULES:
-- "grno": Primary Consignment / LR Tracking Number.
-  * Extract the 5-digit number printed in the 'CONSIGNMENT NOTE: No.' box at the top right of the Box N Freight bilty (e.g., 32298, 32299, 32300, 33306), or cross-verify from the 'Transporter LR No' on the Unicharm Tax Invoice / E-Way Bill Part B.
-  * CRITICAL: In some documents, a seal number or rubber stamp is written or stamped right in the middle of the "Description (Said to Contain)" or "LR" text area (e.g., 'Seal no: 002765'). NEVER extract or confuse this seal number or description text as the LR number.
-  * NEVER copy vehicle registration numbers (e.g. HR55AX5490, RJ18GB7132) into this field.
-- "LR No *": Same primary 5-digit LR number as "grno" (e.g., 32298, 33306).
-- "pmark": Container / Transit Seal Number.
-  * PROMPT CASE - SEAL NUMBER IN THE MIDDLE OF THE "LR" IMAGE:
-    In documents like 33306.pdf, the container seal number appears written right in the middle of the "LR" image, inside the central 'Description (Said to Contain)' goods table or overlapping the central goods description/rows (e.g. written as 'Seal no: 002765', 'Seuinoł 002765', 'Seaimot 002765').
-    When a seal number appears in the middle of the LR image:
-    - Extract ONLY the actual seal digits (e.g. 002765) into "pmark".
-    - Do NOT mistake this middle seal number for the LR number or invoice number.
-    - Do NOT keep this seal number inside the "goods" commodity description.
-    - Do NOT copy the vehicle digits from the printed 'Private Mark' box (e.g. '7132' from RJ18GB7132) into "pmark"; the actual container seal is the security seal code (e.g. 002765).
-  * PROMPT CASE - SEAL NUMBER IN THE TOP HEADER / MARGIN:
-    In documents like 32298.pdf, 32299.pdf, 32300.pdf, the seal number is written by hand at the top right near the company header/logo (e.g. 'Seal. No- 03386', 'Seal No - 03330', 'Seal. No- 03301').
-    Extract ONLY the pure digits (e.g. 03386, 03330, 03301) into "pmark".
-  * EXTRACTION & CLEANING RULE:
-    Extract ONLY the pure digits or seal code (e.g., 03386, 03330, 03301, 002765, CJ007567).
-    Strictly strip and ignore any prefixes, labels, typos, or symbols like 'Seal', 'Seal. No-', 'Seal no:', 'Seuinoł', 'Seaimot', 'No', '=', or '-'.
-    If no physical container seal number is present anywhere in the document, return strictly an empty string "".
-
-2. ROUTING & STATIONS:
-- "branchrefcode": Center or branch name (e.g., "GURGAON", "DELHI", "SANAND").
-- "Counter name": Booking counter or branch (matches branchrefcode).
-- "orgrefcode": Origin station or city from the 'From' box on the bilty or E-Way Bill dispatch place (e.g., "MAU", "GURGAON", "SANAND").
-- "destrefcode": Destination station or city from the 'To' box on the bilty or E-Way Bill delivery place (e.g., "DELHI", "SOUTH DELHI", "AMBALA").
-- "collectionstncode": Dispatch station code (same as orgrefcode).
-- "viaborder": Via border route if printed, else empty string "".
-
-3. DATES & TRANSIT TIME:
-- "grdt": Consignment booking date from the 'Date' box on the bilty (strictly formatted as DD/MM/YYYY, e.g. 27/09/2026, 28/09/2026, 29/09/2026. NEVER output month names like 27-Sep-26 or 27-SEP-2026).
-- "stockdt": Consignment entry date (matches grdt, formatted as DD/MM/YYYY).
-- "Loading Start date *": Dispatch or loading date (same as grdt).
-- "Valid Upto": E-Way Bill validity expiry date from the attached E-Way Bill page (strictly formatted as DD/MM/YYYY, e.g. 28/09/2026, 29/09/2026), else empty string "".
-- "Transit Days": Calculate the integer difference in days between 'grdt' and 'Valid Upto' (e.g., 1). If either date is missing, return strictly empty string "".
-
-4. PARTIES & MASTER DATA:
-- "Customer Name *": Corporate billed entity: "UNICHARM INDIA PVT. LTD."
-- "custrefcode": Customer account reference code from the invoice or bilty (e.g., "UNICHARM" or party code if present, else empty string "").
-- "cngr": Consignor Name & Address from the bilty or Tax Invoice (e.g., "UNICHARM INDIA PVT. LTD., Village Mau, Tehsil Pataudi, District Gurugram, Haryana - 122414" or "UNICHARM INDIA PVT. LTD., Sanand, Gujarat").
-- "cngrgstno": Consignor 15-character GSTIN from the Tax Invoice or E-Way Bill (e.g., "06AABCU0113A2ZA").
-- "cnge": Consignee Name & Address from the bilty or Tax Invoice (e.g., "GLOBAL MARKETING-MT, Khasra No. 240, Hamidpur Narela Village, New Delhi - 110036" or "GLOBAL MARKETING, Ambala").
-- "cngegstno": Consignee 15-character GSTIN from the Tax Invoice or E-Way Bill (e.g., "07AJYPK4522G1ZX").
-- "Depatment Name": Department name if mentioned, else empty string "".
-
-5. GOODS, PACKAGING & WEIGHT QUANTIFICATION:
-- "bookedpckgs": Integer package count from the Tax Invoice 'Total Cases' or bilty 'No. of Packages' (e.g., 1375, 2064, 1251, 797).
-- "stockpckgs": Total stock packages (matches bookedpckgs).
-- "packing": Packaging type (e.g., "Box", "Carton box", "Cases").
-- "goods": Commodity description from the Tax Invoice (e.g., "MPP All Night Absorb COCO L40", "Sofy Bodyfit Pro XL 6P", "Baby Diapers"). Do not include seal numbers or invoice numbers in the goods description.
-- "productcode": HSN code or product code from the invoice (e.g., "96190030"), else empty string "".
-- "bookedaweight": Actual gross weight in KG from the Tax Invoice or bilty. If only vehicle container size like '32 Feet' is written in the weight box, capture numeric weight if present, else empty string "".
-- "stockaweight": Actual cargo weight (matches bookedaweight).
-- "bookedcweight": Charged weight in KG from the bilty or invoice.
-- "stockcweight": Charged stock weight (matches bookedcweight).
-- "Order Weight": Weight if specified separately, else empty string "".
-- "Contract wt": Contract weight if specified, else empty string "".
-- "Extra Mt": Extra metric tons if specified, else empty string "".
-
-6. COMMERCIAL INVOICE & E-WAY BILL:
-- "invoiceno": Commercial invoice number from the Unicharm Tax Invoice or E-Way Bill (e.g., 10906I26-001898, 10906F26-001407, 10906I26-001909, 3324726-000484).
-- "invoiedt": Commercial invoice date from the Tax Invoice (strictly formatted as DD/MM/YYYY, e.g., 27/09/2026, 28/09/2026).
-- "valgoods": Total invoice value of goods from the Tax Invoice (numeric without commas, e.g., 2112307.00, 2817236.00).
-- "oamount": Gross total amount (matches valgoods).
-- "ewaybillno": 12-digit GST E-Way Bill number from the E-Way Bill page (e.g., 362343603918, 372343679800, 392344317558).
-
-7. CHARGES & TAX BREAKDOWN:
-- "grtype(Don’t know)": Payment terms from the bilty (e.g., "TBB" or "TO BE BILLED").
-- "freight  *": Return 0.
-- "cgst": 0.00.
-- "sgst": 0.00.
-- "igst": Always output 0.00 (or 0) for manual data entry purposes.
-- "received": 0.00.
-- "advance": 0.00.
+1. Present:
+- "grno" / "LR No *": Primary Consignment / LR Tracking Number. Extract bold 5-digit number printed in 'CONSIGNMENT NOTE: No.' box at top right of the Box N Freight bilty (e.g. 32298, 32299, 32300, 33306), or verify from 'Transporter LR No' on the Unicharm Tax Invoice / E-Way Bill Part B.
+- "grdt": Consignment booking date in 'Date' box (strictly DD/MM/YYYY, e.g., 27/09/2026).
+- "stockdt": Consignment entry date (matches grdt).
+- "Customer Name *": Corporate billed entity: "UNICHARM INDIA PVT. LTD.".
+- "cngr": "UNICHARM INDIA PVT. LTD., Village Mau, Tehsil Pataudi, District Gurugram, Haryana - 122414" (or Sanand, Gujarat).
+- "cngrgstno": "06AABCU0113A2ZA".
+- "cnge": "GLOBAL MARKETING-MT, Khasra No. 240, Hamidpur Narela Village, New Delhi - 110036" (or Ambala).
+- "cngegstno": "07AJYPK4522G1ZX".
+- "orgrefcode": "MAU", "GURGAON", or "SANAND". "destrefcode": "DELHI", "SOUTH DELHI", or "AMBALA".
+- "collectionstncode": Matches orgrefcode.
+- "bookedpckgs" / "stockpckgs": Integer package count from Tax Invoice 'Total Cases' or bilty 'No. of Packages' (e.g. 1375, 2064, 1251, 797).
+- "packing": "Cases" or "Carton box".
+- "goods": Commodity description from Tax Invoice (e.g., "Baby Diapers", "MPP All Night Absorb COCO L40"). (Do NOT include seal numbers or invoice numbers in the goods description).
+- "bookedaweight" / "stockaweight": Actual gross weight in KG from Tax Invoice or bilty.
+- "bookedcweight" / "stockcweight": Charged weight in KG from bilty or Tax Invoice.
+- "invoiceno": Commercial invoice number from Tax Invoice (e.g., 10906I26-001898, 10906F26-001407, 3324726-000484).
+- "invoiedt": Commercial invoice date from Tax Invoice (DD/MM/YYYY).
+- "valgoods": Total declared invoice value of goods from Tax Invoice (numeric without commas, e.g. 2112307.00, 2817236.00).
+- "ewaybillno": 12-digit GST E-Way Bill number from E-Way Bill page (e.g., 362343603918).
+- "Valid Upto": E-Way Bill validity expiry date (strictly DD/MM/YYYY, e.g., 28/09/2026).
+- "Transit Days": Calculated integer difference between grdt and Valid Upto.
+- "Vehicle No *": Indian motor vehicle registration plate from bilty 'Tempo/Truck No.', mParivahan RC status, or truck photo (e.g., HR55AX5490, RJ18GB7132, NL01AFS826).
+- "Vehicle Type *": Vehicle body type: "Market" (or "32 FT CONTAINER").
+- "Loading Start date *": Booking date (matches grdt).
 - "ftl": Vehicle container/service type: "FTL" (Dedicated 32 FT container).
-- "staxpaidby": Party paying GST on freight: "C" (Consignor).
+- "staxpaidby": GST on freight paying party: "C" (Consignor).
 - "dlvtype": Delivery type: "D" (Door Delivery).
+- "grtype": Payment terms from bilty: "TBB" (To Be Billed).
 
-8. VEHICLE & DRIVER CREDENTIAL RESOLUTION:
-- "Vehicle No *": Indian motor vehicle registration plate from the bilty 'Tempo/Truck No.', mParivahan RC status, or truck photo (e.g., HR55AX5490, HR55AT7593, RJ18GB7132, NL01AFS826).
-- "Vehicle Type *": Vehicle body type: "Market".
-- "Driver Name *": Driver full name. Extract ONLY if explicitly visible on an attached Driving Licence (DL) card (e.g., "OM PRAKASH", "JITENDRA JHA"). If NO DL card is attached, leave STRICTLY as an empty string "". NEVER guess or invent names.
-- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if explicitly written for the driver. If absent, leave STRICTLY as an empty string "". NEVER auto-fill dummy numbers or shipper contact numbers.
-- "Liscense No *": Commercial driving licence number from the attached DL card (e.g., "UP33 20170006650", "BR10 20000001762"). If not attached, leave STRICTLY as an empty string "".
-- "Valid Up to *": Transport validity expiry date of the driving licence ('TR' validity date on DL card, strictly formatted as DD/MM/YYYY, e.g., "27/03/2027", "11/05/2027"). If not attached, leave STRICTLY as an empty string "".
+2. partially Present:
+- "pmark" (Container / Transit Seal Number):
+  * TOP HEADER/MARGIN CASE: Written near top right header/logo (e.g. 'Seal. No- 03386', 'Seal No - 03330') -> extract pure digits ('03386').
+  * MIDDLE OF LR/GOODS TABLE CASE: Stamped or written in the middle of 'Description (Said to Contain)' goods area (e.g. 'Seal no: 002765') -> extract pure digits ('002765') into pmark. NEVER treat this middle seal as LR No, and NEVER keep it inside goods description.
+  * If no physical container seal was applied, return strictly empty string "".
+- "Driver Name *": Driver full legal name. Extracted ONLY if an official Commercial Driving Licence (DL) is attached in the multi-page dossier (e.g., "OM PRAKASH", "JITENDRA JHA"). If no DL is attached, leave strictly as empty string "" for manual operator entry.
+- "Mobile no   *": Driver 10-digit mobile number. Extracted ONLY if explicitly written for the driver. If absent, leave strictly as "". Shipper contact numbers are never auto-filled.
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "UP33 20170006650"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, strictly DD/MM/YYYY, e.g., "27/03/2027"). If absent, leave strictly as "".
+- "productcode": Product / HSN code from Tax Invoice (e.g., "96190030"). Left empty "" if not itemized.
+- "custrefcode": Customer reference code (e.g., "UNICHARM" or party code). Left empty "" if omitted.
+- "Depatment Name": Designated warehouse department name (e.g., "GLOBAL-BANGLORE", "GLOBAL MARKETING-MT"). Left empty "" if not specified.
+- "branchrefcode" / "Counter name": Hub center code (e.g., "GURGAON", "DELHI", "SANAND") if specified in bilty header.
+- "oamount": Gross total amount (matches valgoods unless specific unloading charge is noted).
 
-9. ZERO-HALLUCINATION & STRICT EMPTY FIELD RULES:
-* The 'BNF LR' column has been permanently removed from the Excel schema. Never extract or output any value as BNF LR.
-* Auto-fetching from driver_master.json is completely disabled. If driver details are absent, leave them strictly as empty strings ("") for manual entry.
-* If any field is missing, illegible, or not present on the document, leave it as an empty string "" (never invent placeholder data).
+3. absent:
+- "BNF LR No": Permanently removed / discontinued from Excel schema. Never extract.
+- "freight  *": Full Truck Load (FTL) contract billed centrally -> return 0.
+- "cgst", "sgst": Freight tax -> return 0.00.
+- "igst": Always output 0.00 (or 0) for manual entry compliance.
+- "received", "advance": Cash received/advanced at booking -> return 0.00.
+- "Order Weight", "Contract wt", "Extra Mt": Industrial contract metrics -> return strictly empty string "".
+- "viaborder": Transit border checkpost -> return strictly empty string "".
+
+Produce valid JSON object matching all 49 keys exactly.
 """
-
 
 
 def is_orange_yellow_image(pil_img: Image.Image) -> bool:
@@ -1217,9 +1473,15 @@ async def extract_handwriting(
     elif any(w in lower_filename for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
         active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
         prompt_type = "Unicharm OCR"
+    elif "himalaya" in lower_filename or "him" in lower_filename:
+        active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
+        prompt_type = "Himalaya OCR"
+    elif any(w in lower_filename for w in ["gold_plus", "gold plus", "goldplus", "gold"]):
+        active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
+        prompt_type = "Gold Plus OCR"
     else:
         active_prompt = DEFAULT_HANDWRITTEN_OCR_PROMPT
-        prompt_type = "Default Handwritten OCR"
+        prompt_type = "Default Master OCR"
 
     # 2. Determine safe MIME type
     mime_type = file.content_type
@@ -1245,8 +1507,13 @@ async def extract_handwriting(
     target_page_idx = 0
 
     if mime_type == "application/pdf":
-        print(f"[DocType] Classified as PDF document ({len(image_bytes)} bytes). Passing directly to Gemini.")
+        print(f"[DocType] Classified as PDF document ({len(image_bytes)} bytes). Preparing high-resolution pages for Gemini.")
         try:
+            # Prevent PyMuPDF layout/onnxruntime from crashing on Python 3.14
+            import sys
+            for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
+                if _m not in sys.modules:
+                    sys.modules[_m] = None
             import fitz
             pdf_doc = fitz.open(stream=image_bytes, filetype="pdf")
             pdf_page_count = len(pdf_doc)
@@ -1261,6 +1528,12 @@ async def extract_handwriting(
                     elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
                         active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
                         prompt_type = "Unicharm OCR"
+                    elif "himalaya" in txt_low:
+                        active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
+                        prompt_type = "Himalaya OCR"
+                    elif any(w in txt_low for w in ["gold plus", "gold_plus", "goldplus", "gold"]):
+                        active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
+                        prompt_type = "Gold Plus OCR"
                     if any(w in txt_low for w in ["consignment", "lorry receipt", "c note", "bilty", "cngr"]):
                         target_page_idx = p_idx
                         break
@@ -1280,6 +1553,16 @@ async def extract_handwriting(
                     b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
                     preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
                     print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 300 DPI (primary page: {t_idx+1})")
+                    # Evaluate orange/yellow bilty classification on the rendered primary page
+                    try:
+                        pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
+                        is_yellow_image = is_orange_yellow_image(pdf_pil)
+                        if is_yellow_image:
+                            print("[DocType] PDF Bilty classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
+                        else:
+                            print("[DocType] PDF Bilty classified as White printed consignment page")
+                    except Exception as c_err:
+                        print(f"[DocType Color Check Notice]: {c_err}")
         except Exception as ex:
             print(f"[PDF Preview Error]: {ex}")
     else:
@@ -1322,11 +1605,18 @@ async def extract_handwriting(
     print(f"[Step 4/5] Sending request to Gemini API (MIME type: {mime_type})...")
 
     try:
+        # Build multimodal payload: For PDFs, send high-resolution 300 DPI rendered pages
+        gemini_parts = []
+        if mime_type == "application/pdf" and pdf_all_preview_bytes:
+            print(f"[Gemini Input] Sending {len(pdf_all_preview_bytes[:4])} rendered 300 DPI page image(s) to Gemini for maximum precision.")
+            for p_bytes in pdf_all_preview_bytes[:4]:
+                gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
+        else:
+            gemini_parts.append({"mime_type": mime_type, "data": image_bytes})
+        gemini_parts.append(active_prompt)
+
         response = model.generate_content(
-            [
-                {"mime_type": mime_type, "data": image_bytes},
-                active_prompt,
-            ],
+            gemini_parts,
             generation_config=genai.GenerationConfig(
                 response_mime_type="application/json",
                 response_schema=GeminiOCRResponse,
