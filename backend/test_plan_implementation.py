@@ -134,11 +134,10 @@ class TestHimalayaPlanImplementation(unittest.TestCase):
         """Verify the OCR prompt contains the correct zero-hallucination and empty field rules."""
         prompt = main.DEFAULT_HANDWRITTEN_OCR_PROMPT
         self.assertNotIn("treat it as BNF LR No", prompt)
-        self.assertIn("STRICT EMPTY FIELD RULE", prompt)
         self.assertIn("pmark", prompt)
-        self.assertIn("Extract ONLY the actual seal code or digits", prompt)
         self.assertIn("LR No *", prompt)
         self.assertIn("CONSIGNMENT NOTE: No.", prompt)
+        self.assertIn("leave strictly as empty string \"\" for manual operator entry", prompt)
 
     def test_06_workbook_generation_structure(self):
         """Verify workbook generation builds 49 columns without BNF LR No."""
@@ -324,12 +323,9 @@ class TestHimalayaPlanImplementation(unittest.TestCase):
         prompt = main.DEFAULT_PATANJALI_OCR_PROMPT
         self.assertIn("PATANJALI PARIVAHAN", prompt)
         self.assertIn("top-left and top-right", prompt)
-        self.assertIn("pencil or pen", prompt)
-        self.assertIn("leave it strictly empty", prompt)
-        self.assertIn("DO NOT output \"0\"", prompt)
-        self.assertIn("Leaving the field empty ensures the record cannot be saved", prompt)
-        self.assertIn("DO NOT fall back to the printed 'C Note No.'", prompt)
-        self.assertIn("NEVER copy or confuse vehicle registration numbers", prompt)
+        self.assertIn("leave strictly empty", prompt)
+        self.assertIn("DO NOT fall back to printed 7-digit 'C Note No.'", prompt)
+        self.assertIn("NEVER confuse vehicle registration numbers", prompt)
         self.assertIn("xxxx", prompt)
 
     def test_11_patanjali_margin_lr_capture(self):
@@ -533,11 +529,10 @@ class TestHimalayaPlanImplementation(unittest.TestCase):
         self.assertIn("BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.", prompt)
         self.assertIn("CONSIGNMENT NOTE: No.", prompt)
         self.assertIn("pmark", prompt)
-        self.assertIn("PROMPT CASE - SEAL NUMBER IN THE MIDDLE OF THE \"LR\" IMAGE", prompt)
-        self.assertIn("33306.pdf", prompt)
+        self.assertIn("MIDDLE OF LR/GOODS TABLE CASE", prompt)
+        self.assertIn("Seal no: 002765", prompt)
         self.assertIn("Description (Said to Contain)", prompt)
-        self.assertIn("NEVER extract or confuse this seal number or description text as the LR number", prompt)
-        self.assertIn("STRICT EMPTY FIELD RULE", prompt)
+        self.assertIn("NEVER treat this middle seal as LR No", prompt)
         self.assertIn("DD/MM/YYYY", prompt)
 
     def test_18_map_to_gr_row_unicharm_packet(self):
@@ -667,6 +662,87 @@ class TestHimalayaPlanImplementation(unittest.TestCase):
         self.assertEqual(str(ws.cell(row=4, column=grno_col).value), "32298")
         self.assertEqual(str(ws.cell(row=4, column=pmark_col).value), "03386")
         self.assertEqual(str(ws.cell(row=4, column=cust_col).value), "UNICHARM INDIA PVT. LTD.")
+
+
+    def test_20_transit_days_not_corrupted_by_driver_dl_validity(self):
+        """
+        Verify that when a document has BOTH E-Way Bill Valid Upto (05/10/2026)
+        and Driver License Valid Up to * (04/04/2027):
+        - Transit Days calculates strictly against E-Way Bill date: 29/09/2026 to 05/10/2026 = 6 days.
+        - Valid Upto column gets 05/10/2026.
+        - Valid Up to * column gets 04/04/2027.
+        - Neither overwrites the other.
+        """
+        data = {
+            "LR No *": "33306",
+            "grno (*)": "33306",
+            "grdt *": "29/09/2026",
+            "Customer Name *": "UNICHARM INDIA PVT. LTD.",
+            "Vehicle No *": "RJ18GB7132",
+            "Vehicle Type *": "Market",
+            "orgrefcode": "SANAND",
+            "destrefcode": "AMBALA",
+            "cngr *": "UNICHARM INDIA PVT. LTD., Sanand",
+            "cnge *": "GLOBAL MARKETING, Ambala",
+            "pmark": "Seaimot 002765",
+            "valgoods": "2112307.00",
+            "invoiceno": "3324726-000484",
+            "ewaybillno": "392344317558",
+            "Valid Upto": "05/10/2026",          # E-Way Bill validity
+            "Valid Up to *": "04/04/2027",      # Driver Licence TR validity
+            "Driver Name *": "DEVIDAS",
+            "Liscense No *": "UP81 20170010781",
+            "Mobile no   *": "",
+        }
+
+        row = main.map_to_gr_row(data, main.GR_BNF_49_HEADERS)
+        transit_idx = main.GR_BNF_49_HEADERS.index("Transit Days")
+        ewb_valid_idx = main.GR_BNF_49_HEADERS.index("Valid Upto")
+        dl_valid_idx = main.GR_BNF_49_HEADERS.index("Valid Up to *")
+        driver_idx = main.GR_BNF_49_HEADERS.index("Driver Name *")
+        dl_no_idx = main.GR_BNF_49_HEADERS.index("Liscense No *")
+
+        self.assertEqual(row[transit_idx], 6, f"Transit days should be 6, got {row[transit_idx]}")
+        self.assertEqual(row[ewb_valid_idx], "05/10/2026")
+        self.assertEqual(row[dl_valid_idx], "04/04/2027")
+        self.assertEqual(row[driver_idx], "DEVIDAS")
+        self.assertEqual(row[dl_no_idx], "UP81 20170010781")
+
+    def test_21_other_charges_does_not_mirror_valgoods(self):
+        """
+        Verify that oamount (Other Charges) defaults to 0.0 and does NOT
+        mirror the 21 Lakh declared invoice goods value (valgoods).
+        """
+        data = {
+            "LR No *": "32298",
+            "valgoods": "2112307.00",
+        }
+
+        row = main.map_to_gr_row(data, main.GR_BNF_49_HEADERS)
+        oamount_idx = main.GR_BNF_49_HEADERS.index("oamount")
+        valgoods_idx = main.GR_BNF_49_HEADERS.index("valgoods")
+
+        self.assertEqual(row[oamount_idx], 0.0, f"Other charges should be 0.0, got {row[oamount_idx]}")
+        self.assertEqual(row[valgoods_idx], 2112307.0)
+
+        # But captures actual unloading charge when provided
+        data_unloading = {
+            "LR No *": "32298",
+            "valgoods": "2112307.00",
+            "oamount": "1000",
+        }
+        row_unloading = main.map_to_gr_row(data_unloading, main.GR_BNF_49_HEADERS)
+        self.assertEqual(row_unloading[oamount_idx], 1000.0)
+
+    def test_22_unicharm_prompt_contains_updated_driver_and_oamount_rules(self):
+        """
+        Verify that DEFAULT_UNICHARM_OCR_PROMPT includes explicit instructions for
+        Page 5-6 DL cards and oamount rule preventing copying valgoods.
+        """
+        prompt = main.DEFAULT_UNICHARM_OCR_PROMPT
+        self.assertIn("Page 5 or 6", prompt)
+        self.assertIn("NEVER copy the invoice goods value (valgoods) into oamount", prompt)
+        self.assertIn("Validity(TR)", prompt)
 
 
 if __name__ == "__main__":

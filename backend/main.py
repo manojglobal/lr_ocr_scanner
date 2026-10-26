@@ -255,15 +255,15 @@ A. UNICHARM (COMPANY NAME)
   * TOP HEADER/MARGIN CASE: Written near top right header/logo (e.g. 'Seal. No- 03386', 'Seal No - 03330') -> extract pure digits ('03386').
   * MIDDLE OF LR/GOODS TABLE CASE: Stamped or written in the middle of 'Description (Said to Contain)' goods area (e.g. 'Seal no: 002765') -> extract pure digits ('002765') into pmark. NEVER treat this middle seal as LR No, and NEVER keep it inside goods description.
   * If no physical container seal was applied, return strictly empty string "".
-- "Driver Name *": Driver full legal name. Extracted ONLY if an official Commercial Driving Licence (DL) is attached in the multi-page dossier (e.g., "OM PRAKASH", "JITENDRA JHA"). If no DL is attached, leave strictly as empty string "" for manual operator entry.
-- "Mobile no   *": Driver 10-digit mobile number. Extracted ONLY if explicitly written for the driver. If absent, leave strictly as "". Shipper contact numbers are never auto-filled.
-- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "UP33 20170006650"). If absent, leave strictly as "".
-- "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, strictly DD/MM/YYYY, e.g., "27/03/2027"). If absent, leave strictly as "".
+- "Driver Name *": Driver full legal name from the attached Indian Union Driving Licence (DL) card (typically on Page 5 or 6, e.g., "OM PRAKASH", "JITENDRA JHA", "SRI SANT RAM", "DEVIDAS"). If no DL is attached, leave strictly as empty string "" for manual operator entry.
+- "Mobile no   *": Driver 10-digit mobile number. Extracted ONLY if explicitly written for the driver on the bilty or documents. If absent, leave strictly as "". Shipper/transporter contact numbers are never auto-filled.
+- "Liscense No *": Commercial driving licence number from the attached DL card (e.g., "UP33 20170006650", "BR10 20000001762", "UP75 20110022749", "UP81 20170010781"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on the attached DL card (strictly the 'TR' transport date, e.g. 'Validity(TR)', strictly formatted DD/MM/YYYY, e.g., "27/03/2027", "11/05/2027", "25/04/2030", "04/04/2027"). If absent, leave strictly as "".
 - "productcode": Product / HSN code from Tax Invoice (e.g., "96190030"). Left empty "" if not itemized.
 - "custrefcode": Customer reference code (e.g., "UNICHARM" or party code). Left empty "" if omitted.
 - "Depatment Name": Designated warehouse department name (e.g., "GLOBAL-BANGLORE", "GLOBAL MARKETING-MT"). Left empty "" if not specified.
 - "branchrefcode" / "Counter name": Hub center code (e.g., "GURGAON", "DELHI", "SANAND") if specified in bilty header.
-- "oamount": Gross total amount (matches valgoods unless specific unloading charge is noted).
+- "oamount": Other charges (unloading, hamali, detention, misc charges). Extract numeric value ONLY if explicitly written in the bilty or notes (e.g. 'Unloading charge 1000/-' -> 1000.00). If absent or FTL without additional charges, return strictly 0.00. NEVER copy the invoice goods value (valgoods) into oamount.
 
 3. absent:
 - "BNF LR No": Permanently removed / discontinued from Excel schema. Never extract.
@@ -702,15 +702,15 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
   * TOP HEADER/MARGIN CASE: Written near top right header/logo (e.g. 'Seal. No- 03386', 'Seal No - 03330') -> extract pure digits ('03386').
   * MIDDLE OF LR/GOODS TABLE CASE: Stamped or written in the middle of 'Description (Said to Contain)' goods area (e.g. 'Seal no: 002765') -> extract pure digits ('002765') into pmark. NEVER treat this middle seal as LR No, and NEVER keep it inside goods description.
   * If no physical container seal was applied, return strictly empty string "".
-- "Driver Name *": Driver full legal name. Extracted ONLY if an official Commercial Driving Licence (DL) is attached in the multi-page dossier (e.g., "OM PRAKASH", "JITENDRA JHA"). If no DL is attached, leave strictly as empty string "" for manual operator entry.
-- "Mobile no   *": Driver 10-digit mobile number. Extracted ONLY if explicitly written for the driver. If absent, leave strictly as "". Shipper contact numbers are never auto-filled.
-- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "UP33 20170006650"). If absent, leave strictly as "".
-- "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, strictly DD/MM/YYYY, e.g., "27/03/2027"). If absent, leave strictly as "".
+- "Driver Name *": Driver full legal name from the attached Indian Union Driving Licence (DL) card (typically on Page 5 or 6, e.g., "OM PRAKASH", "JITENDRA JHA", "SRI SANT RAM", "DEVIDAS"). If no DL is attached, leave strictly as empty string "" for manual operator entry.
+- "Mobile no   *": Driver 10-digit mobile number. Extracted ONLY if explicitly written for the driver on the bilty or documents. If absent, leave strictly as "". Shipper/transporter contact numbers are never auto-filled.
+- "Liscense No *": Commercial driving licence number from the attached DL card (e.g., "UP33 20170006650", "BR10 20000001762", "UP75 20110022749", "UP81 20170010781"). If absent, leave strictly as "".
+- "Valid Up to *": Transport validity expiry date on the attached DL card (strictly the 'TR' transport date, e.g. 'Validity(TR)', strictly formatted DD/MM/YYYY, e.g., "27/03/2027", "11/05/2027", "25/04/2030", "04/04/2027"). If absent, leave strictly as "".
 - "productcode": Product / HSN code from Tax Invoice (e.g., "96190030"). Left empty "" if not itemized.
 - "custrefcode": Customer reference code (e.g., "UNICHARM" or party code). Left empty "" if omitted.
 - "Depatment Name": Designated warehouse department name (e.g., "GLOBAL-BANGLORE", "GLOBAL MARKETING-MT"). Left empty "" if not specified.
 - "branchrefcode" / "Counter name": Hub center code (e.g., "GURGAON", "DELHI", "SANAND") if specified in bilty header.
-- "oamount": Gross total amount (matches valgoods unless specific unloading charge is noted).
+- "oamount": Other charges (unloading, hamali, detention, misc charges). Extract numeric value ONLY if explicitly written in the bilty or notes (e.g. 'Unloading charge 1000/-' -> 1000.00). If absent or FTL without additional charges, return strictly 0.00. NEVER copy the invoice goods value (valgoods) into oamount.
 
 3. absent:
 - "BNF LR No": Permanently removed / discontinued from Excel schema. Never extract.
@@ -960,15 +960,11 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         freight = 0
 
     valgoods = clean_num(get_val("valgoods", "value of goods", "declared value", "goods value", "invoice value"))
-    oamount_raw = clean_num(get_val("oamount", "total invoice amount", "gross invoice value", "grand total", "total invoice value", "total amount"))
-    if oamount_raw is not None and oamount_raw != "" and oamount_raw != 0:
-        oamount = oamount_raw
-    elif valgoods is not None and valgoods != "" and valgoods != 0:
-        oamount = valgoods
-    elif oamount_raw is not None and oamount_raw != "":
+    oamount_raw = clean_num(get_val("oamount", "other amount", "other charges", "hamali", "loading charges", "unloading charges", "aoc", "labour", "st charge", "st. charge", "statistical charge", "misc charges", "misc", "ch post"))
+    if oamount_raw is not None and oamount_raw != "":
         oamount = oamount_raw
     else:
-        oamount = clean_num(get_val("other amount", "other charges", "hamali", "loading charges", "unloading charges", "aoc", "labour", "st charge", "st. charge", "statistical charge", "misc charges", "misc", "ch post")) or 0
+        oamount = 0.0
 
     cgst = clean_num(get_val("cgst", "cgst amount", "central gst"))
     sgst = clean_num(get_val("sgst", "sgst amount", "state gst"))
@@ -991,14 +987,39 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     driver = get_val("Driver Name *", "Driver Name", "driver name", "driver", "pilot", "owner/driver name", "owner or driver name", "driver/owner name", "owner name", "driver_name")
     mobile = get_val("Mobile no   *", "Mobile no *", "mobile no", "driver mobile", "phone no", "mobile", "contact no", "driver_mobile", "driver phone")
     license = get_val("Liscense No *", "Liscense No", "license no", "dl no", "driving license", "licence no", "driving licence no", "driving licence number", "dl number", "license_no")
-    valid_up_to = _format_date_ddmmyyyy(get_val("Valid Up to *", "Valid Up to", "valid up to", "valid upto", "fitness valid", "permit valid", "license valid", "dl valid till", "valid till", "valid_upto"))
+    # Decouple Driver Licence Transport validity (Valid Up to *) from E-Way Bill validity (Valid Upto)
+    raw_dl_upto = None
+    for k, v in data.items():
+        k_str = str(k).strip()
+        if k_str in ("Valid Up to *", "Valid Up to", "valid_up_to", "dl valid till", "dl_valid_till", "license valid", "driving licence valid"):
+            raw_dl_upto = v
+            break
+        elif "*" in k_str or any(w in k_str.lower() for w in ("dl", "license", "licence", "driver")):
+            if clean(k_str) in ("validupto", "licensevalid", "dlvalidtill"):
+                if raw_dl_upto is None:
+                    raw_dl_upto = v
+    if not raw_dl_upto:
+        raw_dl_upto = get_val("dl valid till", "license valid", "dl_valid_till", "driving licence valid", "permit valid", "fitness valid")
+    valid_up_to = _format_date_ddmmyyyy(raw_dl_upto) if raw_dl_upto else ""
+
     loading_date = _format_date_ddmmyyyy(get_val("Loading Start date *", "Loading Start date", "loading start date", "loading date", "dispatch date", default=grdt))
     customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
     lrno = _clean_grno(get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)) or grno
     bnflr = get_val("BNF LR No", "bnf lr no", "bnf lr", "bnf no")
     dept = get_val("Depatment Name", "department name", "department", "dept", "depatment name")
     counter_name = get_val("Counter name", "counter name", "counter", "booking counter", "branchrefcode", "branch", default="delhi")
-    valid_upto = _format_date_ddmmyyyy(get_val("Valid Upto", "valid upto", "valid up to", "ewb valid upto", default=valid_up_to))
+
+    # Strictly extract E-Way Bill expiry date (never fall back to driver license valid_up_to)
+    raw_ewb_upto = None
+    for k, v in data.items():
+        k_str = str(k).strip()
+        if k_str in ("Valid Upto", "valid_upto", "ewb valid upto", "ewb_valid_upto", "e-way bill valid upto", "E-way Bill Valid Upto", "ewb validity"):
+            raw_ewb_upto = v
+            break
+        elif clean(k_str) in ("validupto", "ewbvalidupto") and "*" not in k_str and not any(w in k_str.lower() for w in ("dl", "license", "licence", "driver")):
+            if raw_ewb_upto is None:
+                raw_ewb_upto = v
+    valid_upto = _format_date_ddmmyyyy(raw_ewb_upto) if raw_ewb_upto else ""
 
     # Calculate 'transit_days' by finding the integer difference in days between 'grdt' (booking date)
     # and 'Valid Upto' (E-Way Bill expiry date) formatted as DD/MM/YYYY.
@@ -1605,11 +1626,12 @@ async def extract_handwriting(
     print(f"[Step 4/5] Sending request to Gemini API (MIME type: {mime_type})...")
 
     try:
-        # Build multimodal payload: For PDFs, send high-resolution 300 DPI rendered pages
+        # Build multimodal payload: For PDFs, send high-resolution 300 DPI rendered pages (up to 8 pages to capture DL cards on pages 5-6)
         gemini_parts = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
-            print(f"[Gemini Input] Sending {len(pdf_all_preview_bytes[:4])} rendered 300 DPI page image(s) to Gemini for maximum precision.")
-            for p_bytes in pdf_all_preview_bytes[:4]:
+            pages_to_send = pdf_all_preview_bytes[:8]
+            print(f"[Gemini Input] Sending {len(pages_to_send)} rendered 300 DPI page image(s) to Gemini for maximum precision.")
+            for p_bytes in pages_to_send:
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
         else:
             gemini_parts.append({"mime_type": mime_type, "data": image_bytes})

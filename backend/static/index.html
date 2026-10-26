@@ -1652,7 +1652,7 @@
       if (fieldKey === 'Counter name' || fieldKey === 'counter name') return data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || data['Booking Counter'] || data['booking counter'] || data['branchrefcode'] || 'delhi';
       if (fieldKey === 'Transit Days' || fieldKey === 'transit days') {
         const startStr = data['grdt *'] || data['grdt'] || data['stockdt'] || data['stockdt '] || '';
-        const endStr = data['Valid Upto'] || data['validupto'] || data['Valid Up to *'] || '';
+        const endStr = data['Valid Upto'] || data['validupto'] || data['ewb valid upto'] || data['ewb_valid_upto'] || '';
         if (startStr && endStr) {
           const parseD = (val) => {
             if (!val) return null;
@@ -1702,12 +1702,9 @@
         return fr ? String(fr) : '0';
       }
       if (fieldKey === 'oamount') {
-        const oamt = data['oamount'] || data['total invoice amount'] || data['gross invoice value'] || data['grand total'] || data['total invoice value'] || data['total amount'];
-        if (oamt !== undefined && oamt !== '' && oamt !== '0' && oamt !== 0) return String(oamt);
-        const valG = data['valgoods'] || data['Invoice Value'] || data['value of goods'] || data['declared value'];
-        if (valG !== undefined && valG !== '') return String(valG);
-        if (oamt !== undefined && oamt !== '') return String(oamt);
-        return data['Other Charges'] || data['other_amount'] || data['hamali'] || data['loading charges'] || data['aoc'] || data['labour'] || '0';
+        const oamt = data['oamount'] || data['Other Charges'] || data['other_amount'] || data['other charges'] || data['hamali'] || data['loading charges'] || data['unloading charges'] || data['aoc'] || data['labour'] || data['misc'] || '';
+        if (oamt !== undefined && oamt !== null && String(oamt).trim() !== '') return String(oamt).trim();
+        return '0.00';
       }
       if (fieldKey === 'cgst') {
         const ig = data['igst'] || data['igst amount'] || data['integrated gst'] || '';
@@ -4611,6 +4608,17 @@
     }
 
     function getEmptyMandatoryFields() {
+      // Keep customer inputs synchronized across screens
+      const custVal = (document.getElementById('custom_customer')?.value || document.getElementById('edit_customer')?.value || '').trim();
+      if (custVal) {
+        if (document.getElementById('custom_customer') && !document.getElementById('custom_customer').value.trim()) {
+          document.getElementById('custom_customer').value = custVal;
+        }
+        if (document.getElementById('edit_customer') && !document.getElementById('edit_customer').value.trim()) {
+          document.getElementById('edit_customer').value = custVal;
+        }
+      }
+
       const emptyList = [];
 
       // 1. Mandatory Step 2 inputs across all 4 tabs
@@ -4627,6 +4635,18 @@
       mandatoryCustom.forEach(cfg => {
         const el = document.getElementById(cfg.id);
         if (el && isFieldValueEmpty(el)) {
+          // If customer is already listed from Step 2, prefer custom_customer if currently on screen4b
+          const customScreen = document.getElementById('screen4b_customization');
+          const onCustomScreen = customScreen && customScreen.style.display !== 'none' && !customScreen.hidden;
+          if (cfg.id === 'custom_customer') {
+            const idx = emptyList.findIndex(item => item.id === 'edit_customer');
+            if (idx !== -1) {
+              if (onCustomScreen) {
+                emptyList[idx] = { ...cfg, screen: 'custom', element: el };
+              }
+              return;
+            }
+          }
           emptyList.push({ ...cfg, screen: 'custom', element: el });
         }
       });
@@ -4682,7 +4702,7 @@
         return `${idx + 1}. ${item.label}${tabStr}`;
       }).join('\n');
 
-      const msg = `Total: ${count} missing mandatory field${count === 1 ? '' : 's'} across tabs:\n\n${listItems}`;
+      const msg = `Total: ${count} missing mandatory field${count === 1 ? '' : 's'}:\n\n${listItems}\n\nPlease complete all mandatory (*) fields to verify and save this record.`;
 
       showAppInfoModal({
         title: 'Mandatory Fields Incomplete',
@@ -5291,12 +5311,8 @@
     }
 
     function handleEditNext() {
-      // Validate mandatory fields across all four tabs
-      const emptyMandatory = getEmptyMandatoryFields().filter(f => f.screen === 'step2');
-      if (emptyMandatory.length > 0) {
-        handleInvalidVerifyAndSave(emptyMandatory);
-        return;
-      }
+      // Sync current edit form inputs to activeItem
+      syncEditFormToActiveItem();
 
       const idx = EDIT_TABS.indexOf(currentEditTab);
       if (idx < EDIT_TABS.length - 1) {
@@ -5504,7 +5520,7 @@
       const dName = (d['Driver Name *'] || d['Driver Name'] || d['driver_name'] || d['owner_or_driver_name'] || d['driver'] || '').trim();
       const dMob = (d['Mobile no   *'] || d['Mobile no *'] || d['Mobile No'] || d['mobile_no'] || d['driver_mobile'] || d['mobile'] || '').trim();
       const dLic = (d['Liscense No *'] || d['License No *'] || d['License No'] || d['license_no'] || d['driving_licence_number'] || '').trim();
-      const dVal = (d['Valid Up to *'] || d['Valid Upto *'] || d['Valid Upto'] || d['valid_upto'] || d['dl_valid_till'] || '').trim();
+      const dVal = (d['Valid Up to *'] || d['Valid Up to'] || d['valid_up_to'] || d['dl_valid_till'] || d['license_valid'] || '').trim();
 
       const drvNameEl = document.getElementById('custom_driver_name');
       if (drvNameEl) drvNameEl.value = dName;
@@ -5656,16 +5672,16 @@
         'Vehicle No *': editVehno
       };
 
-      if (isDuplicateWeb({ lrNo: editGrno, data: candidateData, excludeId: activeItem.id })) {
-        showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
-        return;
-      }
-
-      // Check mandatory fields validation
+      // Check mandatory fields validation first
       const emptyMandatory = getEmptyMandatoryFields();
       if (emptyMandatory.length > 0) {
         handleInvalidVerifyAndSave(emptyMandatory);
         return; // PREVENT SAVE & NAVIGATION
+      }
+
+      if (isDuplicateWeb({ lrNo: editGrno, data: candidateData, excludeId: activeItem.id })) {
+        showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
+        return;
       }
       clearAllFormValidationHighlights();
 
@@ -8224,11 +8240,12 @@
         setTimeout(() => {
           try { if (link.parentNode) link.parentNode.removeChild(link); } catch (e) {}
         }, 3000);
+        return; // Download successfully triggered via anchor; prevent duplicate download
       } catch (err) {
-        console.warn('Anchor download notice:', err);
+        console.warn('Anchor download notice, falling back to location.href:', err);
       }
 
-      // Also trigger window.location.href navigation for mobile browsers & WebViews
+      // Fallback only if anchor download throws an error
       try {
         window.location.href = url;
       } catch (err) {
