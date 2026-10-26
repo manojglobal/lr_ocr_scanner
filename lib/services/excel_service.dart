@@ -152,6 +152,9 @@ class ExcelService {
               final raw = normRecord['grno'] ?? normRecord['lrno'] ?? normRecord['biltyno'] ?? normRecord['grno (*)'] ?? normRecord['lr no *'] ?? '';
               final s = raw.trim();
               if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null') return '';
+              final cust = (normRecord['cngr'] ?? normRecord['consignor'] ?? normRecord['customer name *'] ?? normRecord['customer'] ?? '').toLowerCase();
+              if (cust.contains('patanjali') && s == '0') return '';
+              if (s == '0') return '0';
               final m5 = RegExp(r'(?<!\d)(\d{5})(?!\d)').firstMatch(s);
               if (m5 != null && m5.group(1) != null) return m5.group(1)!;
               final cleaned = s.replaceAll(RegExp(r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)', caseSensitive: false), '').trim();
@@ -915,6 +918,9 @@ class ExcelService {
         final raw = data['grno'] ?? data['lrno'] ?? data['LR No *'] ?? data['biltyno'] ?? data['grno (*)'] ?? '';
         final s = raw.trim();
         if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null') return '';
+        final cust = (data['Customer Name *'] ?? data['customer'] ?? data['cngr'] ?? data['consignor'] ?? '').toLowerCase();
+        if (cust.contains('patanjali') && s == '0') return '';
+        if (s == '0') return '0';
         final m5 = RegExp(r'(?<!\d)(\d{5})(?!\d)').firstMatch(s);
         if (m5 != null && m5.group(1) != null) return m5.group(1)!;
         final cleaned = s.replaceAll(RegExp(r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)', caseSensitive: false), '').trim();

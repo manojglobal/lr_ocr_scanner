@@ -1576,11 +1576,56 @@
       return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     }
 
+    function formatDdMmYyyyWeb(val) {
+      if (!val) return '';
+      const s = String(val).trim().replace(/T\d{2}:.*$/, '').replace(/\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?.*$/, '').trim();
+      if (!s || s.toLowerCase() === 'none' || s.toLowerCase() === 'null') return '';
+      // Pattern 1: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+      const mDd = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+      if (mDd) {
+        let yr = mDd[3];
+        if (yr.length === 2) yr = '20' + yr;
+        return `${String(mDd[1]).padStart(2, '0')}/${String(mDd[2]).padStart(2, '0')}/${yr}`;
+      }
+      // Pattern 2: DD-Mon-YYYY (e.g. 12-OCT-2026 or 05 Oct 26)
+      const months = {
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+        'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+      };
+      const mMon = s.match(/^(\d{1,2})[\s\-\/\.]([a-zA-Z]{3,9})[\s\-\/\.](\d{2,4})$/);
+      if (mMon) {
+        const d = String(mMon[1]).padStart(2, '0');
+        const mo = months[mMon[2].toLowerCase().slice(0, 3)];
+        let yr = mMon[3];
+        if (yr.length === 2) yr = '20' + yr;
+        if (mo) return `${d}/${mo}/${yr}`;
+      }
+      // Pattern 3: YYYY-MM-DD
+      const mIso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+      if (mIso) {
+        return `${String(mIso[3]).padStart(2, '0')}/${String(mIso[2]).padStart(2, '0')}/${mIso[1]}`;
+      }
+      return s;
+    }
+
     function getBnfFieldValue(data, fieldKey) {
       if (!data) return '';
+      if (fieldKey === 'grdt *' || fieldKey === 'grdt' || fieldKey === 'stockdt ' || fieldKey === 'stockdt' || fieldKey === 'Loading Start date *' || fieldKey === 'invoiedt' || fieldKey === 'Valid Upto' || fieldKey === 'Valid Up to *') {
+        const rawDate = data[fieldKey] || (fieldKey.includes('grdt') ? (data['grdt'] || data['grdt *'] || data['date']) : '');
+        if (rawDate) return formatDdMmYyyyWeb(rawDate);
+      }
       if (fieldKey === 'grno (*)' || fieldKey === 'grno' || fieldKey === 'LR No *' || fieldKey === 'LR No') {
-        const raw = String(data['grno (*)'] || data['grno'] || data['LR No *'] || data['LR No'] || data['lrno'] || data['biltyno'] || '').trim();
+        let rawVal = data['grno (*)'];
+        if (rawVal === undefined || rawVal === null || rawVal === '') rawVal = data['grno'];
+        if (rawVal === undefined || rawVal === null || rawVal === '') rawVal = data['LR No *'];
+        if (rawVal === undefined || rawVal === null || rawVal === '') rawVal = data['LR No'];
+        if (rawVal === undefined || rawVal === null || rawVal === '') rawVal = data['lrno'];
+        if (rawVal === undefined || rawVal === null || rawVal === '') rawVal = data['biltyno'];
+        const raw = String(rawVal !== undefined && rawVal !== null ? rawVal : '').trim();
         if (!raw || raw.toLowerCase() === 'none' || raw.toLowerCase() === 'null') return '';
+        const cust = String(data['Customer Name *'] || data['Customer Name'] || data['cngr *'] || data['cngr'] || '').toLowerCase();
+        if (cust.includes('patanjali') && raw === '0') return '';
+        if (raw === '0') return '0';
         const m5 = raw.match(/(?<!\d)(\d{5})(?!\d)/);
         if (m5 && m5[1]) return m5[1];
         const cleaned = raw.replace(/^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)/i, '').trim();
@@ -1611,7 +1656,7 @@
         if (startStr && endStr) {
           const parseD = (val) => {
             if (!val) return null;
-            const s = String(val).trim().split(/[\sT]/)[0];
+            const s = String(val).trim().replace(/T\d{2}:.*$/, '').replace(/\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?.*$/, '').trim();
             const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
             if (m) {
               let d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, yr = parseInt(m[3], 10);
@@ -3705,8 +3750,8 @@
         if (item.deletedAt) continue;
         if (excludeId && item.id === excludeId) continue;
 
-        // Tier 1: Check normalized LR number
-        if (candidateLr) {
+        // Tier 1: Check normalized LR number (exclude '0' so unnumbered LRs waiting for manual entry do not block each other)
+        if (candidateLr && candidateLr !== '0') {
           const existingLr = normalizeLrNo(extractLrNoFromData(item.data));
           if (existingLr && existingLr === candidateLr) {
             return true;
@@ -4627,7 +4672,7 @@
 
       // Tab 1: Basic Details
       setVal('edit_grno', d['grno'] || d['LR No *'] || d['lrno'] || d['BNF LR No'] || d['grno (*)'] || '');
-      setVal('edit_grdt', d['grdt'] || d['grdt *'] || d['stockdt'] || d['stockdt '] || '');
+      setVal('edit_grdt', formatDdMmYyyyWeb(d['grdt'] || d['grdt *'] || d['stockdt'] || d['stockdt '] || ''));
       setVal('edit_customer', d['Customer Name *'] || d['customer'] || d['Customer'] || d['cngr *'] || d['cngr'] || '');
       setVal('edit_org', d['orgrefcode'] || d['org'] || d['branchrefcode'] || d['from'] || '');
       setVal('edit_dest', d['destrefcode'] || d['dest'] || d['deliveryat'] || d['to'] || '');
@@ -4665,9 +4710,9 @@
       // Tab 4: Other Details (Additional Details only)
       setVal('edit_productcode', d['productcode'] || '');
       setVal('edit_eway', d['ewaybillno'] || '');
-      setVal('edit_validupto', d['Valid Upto'] || d['valid_upto'] || '');
+      setVal('edit_validupto', formatDdMmYyyyWeb(d['Valid Upto'] || d['valid_upto'] || ''));
       setVal('edit_invno', d['invoiceno'] || '');
-      setVal('edit_invdt', d['invoiedt'] || d['grdt'] || '');
+      setVal('edit_invdt', formatDdMmYyyyWeb(d['invoiedt'] || d['grdt'] || ''));
       setVal('edit_grtype', d['grtype(Don’t know)'] || d['grtype'] || '');
       setVal('edit_oamount', d['oamount'] || '');
 

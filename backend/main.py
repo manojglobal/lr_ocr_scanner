@@ -210,10 +210,20 @@ DOCUMENT & MULTI-PAGE EXTRACTION RULES:
 This document may contain a single page or multiple pages (e.g. Consignment Note, Vehicle RC, Permit, Insurance, Pollution Test, and Driving Licence). Examine ALL pages thoroughly:
 
 1. Consignment & Billing Details (from Consignment Note / Bilty if present):
-- "grno": Consignment Note number printed in the 'CONSIGNMENT NOTE: No.' box. If it's a 5-digit number (e.g., 32760, 30135, 32754, 33118) or any valid consignment serial, capture it accurately without dropping it. (Do NOT confuse the vehicle registration number written in 'Tempo/Truck No.' like TG08U9828 with the Consignment Note number).
-- "LR No *": Same Consignment Note number.
-- "grdt": Consignment Note Date (written in 'Date' box, e.g. 05 Oct 26, 05/08/2026).
-- "stockdt": Date of entry or Consignment Note Date (same as grdt).
+- "grno": Primary Consignment / LR Tracking Number.
+  * For PATANJALI (PATANJALI PARIVAHAN / PATANJALI FOODS):
+    Check the top-left and top-right outer sections (margins outside the printed borders) for an independent number written with a pen or pencil (e.g. 21348, 21349).
+    If a handwritten or penciled number is written in the top-left or top-right section, extract that exact number.
+    If NOTHING has been written with a pencil or pen in the top-left or top-right section, leave it strictly empty ("") so the record cannot be saved until manually entered (never output "0").
+    DO NOT fall back to the printed 'C Note No.' (e.g. 9325382, 9325388, 9421832).
+    NEVER copy or confuse vehicle registration numbers (e.g. RJ32GC5386, UP21FT4643, BR03K4305).
+  * For HIMALAYA / BNF:
+    Consignment Note number printed in the 'CONSIGNMENT NOTE: No.' box. If it's a 5-digit number (e.g., 32760, 30135, 32754, 33118) or any valid consignment serial, capture it accurately without dropping it. (Do NOT confuse the vehicle registration number written in 'Tempo/Truck No.' like TG08U9828 with the Consignment Note number).
+  * For other transporters:
+    Extract the primary Consignment Note number or LR serial from the document header.
+- "LR No *": Same primary Consignment / LR Tracking Number as "grno".
+- "grdt": Consignment Note Date (written in 'Date' box, strictly formatted as DD/MM/YYYY, e.g. 12/10/2026, 05/08/2026. NEVER output month names like 12-OCT-2026 or 05 Oct 26).
+- "stockdt": Date of entry or Consignment Note Date (same as grdt, formatted as DD/MM/YYYY).
 - "Customer Name *": Billed customer / party name (e.g. 'PATANJALI FOODS LTD BISCUIT (Formerly RSIL)', 'Himalaya Wellness Company').
 - "cngr *": Consignor Name & Address (written in 'Consignor\'s Name & Address' box).
 - "cnge *": Consignee Name & Address (written in 'Consignee\'s Name & Address' box).
@@ -231,12 +241,12 @@ This document may contain a single page or multiple pages (e.g. Consignment Note
 - "Valid Upto": E-way bill validity date (look for 'Valid =', e.g. 08 Oct 26, 14/08/2026).
 - "bookedaweight": Actual Weight in KG (written in Weight box, e.g. 6300, 6500, 15057).
 - "bookedcweight": Charged Weight in KG (same as bookedaweight or charged weight).
-- "pmark": Seal Number / Private Mark (Extract ONLY the actual seal code or digits, e.g., CJ007567 or 00153. Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, No, =, or :).
+- "pmark": Seal Number / Private Mark (Extract ONLY the actual seal code or digits, e.g., CJ007567, 00153, 002765. Note: In some cases, the seal number appears right in the middle of the "LR" image/goods table, such as 'Seal no: 002765'. Always extract the seal number into pmark, and strictly strip and ignore prefixes like Seal, Seal no, No, =, or :).
 - "grtype(Don’t know)": Payment term (written in Freight box, e.g. 'TBB', 'TO B', 'TO PAY').
-- "freight  *": Numerical freight charge from the transporter/bilty charges table. If not specified or left blank, return null or 0.
+- "freight  *": Numerical freight charge from the transporter/bilty charges table. If not specified, left blank, or printed as 'xxxx' (Patanjali FTL contract), return 0.
 - "oamount": Total invoice amount (rounded off / gross invoice value). Prefer the Grand Total from the Tax Invoice or "Value of Goods" from the E-Way Bill (e.g., 5802888, 6102872, 4017285).
-- "cgst": Central GST amount from invoice tax summary. If the supply is interstate (IGST charged), return 0.00.
-- "sgst": State GST amount from invoice tax summary. If the supply is interstate (IGST charged), return 0.00.
+- "cgst": Central GST amount from invoice tax summary. If printed as 'xxxx' or supply is interstate, return 0.00.
+- "sgst": State GST amount from invoice tax summary. If printed as 'xxxx' or supply is interstate, return 0.00.
 - "igst": Integrated GST amount. Always output 0.00 (or 0) for manual data entry purposes.
 - "received": Amount already received against the freight/consignment note. If blank, return 0.00.
 - "advance": Advance amount paid to transporter/driver on the bilty. If blank, return 0.00.
@@ -269,6 +279,194 @@ This document may contain a single page or multiple pages (e.g. Consignment Note
 * STRICT EMPTY FIELD RULE: If any driver details (Driver Name, Mobile No, License No, Valid Up to) or vehicle details are not visibly present in the document or attached credentials, LEAVE THEM STRICTLY AS AN EMPTY STRING "" so the operator can enter them manually. NEVER auto-fill or guess missing values.
 * IF ANY FIELD IS MISSING OR NOT WRITTEN IN THE DOCUMENT, LEAVE IT AS AN EMPTY STRING "" (DO NOT GUESS OR INVENT FAKE DATA).
 """
+DEFAULT_HIMALAYA_OCR_PROMPT = DEFAULT_HANDWRITTEN_OCR_PROMPT
+
+DEFAULT_PATANJALI_OCR_PROMPT = """
+You are an expert OCR and document information scraping engine specialized in reading transport bilties, consignment notes, and driver/vehicle compliance credentials for 'PATANJALI PARIVAHAN PVT. LTD.' and 'PATANJALI FOODS LIMITED' (formerly Ruchi Soya Industries Limited).
+
+DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
+This document may contain a single page (white printed consignment note) or multiple pages (including Form 23A Vehicle Registration Certificate RC and Commercial Driving Licence DL). Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
+
+1. CONSIGNMENT IDENTIFIERS & BOOKING SEQUENCE NUMBER:
+- "grno": Primary Consignment / LR Tracking Number.
+  * RULE: Check the top-left and top-right outer sections (margins outside the printed borders) for an independent number written with a pen or pencil (e.g., 21349, 21348).
+  * If a handwritten or penciled number is written in the top-left or top-right section, extract that exact number.
+  * If NOTHING has been written with a pencil or pen in the top-left or top-right section, leave it strictly empty ("").
+    DO NOT output "0" and DO NOT fall back to the printed 'C Note No.' (e.g. 9325388, 9325382, 9421832). Leaving the field empty ensures the record cannot be saved until the operator manually enters the LR No.
+  * NEVER copy or confuse vehicle registration numbers (e.g. RJ32GC5386, BR03K4305).
+- "LR No *": Same primary LR number (pen/pencil margin number or empty string "").
+- "pmark": Seal Number / Private Mark. Extract ONLY if an explicit seal code or container seal stamp is written (e.g., CJ007567). Strictly strip and ignore prefixes like 'Seal', 'Seal No', 'No', '='. If only generic text like 'all seal good and ok' appears or no physical seal code is written, return empty string "".
+
+2. ROUTING & STATIONS:
+- "branchrefcode": Center or branch code printed above the CONSIGNMENT NOTE title (e.g., "INDORE", "KOLKATA").
+- "Counter name": Booking counter or center (matches branchrefcode, e.g., "INDORE", "KOLKATA").
+- "orgrefcode": Origin station or city printed in 'From City' box (e.g., "INDORE", "KARNPURA SSRM").
+- "destrefcode": Destination station or city printed in 'To City' box (e.g., "BANGALORE", "VARANASI", "SUGAULI").
+- "collectionstncode": Dispatch station code (same as orgrefcode).
+- "viaborder": Via border route if printed, else empty string "".
+
+3. DATES & TRANSIT TIME:
+- "grdt": Consignment booking date printed in 'Bkg. Date' box (strictly formatted as DD/MM/YYYY, e.g. 12/10/2026, 05/02/2026. NEVER output month names like 12-OCT-2026 or 05 Oct 26).
+- "stockdt": Consignment entry date printed in 'C Note Entry Date' (defaults to grdt).
+- "Loading Start date *": Dispatch or loading date (same as grdt).
+- "Valid Upto": E-Way Bill validity expiry date if present on an attached E-Way Bill page (formatted as DD/MM/YYYY), else empty string "".
+- "Transit Days": Calculate the integer difference in days between 'grdt' and 'Valid Upto'. If either date is missing, unparseable, or invalid, return strictly empty string "" (DO NOT default to 2).
+
+4. PARTIES & MASTER DATA:
+- "Customer Name *": Corporate billed entity printed under 'Billing Party' (e.g., "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)", "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)").
+- "custrefcode": Billing customer/party code printed before the party name (e.g., "BL653", "BL652", or default "CM001").
+- "cngr": Consignor name and street address printed in the 'CONSIGNOR' box (e.g., "PFL20 : PATANJALI FOODS LTD - INDORE, TALAWALI CHANDA OPP MANGALIYAGAON RLY STATION INDUSTRIAL AREA A.B. ROAD INDORE, 453771").
+- "cngrgstno": Consignor 15-character GSTIN printed in the transporter/works header block or tax invoice (e.g., "05AAFCF1505P1ZD").
+- "cnge": Consignee name and destination address printed in the 'CONSIGNEE' box (e.g., "8888 : PATANJALI FOODS LIMITED, Maruthi Main Road nearby Sridhara Srigud Kengeri Satellite Town, BANGALORE, 560060").
+- "cngegstno": Consignee 15-character GSTIN if printed/present, else empty string "".
+- "Depatment Name": Destination depot name if printed in Consignee block (e.g., "Depot Popular -Varanasi"), else empty string "".
+
+5. GOODS, PACKAGING & WEIGHT QUANTIFICATION:
+- "bookedpckgs": Integer package count printed under 'No. of Package' or 'Total Charged No of Packages' (e.g., 410, 419, 845).
+- "stockpckgs": Total stock packages (matches bookedpckgs).
+- "packing": Packaging type printed under 'Packaging Type' in CONSIGNMENT DETAILS (e.g., "BAG", "Carton box").
+- "goods": Commodity name printed under 'Said to Contain' in CONSIGNMENT DETAILS (e.g., "SOYABADI", "BISCUITS").
+- "productcode": Product code if specified, else empty string "".
+- "bookedaweight": Actual gross weight in KG printed under 'Actual Wt(Kgs)' (e.g., 7500, 6567).
+- "stockaweight": Actual cargo weight (matches bookedaweight).
+- "bookedcweight": Charged weight in KG printed under 'Total Charged Weight' (e.g., 7500, 7000).
+- "stockcweight": Charged stock weight (matches bookedcweight).
+- "Order Weight": Weight if specified separately, else empty string "".
+- "Contract wt": Contract weight if specified, else empty string "".
+- "Extra Mt": Extra metric tons if specified, else empty string "".
+
+6. COMMERCIAL INVOICE & E-WAY BILL:
+- "invoiceno": Commercial shipper invoice number printed under 'Invoice No.' in the INVOICE DETAILS table (e.g., 8501817437, 8501817324, 8604510455).
+- "invoiedt": Commercial invoice date printed under 'Inv. Date' (formatted as DD/MM/YYYY).
+- "valgoods": Declared invoice value of goods printed under 'Declared Value' without commas (e.g., 476204, 519158, 725770).
+- "oamount": Total invoice amount or declared value. If receiver notes at the bottom specify an unloading charge (e.g., 'Unloading charge 1000/-'), capture that charge numeric (1000), otherwise map to valgoods.
+- "ewaybillno": 12-digit GST E-Way Bill number printed under 'Eway Bill No' (e.g., 612053161654, 652051661257, 811752253963).
+
+7. CHARGES & TAX BREAKDOWN (FTL CONTRACT RULES):
+- "grtype(Don’t know)": Payment terms printed under 'Payment Type' (e.g., "TBB").
+- "freight  *": Return 0. On Patanjali bilties, all freight charges are printed as 'xxxx' (Full Truck Load TBB contract).
+- "cgst": Central GST. Printed as 'xxxx' -> return 0.00.
+- "sgst": State GST. Printed as 'xxxx' -> return 0.00.
+- "igst": Integrated GST. Always output 0.00 (or 0) for manual data entry purposes.
+- "received": Freight received amount -> return 0.00.
+- "advance": Advance paid to transporter -> return 0.00.
+- "ftl": Vehicle load type. If Service Type is 'FTL', return "FTL", else "N".
+- "staxpaidby": Party paying service tax / GST on freight: 'C' (Consignor), 'E' (Consignee), or 'T' (Transporter). For TBB/FTL movements, default to "C".
+- "dlvtype": Delivery type. If PickUp/Delivery is 'Door/Door', return "D" (Door Delivery), else "G" (Godown).
+
+8. VEHICLE & DRIVER CREDENTIAL RESOLUTION:
+- "Vehicle No *": Indian motor vehicle registration plate printed under 'Vehicle Number' in the header table or attached RC Form 23A (e.g., RJ32GC5386, UP21FT4643, BR03K4305).
+- "Vehicle Type *": Vehicle body type. If FTL or unspecified, return "Market".
+- "Driver Name *": Driver full name. Extract ONLY if explicitly visible on an attached Driving Licence (DL) card (e.g., "MANOJ SINGH"). If NO DL card is attached, leave STRICTLY as an empty string "". NEVER guess or invent names.
+- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if explicitly written for the driver. NEVER copy the consignor phone (8209435149) or dummy phone (9999999999) into the driver phone field. If absent, leave STRICTLY as an empty string "".
+- "Liscense No *": Commercial driving licence number from attached DL card (e.g., "BR44 20110036047"). If not attached, leave STRICTLY as an empty string "".
+- "Valid Up to *": Transport validity expiry date of the driving licence ('TR' validity date on DL card, e.g., "10/02/2027"). If not attached, leave STRICTLY as an empty string "".
+
+9. ZERO-HALLUCINATION & STRICT EMPTY FIELD RULES:
+* The 'BNF LR' column has been permanently removed from the Excel schema. Never extract or output any value as BNF LR.
+* Auto-fetching from driver_master.json is completely disabled. If driver details are absent from the document, keep them strictly as empty strings ("") for manual entry.
+* If any field is missing, illegible, or not present on the document, leave it as an empty string "" (never invent placeholder data).
+"""
+
+DEFAULT_UNICHARM_OCR_PROMPT = """
+You are an expert OCR and document information scraping engine specialized in reading transport bilties, commercial tax invoices, E-Way bills, and driver/vehicle compliance credentials for 'UNICHARM INDIA PVT. LTD.' (Vuicharm / Uvicharm) transported by 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.'.
+
+DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
+This document dossier contains multiple pages (including Box N Freight Consignment Note Bilty, Unicharm Tax Invoice, E-Way Bill, mParivahan Vehicle RC Status, Truck Photo, and Commercial Driving Licence DL). Inspect ALL pages thoroughly and map the data strictly into the 49 target columns:
+
+1. CONSIGNMENT IDENTIFIERS & CRITICAL SEAL NUMBER RULES:
+- "grno": Primary Consignment / LR Tracking Number.
+  * Extract the 5-digit number printed in the 'CONSIGNMENT NOTE: No.' box at the top right of the Box N Freight bilty (e.g., 32298, 32299, 32300, 33306), or cross-verify from the 'Transporter LR No' on the Unicharm Tax Invoice / E-Way Bill Part B.
+  * CRITICAL: In some documents, a seal number or rubber stamp is written or stamped right in the middle of the "Description (Said to Contain)" or "LR" text area (e.g., 'Seal no: 002765'). NEVER extract or confuse this seal number or description text as the LR number.
+  * NEVER copy vehicle registration numbers (e.g. HR55AX5490, RJ18GB7132) into this field.
+- "LR No *": Same primary 5-digit LR number as "grno" (e.g., 32298, 33306).
+- "pmark": Container / Transit Seal Number.
+  * PROMPT CASE - SEAL NUMBER IN THE MIDDLE OF THE "LR" IMAGE:
+    In documents like 33306.pdf, the container seal number appears written right in the middle of the "LR" image, inside the central 'Description (Said to Contain)' goods table or overlapping the central goods description/rows (e.g. written as 'Seal no: 002765', 'Seuinoł 002765', 'Seaimot 002765').
+    When a seal number appears in the middle of the LR image:
+    - Extract ONLY the actual seal digits (e.g. 002765) into "pmark".
+    - Do NOT mistake this middle seal number for the LR number or invoice number.
+    - Do NOT keep this seal number inside the "goods" commodity description.
+    - Do NOT copy the vehicle digits from the printed 'Private Mark' box (e.g. '7132' from RJ18GB7132) into "pmark"; the actual container seal is the security seal code (e.g. 002765).
+  * PROMPT CASE - SEAL NUMBER IN THE TOP HEADER / MARGIN:
+    In documents like 32298.pdf, 32299.pdf, 32300.pdf, the seal number is written by hand at the top right near the company header/logo (e.g. 'Seal. No- 03386', 'Seal No - 03330', 'Seal. No- 03301').
+    Extract ONLY the pure digits (e.g. 03386, 03330, 03301) into "pmark".
+  * EXTRACTION & CLEANING RULE:
+    Extract ONLY the pure digits or seal code (e.g., 03386, 03330, 03301, 002765, CJ007567).
+    Strictly strip and ignore any prefixes, labels, typos, or symbols like 'Seal', 'Seal. No-', 'Seal no:', 'Seuinoł', 'Seaimot', 'No', '=', or '-'.
+    If no physical container seal number is present anywhere in the document, return strictly an empty string "".
+
+2. ROUTING & STATIONS:
+- "branchrefcode": Center or branch name (e.g., "GURGAON", "DELHI", "SANAND").
+- "Counter name": Booking counter or branch (matches branchrefcode).
+- "orgrefcode": Origin station or city from the 'From' box on the bilty or E-Way Bill dispatch place (e.g., "MAU", "GURGAON", "SANAND").
+- "destrefcode": Destination station or city from the 'To' box on the bilty or E-Way Bill delivery place (e.g., "DELHI", "SOUTH DELHI", "AMBALA").
+- "collectionstncode": Dispatch station code (same as orgrefcode).
+- "viaborder": Via border route if printed, else empty string "".
+
+3. DATES & TRANSIT TIME:
+- "grdt": Consignment booking date from the 'Date' box on the bilty (strictly formatted as DD/MM/YYYY, e.g. 27/09/2026, 28/09/2026, 29/09/2026. NEVER output month names like 27-Sep-26 or 27-SEP-2026).
+- "stockdt": Consignment entry date (matches grdt, formatted as DD/MM/YYYY).
+- "Loading Start date *": Dispatch or loading date (same as grdt).
+- "Valid Upto": E-Way Bill validity expiry date from the attached E-Way Bill page (strictly formatted as DD/MM/YYYY, e.g. 28/09/2026, 29/09/2026), else empty string "".
+- "Transit Days": Calculate the integer difference in days between 'grdt' and 'Valid Upto' (e.g., 1). If either date is missing, return strictly empty string "".
+
+4. PARTIES & MASTER DATA:
+- "Customer Name *": Corporate billed entity: "UNICHARM INDIA PVT. LTD."
+- "custrefcode": Customer account reference code from the invoice or bilty (e.g., "UNICHARM" or party code if present, else empty string "").
+- "cngr": Consignor Name & Address from the bilty or Tax Invoice (e.g., "UNICHARM INDIA PVT. LTD., Village Mau, Tehsil Pataudi, District Gurugram, Haryana - 122414" or "UNICHARM INDIA PVT. LTD., Sanand, Gujarat").
+- "cngrgstno": Consignor 15-character GSTIN from the Tax Invoice or E-Way Bill (e.g., "06AABCU0113A2ZA").
+- "cnge": Consignee Name & Address from the bilty or Tax Invoice (e.g., "GLOBAL MARKETING-MT, Khasra No. 240, Hamidpur Narela Village, New Delhi - 110036" or "GLOBAL MARKETING, Ambala").
+- "cngegstno": Consignee 15-character GSTIN from the Tax Invoice or E-Way Bill (e.g., "07AJYPK4522G1ZX").
+- "Depatment Name": Department name if mentioned, else empty string "".
+
+5. GOODS, PACKAGING & WEIGHT QUANTIFICATION:
+- "bookedpckgs": Integer package count from the Tax Invoice 'Total Cases' or bilty 'No. of Packages' (e.g., 1375, 2064, 1251, 797).
+- "stockpckgs": Total stock packages (matches bookedpckgs).
+- "packing": Packaging type (e.g., "Box", "Carton box", "Cases").
+- "goods": Commodity description from the Tax Invoice (e.g., "MPP All Night Absorb COCO L40", "Sofy Bodyfit Pro XL 6P", "Baby Diapers"). Do not include seal numbers or invoice numbers in the goods description.
+- "productcode": HSN code or product code from the invoice (e.g., "96190030"), else empty string "".
+- "bookedaweight": Actual gross weight in KG from the Tax Invoice or bilty. If only vehicle container size like '32 Feet' is written in the weight box, capture numeric weight if present, else empty string "".
+- "stockaweight": Actual cargo weight (matches bookedaweight).
+- "bookedcweight": Charged weight in KG from the bilty or invoice.
+- "stockcweight": Charged stock weight (matches bookedcweight).
+- "Order Weight": Weight if specified separately, else empty string "".
+- "Contract wt": Contract weight if specified, else empty string "".
+- "Extra Mt": Extra metric tons if specified, else empty string "".
+
+6. COMMERCIAL INVOICE & E-WAY BILL:
+- "invoiceno": Commercial invoice number from the Unicharm Tax Invoice or E-Way Bill (e.g., 10906I26-001898, 10906F26-001407, 10906I26-001909, 3324726-000484).
+- "invoiedt": Commercial invoice date from the Tax Invoice (strictly formatted as DD/MM/YYYY, e.g., 27/09/2026, 28/09/2026).
+- "valgoods": Total invoice value of goods from the Tax Invoice (numeric without commas, e.g., 2112307.00, 2817236.00).
+- "oamount": Gross total amount (matches valgoods).
+- "ewaybillno": 12-digit GST E-Way Bill number from the E-Way Bill page (e.g., 362343603918, 372343679800, 392344317558).
+
+7. CHARGES & TAX BREAKDOWN:
+- "grtype(Don’t know)": Payment terms from the bilty (e.g., "TBB" or "TO BE BILLED").
+- "freight  *": Return 0.
+- "cgst": 0.00.
+- "sgst": 0.00.
+- "igst": Always output 0.00 (or 0) for manual data entry purposes.
+- "received": 0.00.
+- "advance": 0.00.
+- "ftl": Vehicle container/service type: "FTL" (Dedicated 32 FT container).
+- "staxpaidby": Party paying GST on freight: "C" (Consignor).
+- "dlvtype": Delivery type: "D" (Door Delivery).
+
+8. VEHICLE & DRIVER CREDENTIAL RESOLUTION:
+- "Vehicle No *": Indian motor vehicle registration plate from the bilty 'Tempo/Truck No.', mParivahan RC status, or truck photo (e.g., HR55AX5490, HR55AT7593, RJ18GB7132, NL01AFS826).
+- "Vehicle Type *": Vehicle body type: "Market".
+- "Driver Name *": Driver full name. Extract ONLY if explicitly visible on an attached Driving Licence (DL) card (e.g., "OM PRAKASH", "JITENDRA JHA"). If NO DL card is attached, leave STRICTLY as an empty string "". NEVER guess or invent names.
+- "Mobile no   *": Driver 10-digit mobile number. Extract ONLY if explicitly written for the driver. If absent, leave STRICTLY as an empty string "". NEVER auto-fill dummy numbers or shipper contact numbers.
+- "Liscense No *": Commercial driving licence number from the attached DL card (e.g., "UP33 20170006650", "BR10 20000001762"). If not attached, leave STRICTLY as an empty string "".
+- "Valid Up to *": Transport validity expiry date of the driving licence ('TR' validity date on DL card, strictly formatted as DD/MM/YYYY, e.g., "27/03/2027", "11/05/2027"). If not attached, leave STRICTLY as an empty string "".
+
+9. ZERO-HALLUCINATION & STRICT EMPTY FIELD RULES:
+* The 'BNF LR' column has been permanently removed from the Excel schema. Never extract or output any value as BNF LR.
+* Auto-fetching from driver_master.json is completely disabled. If driver details are absent, leave them strictly as empty strings ("") for manual entry.
+* If any field is missing, illegible, or not present on the document, leave it as an empty string "" (never invent placeholder data).
+"""
+
 
 
 def is_orange_yellow_image(pil_img: Image.Image) -> bool:
@@ -291,16 +489,18 @@ def is_orange_yellow_image(pil_img: Image.Image) -> bool:
 def _clean_pmark(raw) -> str:
     """
     Extract ONLY the actual seal code or digits (e.g., CJ007567 or 00153).
-    Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, No, =, or : from the extracted value.
+    Strictly strip and ignore any prefixes, labels, or symbols like Seal, Sealv0, Seaimot, No, =, or : from the extracted value.
     """
     if raw is None:
         return ""
     import re
     s = str(raw).strip()
+    if s == "0":
+        return "0"
     if not s or s.lower() in ("none", "null", "nan"):
         return ""
-    # Strip prefixes like Seal, Sealv0, Seal No, No, =, :, -, #
-    s2 = re.sub(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', '', s, flags=re.IGNORECASE).strip()
+    # Strip prefixes like Seal, Sealv0, Seaimot, Seuinol, Seuinoł, Seal No, No, =, :, -, # without eating leading zeros of the seal digits
+    s2 = re.sub(r'^(?:(?:seal|seaimot|seuinol|seuino\w?)[\.\s]*(?:no\.?|v0|[a-z]+)?|no[\.:\s]+|[=:#\-\s])+', '', s, flags=re.IGNORECASE).strip()
     s3 = re.sub(r'^[^a-zA-Z0-9]+', '', s2).strip()
     return re.sub(r'[^a-zA-Z0-9]+$', '', s3).strip()
 
@@ -314,6 +514,8 @@ def _clean_grno(raw) -> str:
         return ""
     import re
     s = str(raw).strip()
+    if s == "0":
+        return "0"
     if not s or s.lower() in ("none", "null", "nan"):
         return ""
     # If it contains an exact standalone 5-digit number (e.g. 32760, 30135, 32754)
@@ -328,6 +530,53 @@ def _clean_grno(raw) -> str:
         flags=re.IGNORECASE
     ).strip()
     return cleaned or s
+
+
+def _format_date_ddmmyyyy(raw) -> str:
+    """
+    Normalizes any date string (e.g., '12-OCT-2026', '12-Oct-26', '2026-10-12', '05 Oct 26')
+    strictly into DD/MM/YYYY format (e.g., '12/10/2026').
+    If unparseable or empty, returns original stripped string or ''.
+    """
+    if raw is None:
+        return ""
+    import re
+    from datetime import datetime
+
+    s = str(raw).strip()
+    if not s or s.lower() in ("none", "null", "nan"):
+        return ""
+
+    # Discard time portions if attached (e.g. '12-OCT-2026 11:59:00 PM' or '2026-10-12T15:30:00' -> '12-OCT-2026')
+    s_clean = re.sub(r'T\d{2}:.*$', '', s.strip())
+    s_clean = re.sub(r'\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?.*$', '', s_clean).strip()
+
+    # Pattern 1: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+    m = re.match(r'^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$', s_clean)
+    if m:
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if year < 100:
+            year += 2000
+        try:
+            d = datetime(year, month, day).date()
+            return d.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+
+    # Pattern 2: DD-Mon-YYYY, DD Mon YYYY, etc. (e.g. 12-OCT-2026, 05 Oct 26)
+    for fmt in (
+        "%d-%b-%Y", "%d-%b-%y", "%d-%B-%Y", "%d-%B-%y",
+        "%d %b %Y", "%d %b %y", "%d %B %Y", "%d %B %y",
+        "%d/%b/%Y", "%d/%b/%y",
+        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+        "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"
+    ):
+        try:
+            d = datetime.strptime(s_clean, fmt).date()
+            return d.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    return s
 
 
 def _calculate_transit_days(start_val, end_val) -> int | str:
@@ -347,8 +596,9 @@ def _calculate_transit_days(start_val, end_val) -> int | str:
         s = str(d).strip()
         if not s or s.lower() in ("none", "null", "nan", ""):
             return None
-        # Discard time portions if attached (e.g. '08/10/2026 11:59:00 PM' -> '08/10/2026')
-        s = re.split(r'[\sT]', s)[0].strip()
+        # Discard time portions if attached (e.g. '08/10/2026 11:59:00 PM' or '2026-10-08T15:30:00' -> '08/10/2026')
+        s = re.sub(r'T\d{2}:.*$', '', s.strip())
+        s = re.sub(r'\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?.*$', '', s).strip()
         # Primary pattern: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
         m = re.match(r'^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$', s)
         if m:
@@ -437,8 +687,8 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
 
     # Base GR fields
     grno = _clean_grno(get_val("grno", "grno (*)", "LR No *", "LR No", "gr number", "bilty no", "bilty number", "lr no", "lr number", "consignment no", "cn no"))
-    grdt = get_val("grdt", "grdt *", "gr date", "bilty date", "lr date", "booking date", "date")
-    stockdt = get_val("stockdt", "stockdt ", "stock date", "entry date", default=grdt)
+    grdt = _format_date_ddmmyyyy(get_val("grdt", "grdt *", "gr date", "bilty date", "lr date", "booking date", "date"))
+    stockdt = _format_date_ddmmyyyy(get_val("stockdt", "stockdt ", "stock date", "entry date", default=grdt))
     branch = get_val("branchrefcode", "branch", "branch code")
     org = get_val("orgrefcode", "from", "origin", "from station", "booking station")
     dest = get_val("destrefcode", "to", "destination", "to station", "delivery station")
@@ -475,7 +725,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     extra_mt = clean_num(get_val("Extra Mt", "extra mt", "extra_mt"))
     eway = get_val("ewaybillno", "eway bill no", "e-way bill", "ewb no")
     invno = get_val("invoiceno", "invoice no", "bill no", "invoice number")
-    invdt = get_val("invoiedt", "invoice date", "bill date", default=grdt)
+    invdt = _format_date_ddmmyyyy(get_val("invoiedt", "invoice date", "bill date", default=grdt))
 
     vehno = get_val("Vehicle No *", "Vehicle No", "vehicle no", "truck no", "lorry no", "veh no", "reg no", "registration no", "rc no")
     raw_vehtype = get_val("Vehicle Type *", "Vehicle Type", "vehicle type", "truck type", "lorry type", "body type", "vehicle category", "category", default="Market")
@@ -485,14 +735,14 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     driver = get_val("Driver Name *", "Driver Name", "driver name", "driver", "pilot", "owner/driver name", "owner or driver name", "driver/owner name", "owner name", "driver_name")
     mobile = get_val("Mobile no   *", "Mobile no *", "mobile no", "driver mobile", "phone no", "mobile", "contact no", "driver_mobile", "driver phone")
     license = get_val("Liscense No *", "Liscense No", "license no", "dl no", "driving license", "licence no", "driving licence no", "driving licence number", "dl number", "license_no")
-    valid_up_to = get_val("Valid Up to *", "Valid Up to", "valid up to", "valid upto", "fitness valid", "permit valid", "license valid", "dl valid till", "valid till", "valid_upto")
-    loading_date = get_val("Loading Start date *", "Loading Start date", "loading start date", "loading date", "dispatch date", default=grdt)
+    valid_up_to = _format_date_ddmmyyyy(get_val("Valid Up to *", "Valid Up to", "valid up to", "valid upto", "fitness valid", "permit valid", "license valid", "dl valid till", "valid till", "valid_upto"))
+    loading_date = _format_date_ddmmyyyy(get_val("Loading Start date *", "Loading Start date", "loading start date", "loading date", "dispatch date", default=grdt))
     customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
     lrno = _clean_grno(get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)) or grno
     bnflr = get_val("BNF LR No", "bnf lr no", "bnf lr", "bnf no")
     dept = get_val("Depatment Name", "department name", "department", "dept", "depatment name")
     counter_name = get_val("Counter name", "counter name", "counter", "booking counter", "branchrefcode", "branch", default="delhi")
-    valid_upto = get_val("Valid Upto", "valid upto", "valid up to", "ewb valid upto", default=valid_up_to)
+    valid_upto = _format_date_ddmmyyyy(get_val("Valid Upto", "valid upto", "valid up to", "ewb valid upto", default=valid_up_to))
 
     # Calculate 'transit_days' by finding the integer difference in days between 'grdt' (booking date)
     # and 'Valid Upto' (E-Way Bill expiry date) formatted as DD/MM/YYYY.
@@ -674,9 +924,24 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         if v is None and h is not None:
             v = norm_val_map.get(clean(str(h)))
         if h in ("grno", "grno (*)", "LR No *", "LR No"):
-            v = _clean_grno(v or val_map.get("grno (*)") or val_map.get("LR No *") or val_map.get("grno")) or None
+            cleaned_lr = _clean_grno(v or val_map.get("grno (*)") or val_map.get("LR No *") or val_map.get("grno"))
+            is_patanjali_data = (
+                "patanjali" in str(val_map.get("Customer Name *") or "").lower()
+                or "patanjali" in str(val_map.get("cngr") or "").lower()
+                or "patanjali" in str(val_map.get("cngr *") or "").lower()
+            )
+            if is_patanjali_data and (cleaned_lr == "0" or not cleaned_lr):
+                v = None
+            elif cleaned_lr == "0":
+                v = 0
+            elif cleaned_lr:
+                v = cleaned_lr
+            else:
+                v = None
         if h == "pmark":
             v = _clean_pmark(v) or None
+        if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *"):
+            v = _format_date_ddmmyyyy(v) or None
         if v is not None and isinstance(v, str):
             v_str = v.strip()
             if not v_str or v_str.lower() in ("none", "null", "nan"):
@@ -942,9 +1207,16 @@ async def extract_handwriting(
         )
 
     # 1. Strictly validate active_prompt as a string (prevent FastAPI Form parameter leaks)
+    lower_filename = (file.filename or "").lower()
     if isinstance(custom_prompt, str) and custom_prompt.strip():
         active_prompt = custom_prompt.strip()
         prompt_type = "Custom"
+    elif "patanjali" in lower_filename:
+        active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
+        prompt_type = "Patanjali OCR"
+    elif any(w in lower_filename for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
+        active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
+        prompt_type = "Unicharm OCR"
     else:
         active_prompt = DEFAULT_HANDWRITTEN_OCR_PROMPT
         prompt_type = "Default Handwritten OCR"
@@ -983,6 +1255,12 @@ async def extract_handwriting(
                 target_page_idx = 0
                 for p_idx, p in enumerate(pdf_doc):
                     txt_low = p.get_text().lower()
+                    if "patanjali" in txt_low:
+                        active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
+                        prompt_type = "Patanjali OCR"
+                    elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
+                        active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
+                        prompt_type = "Unicharm OCR"
                     if any(w in txt_low for w in ["consignment", "lorry receipt", "c note", "bilty", "cngr"]):
                         target_page_idx = p_idx
                         break
@@ -1250,12 +1528,80 @@ async def extract_handwriting(
                 if "LR No *" in data_dict:
                     data_dict["LR No *"] = cleaned_lr
 
+        # Patanjali specific rules enforcement
+        is_patanjali = (
+            prompt_type == "Patanjali OCR"
+            or "patanjali" in str(data_dict.get("Customer Name *") or "").lower()
+            or "patanjali" in str(data_dict.get("cngr *") or "").lower()
+            or "patanjali" in str(data_dict.get("cngr") or "").lower()
+        )
+        if is_patanjali:
+            curr_lr = str(data_dict.get("grno") or data_dict.get("grno (*)") or data_dict.get("LR No *") or "").strip()
+            veh_num = str(data_dict.get("Vehicle No *") or "").replace(" ", "").upper()
+            if not curr_lr or curr_lr in ("0", "None", "null") or (veh_num and curr_lr.upper() == veh_num) or (curr_lr.isdigit() and len(curr_lr) >= 7):
+                data_dict["grno"] = ""
+                data_dict["grno (*)"] = ""
+                data_dict["LR No *"] = ""
+            else:
+                cleaned_margin = _clean_grno(curr_lr)
+                if cleaned_margin == "0":
+                    cleaned_margin = ""
+                data_dict["grno"] = cleaned_margin
+                data_dict["grno (*)"] = cleaned_margin
+                data_dict["LR No *"] = cleaned_margin
+
+            # Enforce Patanjali charges rule (printed 'xxxx' -> 0)
+            data_dict["freight  *"] = "0"
+            data_dict["freight"] = "0"
+            data_dict["cgst"] = "0.00"
+            data_dict["sgst"] = "0.00"
+            data_dict["igst"] = "0.00"
+            data_dict["received"] = "0.00"
+            data_dict["advance"] = "0.00"
+
+        # Unicharm specific rules enforcement
+        is_unicharm = (
+            prompt_type == "Unicharm OCR"
+            or any(w in str(data_dict.get("Customer Name *") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
+            or any(w in str(data_dict.get("cngr *") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
+            or any(w in str(data_dict.get("cngr") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
+        )
+        if is_unicharm:
+            if not data_dict.get("Customer Name *"):
+                data_dict["Customer Name *"] = "UNICHARM INDIA PVT. LTD."
+            if not data_dict.get("freight  *"):
+                data_dict["freight  *"] = "0"
+            if not data_dict.get("freight"):
+                data_dict["freight"] = "0"
+            if not data_dict.get("cgst"):
+                data_dict["cgst"] = "0.00"
+            if not data_dict.get("sgst"):
+                data_dict["sgst"] = "0.00"
+            data_dict["igst"] = "0.00"
+            if not data_dict.get("received"):
+                data_dict["received"] = "0.00"
+            if not data_dict.get("advance"):
+                data_dict["advance"] = "0.00"
+            if not data_dict.get("ftl"):
+                data_dict["ftl"] = "FTL"
+            if not data_dict.get("staxpaidby"):
+                data_dict["staxpaidby"] = "C"
+            if not data_dict.get("dlvtype"):
+                data_dict["dlvtype"] = "D"
+            if not data_dict.get("Vehicle Type *"):
+                data_dict["Vehicle Type *"] = "Market"
+
         # igst: Always output 0.00 or 0 for manual data entry purposes
         data_dict["igst"] = "0.00"
         if not data_dict.get("cgst"):
             data_dict["cgst"] = "0"
         if not data_dict.get("sgst"):
             data_dict["sgst"] = "0"
+
+        # Standardize all date fields strictly to DD/MM/YYYY format (never show 12-OCT-2026 or 05 Oct 26)
+        for date_key in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *"):
+            if data_dict.get(date_key):
+                data_dict[date_key] = _format_date_ddmmyyyy(data_dict[date_key])
 
         # Sync kv_pairs with fully enriched data_dict
         kv_pairs = [{"key": k, "value": v} for k, v in data_dict.items()]
