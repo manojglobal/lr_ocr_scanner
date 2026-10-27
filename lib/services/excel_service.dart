@@ -789,6 +789,9 @@ class ExcelService {
       if (Platform.isAndroid) {
         try {
           final downloadDir = Directory('/storage/emulated/0/Download');
+          if (!await downloadDir.exists()) {
+            try { await downloadDir.create(recursive: true); } catch (_) {}
+          }
           if (await downloadDir.exists()) {
             final targetPath = '${downloadDir.path}/$fileName';
             final targetFile = File(targetPath);

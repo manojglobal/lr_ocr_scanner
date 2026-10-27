@@ -97,6 +97,15 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         if (mounted) setState(() {});
       });
     }
+
+    // Pre-warm base64 decoding and pre-cache PDF preview pages immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      BillingImageViewer.prewarm(
+        widget.item,
+        context,
+        widget.controller.geminiService.serverUrl,
+      );
+    });
   }
 
   @override
@@ -148,7 +157,26 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       } else if (entry.key == 'Liscense No *') {
         updated['license_no'] = textVal;
       } else if (entry.key == 'Valid Up to *') {
+        updated['valid_up_to'] = textVal;
+        updated['dl_valid_till'] = textVal;
+      } else if (entry.key == 'Valid Upto') {
         updated['valid_upto'] = textVal;
+        updated['ewb valid upto'] = textVal;
+      } else if (entry.key == 'bookedpckgs' || entry.key == 'pckgs') {
+        updated['pckgs'] = textVal;
+        updated['bookedpckgs'] = textVal;
+        updated['stockpckgs'] = textVal;
+        updated['stockpkgs'] = textVal;
+      } else if (entry.key == 'bookedaweight' || entry.key == 'aweight') {
+        updated['aweight'] = textVal;
+        updated['bookedaweight'] = textVal;
+        updated['stockaweight'] = textVal;
+      } else if (entry.key == 'bookedcweight' || entry.key == 'cweight') {
+        updated['cweight'] = textVal;
+        updated['bookedcweight'] = textVal;
+        updated['stockcweight'] = textVal;
+      } else if (entry.key == 'oamount') {
+        updated['oamount'] = textVal.isNotEmpty ? textVal : '0.00';
       }
     }
     final newItem = _currentItem.copyWith(
@@ -451,21 +479,40 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                     child: Builder(
                       builder: (context) {
                         final isPdf = widget.item.fileName.toLowerCase().endsWith('.pdf') || widget.item.imagePath.toLowerCase().endsWith('.pdf');
-                        if (isPdf) {
-                          return Container(
-                            color: const Color(0xFFFEE2E2),
-                            child: const Center(
-                              child: Icon(Icons.picture_as_pdf, color: Color(0xFFDC2626), size: 22),
+                        final bytes = BillingImageViewer.resolveBase64Bytes(widget.item);
+                        if (bytes != null) {
+                          return Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
+                        }
+                        final pUrl = widget.item.record['preview_url'] ?? '';
+                        if (pUrl.isNotEmpty) {
+                          final server = widget.controller.geminiService.serverUrl.trim();
+                          final fullUrl = pUrl.startsWith('http') ? pUrl : '$server${pUrl.startsWith('/') ? pUrl : '/$pUrl'}';
+                          return Image.network(
+                            fullUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Container(
+                              color: const Color(0xFFFEE2E2),
+                              child: const Center(
+                                child: Icon(Icons.picture_as_pdf, color: Color(0xFFDC2626), size: 22),
+                              ),
                             ),
                           );
                         }
-                        if (file.existsSync()) {
+                        if (file.existsSync() && !isPdf) {
                           return Image.file(
                             file,
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) => Container(
                               color: Colors.grey.shade200,
                               child: const Icon(Icons.image, size: 20, color: Colors.blueGrey),
+                            ),
+                          );
+                        }
+                        if (isPdf) {
+                          return Container(
+                            color: const Color(0xFFFEE2E2),
+                            child: const Center(
+                              child: Icon(Icons.picture_as_pdf, color: Color(0xFFDC2626), size: 22),
                             ),
                           );
                         }

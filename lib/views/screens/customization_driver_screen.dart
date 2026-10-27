@@ -105,7 +105,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     String dName = (rec['Driver Name *'] ?? rec['driver_name'] ?? rec['owner_or_driver_name'] ?? '').trim();
     String dMob = (rec['Mobile no   *'] ?? rec['mobile_no'] ?? rec['driver_mobile'] ?? rec['mobile'] ?? '').trim();
     String dLic = (rec['Liscense No *'] ?? rec['license_no'] ?? rec['driving_licence_number'] ?? '').trim();
-    String dVal = (rec['Valid Up to *'] ?? rec['valid_upto'] ?? rec['dl_valid_till'] ?? '').trim();
+    String dVal = (rec['Valid Up to *'] ?? rec['Valid Up to'] ?? rec['valid_up_to'] ?? rec['dl_valid_till'] ?? '').trim();
     if (dMob == '9999999999' || dMob == '0000000000') dMob = '';
 
     final vehNo = (rec['Vehicle No *'] ?? rec['vehno'] ?? '').trim();
@@ -221,20 +221,35 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     super.dispose();
   }
 
-  void _showMandatoryIncompleteModal(BatchItem candidate, List<String> missingKeys) {
+  void _showMandatoryIncompleteModal(List<Map<String, String>> emptyMandatory) {
+    final count = emptyMandatory.length;
     showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 28),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Mandatory Fields Incomplete',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: const [
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 24),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Mandatory Fields Incomplete',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Required Details Missing',
+              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -245,17 +260,17 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${missingKeys.length} mandatory field${missingKeys.length == 1 ? '' : 's'} across LR & Master Data ${missingKeys.length == 1 ? 'is' : 'are'} incomplete:',
-                style: const TextStyle(fontSize: 13, color: Color(0xFF475569)),
+                'Total: $count missing mandatory field${count == 1 ? '' : 's'}:',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
-                  itemCount: missingKeys.length,
+                  itemCount: count,
                   itemBuilder: (context, idx) {
-                    final key = missingKeys[idx];
-                    final label = BatchItem.getMandatoryLabel(key);
+                    final item = emptyMandatory[idx];
+                    final tabStr = item['tabLabel'] != null ? ' (${item['tabLabel']})' : '';
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
@@ -267,7 +282,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                           ),
                           Expanded(
                             child: Text(
-                              label,
+                              '${item['label']}$tabStr',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                             ),
                           ),
@@ -277,35 +292,54 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                   },
                 ),
               ),
+              const SizedBox(height: 12),
+              const Text(
+                'Please complete all mandatory (*) fields to verify and save this record.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF475569)),
+              ),
             ],
           ),
         ),
         actions: [
-          OutlinedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).pop();
-            },
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF0284C7),
-              side: const BorderSide(color: Color(0xFFBAE6FD)),
-            ),
-            child: const Text('Back to LR Data'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              widget.controller.updateItem(candidate);
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => BatchQueueScreen(
-                    controller: widget.controller,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.arrow_back, size: 15),
+                  label: const Text(
+                    'Back to LR Data',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0284C7),
+                    side: const BorderSide(color: Color(0xFFBAE6FD)),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
-              );
-            },
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-            child: const Text('Continue to LR List'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text(
+                    'OK, Complete Fields',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -313,53 +347,6 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   }
 
   void _saveAndVerify() {
-    final custEmpty = _customerController.text.trim().isEmpty;
-    final counterEmpty = _selectedCounter.trim().isEmpty;
-    final categoryEmpty = _selectedVehicleCategory.trim().isEmpty;
-    final drvNameEmpty = _driverNameController.text.trim().isEmpty;
-    final drvMobileEmpty = _driverMobileController.text.trim().isEmpty;
-    final drvLicEmpty = _licenseNoController.text.trim().isEmpty;
-    final drvValidEmpty = _licenseValidController.text.trim().isEmpty;
-
-    if (custEmpty || counterEmpty || categoryEmpty || drvNameEmpty || drvMobileEmpty || drvLicEmpty || drvValidEmpty) {
-      setState(() => _hasValidated = true);
-
-      GlobalKey? targetKey;
-      if (custEmpty) {
-        targetKey = _customerKey;
-      } else if (counterEmpty) {
-        targetKey = _counterKey;
-      } else if (categoryEmpty) {
-        targetKey = _categoryKey;
-      } else if (drvNameEmpty) {
-        targetKey = _driverNameKey;
-      } else if (drvMobileEmpty) {
-        targetKey = _driverMobileKey;
-      } else if (drvLicEmpty) {
-        targetKey = _licenseNoKey;
-      } else if (drvValidEmpty) {
-        targetKey = _licenseValidKey;
-      }
-
-      if (targetKey?.currentContext != null) {
-        Scrollable.ensureVisible(
-          targetKey!.currentContext!,
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeInOut,
-          alignment: 0.2,
-        );
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please complete all mandatory (*) fields highlighted in red.'),
-          backgroundColor: Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
     final updated = Map<String, String>.from(widget.item.record);
     updated['Customer Name *'] = _customerController.text.trim();
     updated['Depatment Name'] = _selectedDepartment;
@@ -376,11 +363,91 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     updated['Liscense No *'] = _licenseNoController.text.trim();
     updated['license_no'] = _licenseNoController.text.trim();
     updated['Valid Up to *'] = _licenseValidController.text.trim();
-    updated['valid_upto'] = _licenseValidController.text.trim();
+    updated['valid_up_to'] = _licenseValidController.text.trim();
+    updated['dl_valid_till'] = _licenseValidController.text.trim();
 
     final candidate = widget.item.copyWith(record: updated);
-    if (!widget.controller.isItemVerified(candidate)) {
-      _showMandatoryIncompleteModal(candidate, candidate.missingMandatoryFields);
+
+    // Collect all missing mandatory fields matching Web
+    final emptyMandatory = <Map<String, String>>[];
+
+    void checkStep2(String key, String label, String tabLabel) {
+      final val = candidate.resolveField(key).trim();
+      if (val.isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
+        emptyMandatory.add({
+          'key': key,
+          'label': label,
+          'tabLabel': tabLabel,
+          'screen': 'step2',
+        });
+      }
+    }
+
+    checkStep2('grno (*)', 'LR / Consignment No. *', 'Basic Details');
+    checkStep2('grdt *', 'LR Date *', 'Basic Details');
+    checkStep2('Vehicle No *', 'Vehicle No. *', 'Basic Details');
+    checkStep2('cngr *', 'Consignor Name *', 'Consignor / Consignee');
+    checkStep2('cngrgstno *', 'Consignor GSTIN *', 'Consignor / Consignee');
+    checkStep2('cnge *', 'Consignee Name *', 'Consignor / Consignee');
+    checkStep2('cngegstno *', 'Consignee GSTIN *', 'Consignor / Consignee');
+
+    void checkCustom(String val, String key, String label) {
+      if (val.trim().isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
+        emptyMandatory.add({
+          'key': key,
+          'label': label,
+          'tabLabel': 'Master Data',
+          'screen': 'custom',
+        });
+      }
+    }
+
+    checkCustom(_customerController.text, 'Customer Name *', 'Customer Name *');
+    checkCustom(_selectedCounter, 'Counter', 'Counter *');
+    checkCustom(_selectedVehicleCategory, 'Vehicle Category', 'Vehicle Category *');
+    checkCustom(_driverNameController.text, 'Driver Name *', 'Driver Name *');
+    checkCustom(_driverMobileController.text, 'Mobile no   *', 'Driver Mobile No *');
+    checkCustom(_licenseNoController.text, 'Liscense No *', 'Driver License No *');
+    checkCustom(_licenseValidController.text, 'Valid Up to *', 'Driver License Valid Up to *');
+
+    if (emptyMandatory.isNotEmpty) {
+      setState(() => _hasValidated = true);
+
+      // Scroll to first invalid field if present on this screen
+      final firstCustom = emptyMandatory.firstWhere(
+        (m) => m['screen'] == 'custom',
+        orElse: () => {},
+      );
+      if (firstCustom.isNotEmpty) {
+        GlobalKey? targetKey;
+        final k = firstCustom['key'];
+        if (k == 'Customer Name *') {
+          targetKey = _customerKey;
+        } else if (k == 'Counter') {
+          targetKey = _counterKey;
+        } else if (k == 'Vehicle Category') {
+          targetKey = _categoryKey;
+        } else if (k == 'Driver Name *') {
+          targetKey = _driverNameKey;
+        } else if (k == 'Mobile no   *') {
+          targetKey = _driverMobileKey;
+        } else if (k == 'Liscense No *') {
+          targetKey = _licenseNoKey;
+        } else if (k == 'Valid Up to *') {
+          targetKey = _licenseValidKey;
+        }
+
+        if (targetKey?.currentContext != null) {
+          Scrollable.ensureVisible(
+            targetKey!.currentContext!,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeInOut,
+            alignment: 0.2,
+          );
+        }
+      }
+
+      _showMandatoryIncompleteModal(emptyMandatory);
       return;
     }
 
@@ -829,43 +896,45 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Bottom Action Buttons: Back & Save & Verify
+                    // Bottom Action Buttons: Back & Save & Verify (Balanced 50/50 sizing and clear alignment)
                     Row(
                       children: [
                         Expanded(
                           flex: 1,
-                          child: OutlinedButton(
+                          child: OutlinedButton.icon(
                             onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.arrow_back, size: 16),
+                            label: const Text(
+                              'Back to LR Data',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                            ),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: brandNavy,
                               side: const BorderSide(color: Color(0xFFCBD5E1)),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            child: const Text('← Back to LR Data', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          flex: 2,
-                          child: ElevatedButton(
+                          flex: 1,
+                          child: ElevatedButton.icon(
                             onPressed: _saveAndVerify,
+                            icon: const Icon(Icons.check_circle_outline, size: 18),
+                            label: const Text(
+                              'Save & Verify',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: brandBlue,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.check_circle_outline, size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Save & Verify',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                ),
-                              ],
                             ),
                           ),
                         ),

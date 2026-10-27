@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../config/document_schema.dart';
@@ -56,17 +57,27 @@ class ImageQueueCard extends StatelessWidget {
                       child: Builder(
                         builder: (context) {
                           final isPdf = item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf');
-                          if (isPdf) {
-                            return _thumbnailFallback(colorScheme);
+                          final b64 = item.record['preview_image'] ?? '';
+                          if (b64.startsWith('data:image/') && b64.contains('base64,')) {
+                            try {
+                              final bytes = base64Decode(b64.split('base64,').last);
+                              return Image.memory(bytes, fit: BoxFit.cover, errorBuilder: (_, _, _) => _thumbnailFallback(colorScheme));
+                            } catch (_) {}
                           }
-                          return File(item.imagePath).existsSync()
-                              ? Image.file(
-                                  File(item.imagePath),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      _thumbnailFallback(colorScheme),
-                                )
-                              : _thumbnailFallback(colorScheme);
+                          final pUrl = item.record['preview_url'] ?? '';
+                          if (pUrl.isNotEmpty) {
+                            final fullUrl = pUrl.startsWith('http') ? pUrl : 'http://192.168.1.2:8000${pUrl.startsWith('/') ? pUrl : '/$pUrl'}';
+                            return Image.network(fullUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _thumbnailFallback(colorScheme));
+                          }
+                          if (!isPdf && File(item.imagePath).existsSync()) {
+                            return Image.file(
+                              File(item.imagePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _thumbnailFallback(colorScheme),
+                            );
+                          }
+                          return _thumbnailFallback(colorScheme);
                         },
                       ),
                     ),

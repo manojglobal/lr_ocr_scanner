@@ -261,32 +261,61 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
   Future<void> _pickAndAddFiles({List<String>? allowedExtensions}) async {
     try {
-      final files = await FilePicker.pickFiles(
+      // Enforce upload of only 1 LR at a time matching Web
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: allowedExtensions ?? ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
       );
-      if (files.isEmpty) return;
-      final validPaths = <String>[];
-      for (final file in files) {
-        final size = file.lengthSync() ?? (await file.length()) ?? 0;
-        if (size > 10 * 1024 * 1024) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('File "${file.name}" exceeds 10 MB limit. Please select files under 10 MB.'),
-                backgroundColor: Colors.red.shade700,
-              ),
-            );
-          }
-          continue;
-        }
-        final path = await _resolvePlatformFilePath(file);
-        if (path != null && path.isNotEmpty) {
-          validPaths.add(path);
-        }
-      }
-      if (validPaths.isEmpty) return;
+      if (file == null) return;
 
+      // Validate maximum size of 10 MB per file matching Web showFileSizeValidationModal
+      final size = file.lengthSync() ?? (await file.length()) ?? (file.path != null && File(file.path!).existsSync() ? File(file.path!).lengthSync() : 0);
+      if (size > 10 * 1024 * 1024) {
+        if (mounted) {
+          final sizeMb = (size / (1024 * 1024)).toStringAsFixed(2);
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                  SizedBox(width: 8),
+                  Text('File Size Validation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Limit Exceeded',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'File "${file.name}" ($sizeMb MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A)),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      final path = await _resolvePlatformFilePath(file);
+      if (path == null || path.isEmpty) return;
+
+      final countBefore = widget.controller.items.length;
       if (mounted) {
         showDialog<void>(
           context: context,
@@ -294,9 +323,25 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
           builder: (_) => OcrProcessingDialog(controller: widget.controller),
         );
       }
-      await widget.controller.addFilePaths(validPaths);
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+      try {
+        await widget.controller.addFilePaths([path]);
+      } finally {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      }
+
+      // Automatically open Step 2: LR & Master Verification for the uploaded file
+      if (mounted && widget.controller.items.length > countBefore) {
+        final newItem = widget.controller.items[countBefore];
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EditBiltyScreen(
+              item: newItem,
+              controller: widget.controller,
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -419,7 +464,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                   Text('Unverified LRs Excluded: $unverifiedCount', style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
                 ],
                 const SizedBox(height: 6),
-                Text('Saved to: $filePath', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                Text('Saved to: $finalPath', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
               ],
             ),
             actions: [

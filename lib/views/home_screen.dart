@@ -11,6 +11,7 @@ import 'login_screen.dart';
 import 'screens/batch_queue_screen.dart';
 import 'screens/edit_bilty_screen.dart';
 import 'screens/excel_preview_screen.dart';
+import 'widgets/billing_image_viewer.dart';
 import 'widgets/ocr_processing_dialog.dart';
 import 'widgets/permission_dialog.dart';
 import 'widgets/step_indicator_bar.dart';
@@ -252,7 +253,52 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         }
       }
+      // Async sync from server /api/previous-uploads
+      widget.controller.syncPreviousUploadsFromServer().then((uploads) {
+        if (uploads.isNotEmpty && mounted) {
+          _syncLoadedUploads(uploads);
+        }
+      }).catchError((_) {});
     } catch (_) {}
+  }
+
+  void _syncLoadedUploads(List<Map<String, dynamic>> uploads) {
+    try {
+      final list = <Map<String, dynamic>>[];
+      for (final srv in uploads) {
+        final fn = (srv['filename'] ?? srv['fileName'] ?? '').toString();
+        final id = (srv['id'] ?? srv['file_id'] ?? '').toString();
+        if (fn.toLowerCase().contains('dummy') || id.toLowerCase().contains('dummy')) continue;
+        list.add({
+          'id': id,
+          'fileName': fn,
+          'imagePath': srv['file_path'] ?? srv['preview_url'] ?? fn,
+          'lrNo': srv['lr_no'] ?? srv['lrNo'] ?? '',
+          'isPdf': _toBoolean(srv['isPdf']) || fn.toLowerCase().endsWith('.pdf'),
+          'createdAt': srv['createdAt'] ?? DateTime.now().toIso8601String(),
+          'status': 'completed',
+          'preview_url': srv['preview_url'] ?? '',
+          'preview_path': '',
+          'preview_image': srv['preview_image'] ?? '',
+        });
+      }
+      for (final p in _persistedRecentLrs) {
+        if (!list.any((x) => x['id'] == p['id'] || (x['fileName'] != null && x['fileName'] == p['fileName']))) {
+          list.add(p);
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _persistedRecentLrs = list.take(25).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  bool _toBoolean(dynamic val) {
+    if (val == null) return false;
+    if (val is bool) return val;
+    return val.toString().toLowerCase() == 'true';
   }
 
   Future<void> _saveRecentUploads(List<BatchItem> currentItems) async {
@@ -432,35 +478,60 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleGalleryUpload() async {
     try {
-      final files = await FilePicker.pickFiles(
+      // Enforce upload of only 1 LR at a time matching Web
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
       );
 
-      if (files.isEmpty) return;
+      if (file == null) return;
 
-      // Validate maximum size of 10 MB per file
-      final validPaths = <String>[];
-      for (final file in files) {
-        final size = file.lengthSync() ?? (await file.length()) ?? 0;
-        if (size > 10 * 1024 * 1024) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('File "${file.name}" exceeds 10 MB limit. Please select files under 10 MB.'),
-                backgroundColor: Colors.red.shade700,
+      // Validate maximum size of 10 MB per file matching Web showFileSizeValidationModal
+      final size = file.lengthSync() ?? (await file.length()) ?? (file.path != null && File(file.path!).existsSync() ? File(file.path!).lengthSync() : 0);
+      if (size > 10 * 1024 * 1024) {
+        if (mounted) {
+          final sizeMb = (size / (1024 * 1024)).toStringAsFixed(2);
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                  SizedBox(width: 8),
+                  Text('File Size Validation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
               ),
-            );
-          }
-          continue;
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Limit Exceeded',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'File "${file.name}" ($sizeMb MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A)),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
         }
-        final path = await _resolvePlatformFilePath(file);
-        if (path != null && path.isNotEmpty) {
-          validPaths.add(path);
-        }
+        return;
       }
 
-      if (validPaths.isEmpty) return;
+      final path = await _resolvePlatformFilePath(file);
+      if (path == null || path.isEmpty) return;
 
       final countBefore = widget.controller.items.length;
 
@@ -473,14 +544,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       try {
-        await widget.controller.addFilePaths(validPaths);
+        await widget.controller.addFilePaths([path]);
       } finally {
         if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
       }
 
-      // If new item(s) were added, open Step 2: LR & Master Verification
+      // If new item was added, open Step 2: LR & Master Verification
       if (mounted && widget.controller.items.length > countBefore) {
         final newItem = widget.controller.items[countBefore];
         Navigator.of(context).push(
@@ -548,31 +619,39 @@ class _HomeScreenState extends State<HomeScreen> {
     required String previewPath,
     required String previewUrl,
   }) {
-    // PDF files: Display clean PDF icon with filename
-    if (isPdf) {
-      return Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: const Color(0xFFFEF2F2),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.picture_as_pdf, color: Color(0xFFDC2626), size: 24),
-            const SizedBox(height: 3),
-            Text(
-              fileName,
-              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
+    // 1. Try base64 decoded bytes from previewImage (instant 300 DPI preview)
+    if (previewImage.startsWith('data:image/') && previewImage.contains('base64,')) {
+      try {
+        final b64 = previewImage.split('base64,').last;
+        final bytes = base64Decode(b64);
+        return Image.memory(
+          bytes,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+        );
+      } catch (_) {}
     }
 
-    // 1. Try saved/resolved preview path on local disk
+    // 2. Try network URL (300 DPI preview from server)
+    if (previewUrl.isNotEmpty) {
+      String fullUrl = previewUrl;
+      if (fullUrl.startsWith('/') && widget.controller.geminiService.serverUrl.isNotEmpty) {
+        fullUrl = '${widget.controller.geminiService.serverUrl}$fullUrl';
+      }
+      if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+        return Image.network(
+          fullUrl,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallbackIcon(isPdf),
+        );
+      }
+    }
+
+    // 3. Try saved/resolved preview path on local disk
     if (previewPath.isNotEmpty && File(previewPath).existsSync()) {
       return Image.file(
         File(previewPath),
@@ -701,37 +780,42 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         final items = widget.controller.items;
         final isProcessing = widget.controller.isProcessing;
-        final displayRecent = items.isNotEmpty
-            ? items
-                .where((i) {
-                  final fn = i.fileName.toLowerCase();
-                  final id = i.id.toLowerCase();
-                  final lr = (i.record['LR No *'] ?? i.record['grno'] ?? i.record['BNF LR No'] ?? '').toLowerCase();
-                  return !fn.contains('dummy') && !id.contains('dummy') &&
-                         !fn.contains('nloiad273') && !id.contains('nloiad273') && !lr.contains('nloiad273');
-                })
-                .map((i) => {
-                  'id': i.id,
-                  'fileName': i.fileName,
-                  'imagePath': i.imagePath,
-                  'lrNo': i.record['LR No *'] ?? i.record['grno'] ?? i.record['BNF LR No'] ?? '',
-                  'isPdf': i.fileName.toLowerCase().endsWith('.pdf') || i.imagePath.toLowerCase().endsWith('.pdf'),
-                  'createdAt': i.createdAt.toIso8601String(),
-                  'status': i.status.name,
-                  'preview_image': i.record['preview_image'] ?? '',
-                  'preview_url': i.record['preview_url'] ?? '',
-                  'preview_path': i.record['preview_path'] ?? '',
-                  'item': i,
-                }).toList()
-            : _persistedRecentLrs
-                .where((e) {
-                  final fn = (e['fileName'] ?? '').toString().toLowerCase();
-                  final id = (e['id'] ?? '').toString().toLowerCase();
-                  final lr = (e['lrNo'] ?? '').toString().toLowerCase();
-                  return !fn.contains('dummy') && !id.contains('dummy') &&
-                         !fn.contains('nloiad273') && !id.contains('nloiad273') && !lr.contains('nloiad273');
-                })
-                .toList();
+        final List<Map<String, dynamic>> displayRecent = [];
+        // 1. Current active batch items
+        for (final i in items) {
+          final fn = i.fileName.toLowerCase();
+          final id = i.id.toLowerCase();
+          final lr = (i.record['LR No *'] ?? i.record['grno'] ?? i.record['BNF LR No'] ?? '').toLowerCase();
+          if (!fn.contains('dummy') && !id.contains('dummy') &&
+              !fn.contains('nloiad273') && !id.contains('nloiad273') && !lr.contains('nloiad273')) {
+            displayRecent.add({
+              'id': i.id,
+              'fileName': i.fileName,
+              'imagePath': i.imagePath,
+              'lrNo': i.record['LR No *'] ?? i.record['grno'] ?? i.record['BNF LR No'] ?? '',
+              'isPdf': i.fileName.toLowerCase().endsWith('.pdf') || i.imagePath.toLowerCase().endsWith('.pdf'),
+              'createdAt': i.createdAt.toIso8601String(),
+              'status': i.status.name,
+              'preview_image': i.record['preview_image'] ?? '',
+              'preview_url': i.record['preview_url'] ?? '',
+              'preview_path': i.record['preview_path'] ?? '',
+              'item': i,
+            });
+          }
+        }
+        // 2. Merged with persisted & server previous uploads
+        for (final e in _persistedRecentLrs) {
+          final fn = (e['fileName'] ?? '').toString();
+          final id = (e['id'] ?? '').toString();
+          final lr = (e['lrNo'] ?? '').toString().toLowerCase();
+          if (!fn.toLowerCase().contains('dummy') && !id.toLowerCase().contains('dummy') &&
+              !fn.toLowerCase().contains('nloiad273') && !id.toLowerCase().contains('nloiad273') && !lr.contains('nloiad273')) {
+            final exists = displayRecent.any((x) => x['id'] == id || (fn.isNotEmpty && x['fileName'] == fn));
+            if (!exists) {
+              displayRecent.add(e);
+            }
+          }
+        }
 
         return Scaffold(
           backgroundColor: const Color(0xFFF1F5F9),
@@ -1046,7 +1130,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               return InkWell(
                                 onTap: () async {
                                   BatchItem targetItem;
-                                  if (itmData['item'] != null) {
+                                  if (itmData['item'] is BatchItem) {
                                     targetItem = itmData['item'] as BatchItem;
                                   } else {
                                     String cleanPath = imagePath.trim();
@@ -1074,7 +1158,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         }
                                       } catch (_) {}
                                     }
-                                    final rawRecord = itmData['record'];
+                                    final rawRecord = itmData['record'] ?? itmData['data'];
                                     final recordMap = (rawRecord is Map) ? rawRecord.map((k, v) => MapEntry(k.toString(), v.toString())) : <String, String>{};
                                     if (lrNo.isNotEmpty && !recordMap.containsKey('LR No *')) {
                                       recordMap['LR No *'] = lrNo;
@@ -1088,8 +1172,23 @@ class _HomeScreenState extends State<HomeScreen> {
                                     if (previewPath.isNotEmpty && !recordMap.containsKey('preview_path')) {
                                       recordMap['preview_path'] = previewPath;
                                     }
+                                    if (itmData['preview_pages'] != null && !recordMap.containsKey('preview_pages')) {
+                                      recordMap['preview_pages'] = itmData['preview_pages'] is List
+                                          ? jsonEncode(itmData['preview_pages'])
+                                          : itmData['preview_pages'].toString();
+                                    }
+                                    if (itmData['page_count'] != null && !recordMap.containsKey('page_count')) {
+                                      recordMap['page_count'] = itmData['page_count'].toString();
+                                    }
+                                    if (itmData['saved_filename'] != null && !recordMap.containsKey('saved_filename')) {
+                                      recordMap['saved_filename'] = itmData['saved_filename'].toString();
+                                    }
+                                    if (itmData['file_url'] != null && !recordMap.containsKey('file_url')) {
+                                      recordMap['file_url'] = itmData['file_url'].toString();
+                                    }
+
                                     targetItem = BatchItem(
-                                      id: itmData['id']?.toString() ?? 'prev_$idx',
+                                      id: itmData['id']?.toString() ?? 'prev_${dt.millisecondsSinceEpoch}',
                                       imagePath: cleanPath,
                                       fileName: fileName,
                                       status: isVerified ? BatchItemStatus.completed : BatchItemStatus.pending,
@@ -1097,13 +1196,48 @@ class _HomeScreenState extends State<HomeScreen> {
                                       record: recordMap,
                                     );
                                   }
-                                  final existingIdx = widget.controller.items.indexWhere((i) => i.id == targetItem.id);
-                                  if (existingIdx == -1) {
-                                    widget.controller.items.add(targetItem);
+
+                                  // Web Parity (openPreviousUploadPreview): Match existing item to avoid duplicate LR records
+                                  final existingIdx = widget.controller.items.indexWhere((i) {
+                                    if (targetItem.id.isNotEmpty && i.id == targetItem.id) return true;
+                                    if (targetItem.fileName.isNotEmpty && i.fileName.toLowerCase() == targetItem.fileName.toLowerCase()) return true;
+                                    final tSaved = targetItem.record['saved_filename'];
+                                    final iSaved = i.record['saved_filename'];
+                                    if (tSaved != null && tSaved.isNotEmpty && tSaved == iSaved) return true;
+                                    final tLr = targetItem.resolveField('LR No *');
+                                    final iLr = i.resolveField('LR No *');
+                                    if (tLr.isNotEmpty && tLr == iLr) return true;
+                                    return false;
+                                  });
+
+                                  if (existingIdx != -1) {
+                                    // Enrich existing item with any missing preview URLs or image data
+                                    final existing = widget.controller.items[existingIdx];
+                                    final mergedRecord = Map<String, String>.from(existing.record);
+                                    for (final entry in targetItem.record.entries) {
+                                      if (entry.value.trim().isNotEmpty && (!mergedRecord.containsKey(entry.key) || mergedRecord[entry.key]!.trim().isEmpty)) {
+                                        mergedRecord[entry.key] = entry.value.trim();
+                                      }
+                                    }
+                                    final enrichedItem = existing.copyWith(
+                                      record: mergedRecord,
+                                      imagePath: (existing.imagePath.isEmpty || !File(existing.imagePath).existsSync()) && targetItem.imagePath.isNotEmpty && File(targetItem.imagePath).existsSync()
+                                          ? targetItem.imagePath
+                                          : existing.imagePath,
+                                    );
+                                    widget.controller.updateItem(enrichedItem);
+                                    targetItem = enrichedItem;
                                   } else {
-                                    targetItem = widget.controller.items[existingIdx];
+                                    widget.controller.addItemDirectly(targetItem);
                                   }
+
                                   if (context.mounted) {
+                                    // Pre-warm preview image and open directly into Step 2: LR & Master Verification
+                                    BillingImageViewer.prewarm(
+                                      targetItem,
+                                      context,
+                                      widget.controller.geminiService.serverUrl,
+                                    );
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(

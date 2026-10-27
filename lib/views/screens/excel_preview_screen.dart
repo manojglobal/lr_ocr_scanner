@@ -6,7 +6,7 @@ import '../../state/batch_controller.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
 
-/// Screen 8: Excel Preview (BNF GR Import Format - 50 Columns).
+/// Screen 8: Excel Preview (BNF GR Import Format - 49 Columns).
 class ExcelPreviewScreen extends StatefulWidget {
   final BatchProcessingController controller;
   final int initialTab;
@@ -25,7 +25,6 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   late int _activeSheetIndex;
   bool _isGenerating = false;
   bool _isDownloadingAll = false;
-  bool _isFull50Expanded = true;
   List<Map<String, dynamic>> _exportHistory = [];
   bool _isLoadingHistory = false;
   String _userName = 'Logistics User';
@@ -202,7 +201,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     super.dispose();
   }
 
-  // The exact 50 columns of BNF GR Import format
+  // The exact 49 columns of BNF GR Import format
   final List<String> _headers = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
 
   String _getCellValue(BatchItem item, String header) {
@@ -335,10 +334,13 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
               );
               savedFilePath = file.path;
               // Also copy to public Downloads directory
-              await widget.controller.excelService.saveFileToDownloads(
+              final publicDlPath = await widget.controller.excelService.saveFileToDownloads(
                 savedFilePath,
                 targetFileName: filename,
               );
+              if (publicDlPath != null) {
+                savedFilePath = publicDlPath;
+              }
               widget.controller.setLastExportedPath(savedFilePath);
             }
           }
@@ -547,7 +549,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                   },
                   icon: const Icon(Icons.table_view_outlined, size: 15),
                   label: const Text(
-                    'Sheet 1: BNF Import Format (50 Columns)',
+                    'Sheet 1: BNF Import Format (49 Columns)',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                   style: FilledButton.styleFrom(
@@ -691,7 +693,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                         children: [
                           const Flexible(
                             child: Text(
-                              'Sheet 1: BNF Import Format (50 Columns)',
+                              'Sheet 1: BNF Import Format (49 Columns)',
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -704,7 +706,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Text(
-                              '50 Columns',
+                              '49 Columns',
                               style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
                             ),
                           ),
@@ -722,115 +724,9 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
             ),
           ),
 
-          // 1. Top Summary Table (Mockup Step 10: 10 Core Columns)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-            child: Row(
-              children: [
-                const Icon(Icons.summarize_outlined, size: 16, color: Color(0xFF0284C7)),
-                const SizedBox(width: 6),
-                const Text(
-                  'Consignment Summary Preview',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                ),
-              ],
-            ),
-          ),
+          const SizedBox(height: 12),
+          // Scrollable 49-Column Data Table (Full BNF Format)
           SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(const Color(0xFF0F172A)),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-              dataRowMinHeight: 40,
-              dataRowMaxHeight: 48,
-              columnSpacing: 14,
-              horizontalMargin: 10,
-              columns: const [
-                DataColumn(label: Text('#')),
-                DataColumn(label: Text('LR No.')),
-                DataColumn(label: Text('Customer')),
-                DataColumn(label: Text('Department')),
-                DataColumn(label: Text('Vehicle No.')),
-                DataColumn(label: Text('From')),
-                DataColumn(label: Text('To')),
-                DataColumn(label: Text('Packages')),
-                DataColumn(label: Text('Weight')),
-                DataColumn(label: Text('Freight')),
-              ],
-              rows: List.generate(items.length, (rowIdx) {
-                final item = items[rowIdx];
-                final rec = item.record;
-                final lrNo = rec['LR No *'] ?? rec['grno (*)'] ?? rec['grno'] ?? item.fileName;
-                final cust = rec['Customer Name *'] ?? rec['cngr *'] ?? '—';
-                final dept = rec['Depatment Name'] ?? '—';
-                final veh = rec['Vehicle No *'] ?? '—';
-                final org = rec['orgrefcode'] ?? '—';
-                final dst = rec['destrefcode'] ?? '—';
-                final pkgs = rec['bookedpckgs'] ?? '—';
-                final wt = rec['bookedaweight'] ?? '—';
-                final frt = rec['freight  *'] ?? rec['freight'] ?? '—';
-
-                return DataRow(
-                  color: WidgetStateProperty.resolveWith<Color?>((states) {
-                    return rowIdx.isEven ? const Color(0xFFF8FAFC) : Colors.white;
-                  }),
-                  cells: [
-                    DataCell(Text('${rowIdx + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
-                    DataCell(Text(lrNo, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0284C7), fontSize: 11))),
-                    DataCell(Text(cust, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(dept, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(veh, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(org, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(dst, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(pkgs, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(wt, style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(frt, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
-                  ],
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 2. Expandable Accordion Toggle for Full 50 Columns (Mockup Step 10)
-          InkWell(
-            onTap: () {
-              setState(() {
-                _isFull50Expanded = !_isFull50Expanded;
-              });
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0F2FE),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFBAE6FD)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.table_rows_outlined, size: 18, color: Color(0xFF0284C7)),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'View Full Data as per BNF Excel Format (50 Columns)',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
-                    ),
-                  ),
-                  Icon(
-                    _isFull50Expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                    color: const Color(0xFF0284C7),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Scrollable 50-Column Data Table when expanded
-          if (_isFull50Expanded) ...[
-            const SizedBox(height: 8),
-            SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: DataTable(
@@ -883,7 +779,6 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                 }),
               ),
             ),
-          ],
           const SizedBox(height: 20),
         ],
       ),

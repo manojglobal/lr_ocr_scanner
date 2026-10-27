@@ -52,7 +52,12 @@ class GeminiBackendService {
   /// Converts the returned ParsedDocument into an ExtractionResult.
   Future<ExtractionResult> extractHandwriting(
     String imagePath, {
+    String? originalFileName,
     String? customPrompt,
+    String? userId,
+    String? userMobile,
+    String? userName,
+    String? sessionToken,
   }) async {
     final file = File(imagePath);
     if (!await file.exists()) {
@@ -65,7 +70,7 @@ class GeminiBackendService {
     final request = http.MultipartRequest('POST', uri);
 
     // Determine MIME type
-    final lowerPath = imagePath.toLowerCase();
+    final lowerPath = (originalFileName ?? imagePath).toLowerCase();
     MediaType mediaType = MediaType('image', 'png');
     if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
       mediaType = MediaType('image', 'jpeg');
@@ -75,16 +80,33 @@ class GeminiBackendService {
       mediaType = MediaType('application', 'pdf');
     }
 
+    final sendFileName = (originalFileName != null && originalFileName.trim().isNotEmpty)
+        ? originalFileName.trim()
+        : imagePath.split(RegExp(r'[/\\]')).last;
+
     request.files.add(
       await http.MultipartFile.fromPath(
         'file',
         imagePath,
+        filename: sendFileName,
         contentType: mediaType,
       ),
     );
 
     if (customPrompt != null && customPrompt.isNotEmpty) {
       request.fields['custom_prompt'] = customPrompt;
+    }
+    if (userId != null && userId.isNotEmpty) {
+      request.fields['user_id'] = userId;
+    }
+    if (userMobile != null && userMobile.isNotEmpty) {
+      request.fields['user_mobile'] = userMobile;
+    }
+    if (userName != null && userName.isNotEmpty) {
+      request.fields['user_name'] = userName;
+    }
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $sessionToken';
     }
 
     try {
@@ -115,7 +137,7 @@ class GeminiBackendService {
         data[k.toString()] = v?.toString() ?? '';
       });
 
-      // Retain preview_image, preview_url, and file_url for UI thumbnail and document viewing
+      // Retain preview_image, preview_url, preview_pages, page_count, and file_url for UI thumbnail and document viewing
       if (jsonResponse['preview_image'] != null && jsonResponse['preview_image'].toString().isNotEmpty) {
         data['preview_image'] = jsonResponse['preview_image'].toString();
       }
@@ -124,6 +146,21 @@ class GeminiBackendService {
       }
       if (jsonResponse['file_url'] != null && jsonResponse['file_url'].toString().isNotEmpty) {
         data['file_url'] = jsonResponse['file_url'].toString();
+      }
+      if (jsonResponse['saved_filename'] != null && jsonResponse['saved_filename'].toString().isNotEmpty) {
+        data['saved_filename'] = jsonResponse['saved_filename'].toString();
+      }
+      if (jsonResponse['file_path'] != null && jsonResponse['file_path'].toString().isNotEmpty) {
+        data['file_path'] = jsonResponse['file_path'].toString();
+      }
+      if (jsonResponse['upload_id'] != null && jsonResponse['upload_id'].toString().isNotEmpty) {
+        data['upload_id'] = jsonResponse['upload_id'].toString();
+      }
+      if (jsonResponse['page_count'] != null) {
+        data['page_count'] = jsonResponse['page_count'].toString();
+      }
+      if (jsonResponse['preview_pages'] is List) {
+        data['preview_pages'] = jsonEncode(jsonResponse['preview_pages']);
       }
 
       // Check if data contains multi-person or multi-row structure
@@ -344,6 +381,38 @@ class GeminiBackendService {
         final Map<String, dynamic> data = jsonDecode(response.body);
         if (data['success'] == true && data['history'] is List) {
           return List<Map<String, dynamic>>.from(data['history']);
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Retrieves list of previously uploaded LRs matching Web GET /api/previous-uploads
+  Future<List<Map<String, dynamic>>> getPreviousUploads({
+    String? userId,
+    String? userMobile,
+    String? sessionToken,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'only_pending': 'false',
+      };
+      if (userId != null && userId.isNotEmpty) queryParams['user_id'] = userId;
+      if (userMobile != null && userMobile.isNotEmpty) queryParams['user_mobile'] = userMobile;
+
+      final uri = Uri.parse('$_currentServerUrl/api/previous-uploads').replace(queryParameters: queryParams);
+      final headers = <String, String>{};
+      if (sessionToken != null && sessionToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $sessionToken';
+      }
+
+      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        if (data['success'] == true && data['uploads'] is List) {
+          return List<Map<String, dynamic>>.from(data['uploads']);
         }
       }
       return [];

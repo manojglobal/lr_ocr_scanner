@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'extraction_result.dart';
 
@@ -161,6 +162,23 @@ class BatchItem {
   static String getMandatoryLabel(String key) => mandatoryLabels[key] ?? key;
 
 
+  static DateTime? _parseDdMmYyyy(String s) {
+    try {
+      final clean = s.trim().split(RegExp(r'\s+')).first;
+      final parts = clean.split(RegExp(r'[/.-]'));
+      if (parts.length == 3) {
+        int d = int.parse(parts[0]);
+        int m = int.parse(parts[1]);
+        int y = int.parse(parts[2]);
+        if (y < 100) y += 2000;
+        return DateTime(y, m, d);
+      }
+      return DateTime.tryParse(s);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Smart field resolver matching Web getBnfFieldValue alias handling.
   String resolveField(String key) {
     if (record.containsKey(key) && record[key] != null && record[key]!.trim().isNotEmpty) {
@@ -215,7 +233,13 @@ class BatchItem {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'Valid Up to *' || key == 'Valid Up to') {
-      for (final a in ['Valid Up to *', 'Valid Up to', 'valid_upto', 'driver_valid_upto']) {
+      // Strictly Driver DL validity (NEVER fall back to E-Way bill valid_upto)
+      for (final a in ['Valid Up to *', 'Valid Up to', 'valid_up_to', 'dl_valid_till', 'license_valid', 'driver_valid_upto']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Valid Upto' || key == 'validupto') {
+      // Strictly E-Way bill expiry date
+      for (final a in ['Valid Upto', 'validupto', 'ewb valid upto', 'ewb_valid_upto', 'e-way bill valid upto']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'Loading Start date *') {
@@ -231,7 +255,34 @@ class BatchItem {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'oamount') {
-      for (final a in ['oamount', 'Other Charges', 'other_amount', 'other charges', 'hamali']) {
+      for (final a in ['oamount', 'Other Charges', 'other_amount', 'other charges', 'hamali', 'loading charges', 'unloading charges', 'aoc', 'labour', 'misc']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+      return '0.00';
+    } else if (key == 'pckgs' || key == 'bookedpckgs' || key == 'stockpckgs' || key == 'stockpkgs' || key == 'packages' || key == 'pkgs') {
+      for (final a in ['pckgs', 'bookedpckgs', 'stockpckgs', 'stockpkgs', 'packages', 'pkgs', 'quantity', 'qty']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'aweight' || key == 'bookedaweight' || key == 'stockaweight') {
+      for (final a in ['aweight', 'bookedaweight', 'actual weight', 'actual wt', 'stockaweight', 'weight']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'cweight' || key == 'bookedcweight' || key == 'stockcweight') {
+      for (final a in ['cweight', 'bookedcweight', 'charged weight', 'charged wt', 'stockcweight']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Transit Days' || key == 'transit days' || key == 'transit_days') {
+      final startStr = record['grdt *'] ?? record['grdt'] ?? record['stockdt'] ?? record['stockdt '] ?? '';
+      final endStr = record['Valid Upto'] ?? record['validupto'] ?? record['ewb valid upto'] ?? record['ewb_valid_upto'] ?? '';
+      if (startStr.isNotEmpty && endStr.isNotEmpty) {
+        final d1 = _parseDdMmYyyy(startStr);
+        final d2 = _parseDdMmYyyy(endStr);
+        if (d1 != null && d2 != null) {
+          final diff = d2.difference(d1).inDays;
+          if (diff >= 0) return diff.toString();
+        }
+      }
+      for (final a in ['Transit Days', 'transit days', 'transit_days']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     }
@@ -354,6 +405,8 @@ class BatchItem {
       'file_url': record['file_url'] ?? '',
       'preview_url': record['preview_url'] ?? '',
       'preview_image': record['preview_image'] ?? '',
+      'preview_pages': record['preview_pages'] ?? '',
+      'page_count': record['page_count'] ?? '1',
       'isVerified': isVerified,
       'status': status.name,
       'data': record,
@@ -375,6 +428,14 @@ class BatchItem {
     }
     if (doc['preview_url'] != null && doc['preview_url'].toString().isNotEmpty) {
       dataMap['preview_url'] = doc['preview_url'].toString();
+    }
+    if (doc['preview_pages'] != null && doc['preview_pages'].toString().isNotEmpty) {
+      dataMap['preview_pages'] = doc['preview_pages'] is List
+          ? jsonEncode(doc['preview_pages'])
+          : doc['preview_pages'].toString();
+    }
+    if (doc['page_count'] != null) {
+      dataMap['page_count'] = doc['page_count'].toString();
     }
     if (doc['saved_filename'] != null && doc['saved_filename'].toString().isNotEmpty) {
       dataMap['saved_filename'] = doc['saved_filename'].toString();

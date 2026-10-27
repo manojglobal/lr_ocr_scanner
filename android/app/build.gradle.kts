@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.example.ocr_to_excel"
     compileSdk = 37
-    ndkVersion = "30.0.16248370"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/user_cloud_service.dart';
@@ -253,26 +254,65 @@ class BatchProcessingController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Hydrates active batch from shared cloud JSON DB (/api/user-cloud-storage)
+  /// Hydrates active batch and previous uploads from shared cloud JSON DB (/api/user-cloud-storage)
   Future<void> hydrateFromCloud() async {
     final mob = _activeUserMobile;
     if (mob == null || mob.trim().isEmpty) return;
     try {
       final cloudData = await UserCloudService.instance.fetchUserCloudData(mob, baseUrl: _geminiService.serverUrl);
-      if (cloudData != null && cloudData['active_batch'] is List) {
-        final cloudList = (cloudData['active_batch'] as List);
-        if (cloudList.isNotEmpty && _items.isEmpty) {
+      if (cloudData != null) {
+        // 1. Hydrate active batch (merge without duplicating)
+        if (cloudData['active_batch'] is List) {
+          final cloudList = (cloudData['active_batch'] as List);
+          bool batchChanged = false;
           for (final rawDoc in cloudList) {
             if (rawDoc is Map) {
               final item = BatchItem.fromCloudDoc(Map<String, dynamic>.from(rawDoc));
-              _items.add(item);
+              final exists = _items.any((i) =>
+                  i.id == item.id ||
+                  (item.record['saved_filename'] != null &&
+                      item.record['saved_filename']!.isNotEmpty &&
+                      i.record['saved_filename'] == item.record['saved_filename']));
+              if (!exists) {
+                _items.add(item);
+                batchChanged = true;
+              }
             }
           }
-          if (!_isDisposed) notifyListeners();
+          if (batchChanged && !_isDisposed) notifyListeners();
+        }
+
+        // 2. Cache uploaded LRs from cloud into local SharedPreferences for instant HomeScreen parity
+        final prefs = await SharedPreferences.getInstance();
+        if (cloudData['uploaded_lrs'] is List && (cloudData['uploaded_lrs'] as List).isNotEmpty) {
+          await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cloudData['uploaded_lrs']));
+        }
+
+        // 3. Cache generated Excel exports
+        if (cloudData['generated_excels'] is List && (cloudData['generated_excels'] as List).isNotEmpty) {
+          await prefs.setString('bnf_exported_batches', jsonEncode(cloudData['generated_excels']));
         }
       }
     } catch (e) {
       debugPrint('[BatchController] Cloud hydration notice: $e');
+    }
+  }
+
+  /// Synchronizes previous uploads from backend server (/api/previous-uploads)
+  Future<List<Map<String, dynamic>>> syncPreviousUploadsFromServer() async {
+    try {
+      final uploads = await _geminiService.getPreviousUploads(
+        userMobile: _activeUserMobile,
+        sessionToken: _activeSessionToken,
+      );
+      if (uploads.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(uploads));
+      }
+      return uploads;
+    } catch (e) {
+      debugPrint('[BatchController] syncPreviousUploadsFromServer notice: $e');
+      return [];
     }
   }
 
@@ -639,8 +679,14 @@ class BatchProcessingController extends ChangeNotifier {
 
             try {
               final serverResult = await _geminiService
-                  .extractHandwriting(item.imagePath)
-                  .timeout(const Duration(seconds: 15));
+                  .extractHandwriting(
+                    item.imagePath,
+                    originalFileName: item.fileName,
+                    userMobile: _activeUserMobile,
+                    userName: _activeUserName,
+                    sessionToken: _activeSessionToken,
+                  )
+                  .timeout(const Duration(seconds: 90));
 
               if (serverResult.status != ExtractionStatus.failed) {
                 parseResult = serverResult;
@@ -679,7 +725,7 @@ class BatchProcessingController extends ChangeNotifier {
             rawOcrText = recognizedText.text;
           }
 
-          // Step 4: Mapping with BNF 50-Column Format
+          // Step 4: Mapping with BNF 49-Column Format
           _currentOcrStep = 4;
           notifyListeners();
 

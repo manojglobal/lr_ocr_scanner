@@ -76,7 +76,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               const Text(
-                'The consolidated 50-column BNF Excel document is ready for download.',
+                'The consolidated 49-column BNF Excel document is ready for download.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
@@ -144,7 +144,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  '$totalLrs Consignments • 50 Columns Clean BNF Format',
+                                  '$totalLrs Consignments • 49 Columns Clean BNF Format',
                                   style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
                                 ),
                               ],
@@ -173,7 +173,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Complete 50-Column Export Data Preview Card
+              // Complete 49-Column Export Data Preview Card
               _buildSnapshotPreviewCard(
                 context,
                 filename: filename,
@@ -536,7 +536,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: _buildSnapshotMetaItem('Schema Format', 'Clean BNF (All 50 Columns)'),
+                      child: _buildSnapshotMetaItem('Schema Format', 'Clean BNF (All 49 Columns)'),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -574,7 +574,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
-                    '50 COLUMNS',
+                    '49 COLUMNS',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
@@ -586,7 +586,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
             ),
           ),
 
-          // 4. Horizontally Scrollable 50-Column Table
+          // 4. Horizontally Scrollable 49-Column Table
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
@@ -662,7 +662,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Export includes complete 50-column dataset. Saved in device Downloads.',
+                    'Export includes complete 49-column dataset. Saved in device Downloads.',
                     style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
                   ),
                 ),

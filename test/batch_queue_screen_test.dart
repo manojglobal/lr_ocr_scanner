@@ -93,7 +93,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Sheet 1 switcher button is present in the preview toolbar
-    final sheet1BtnFinder = find.widgetWithText(FilledButton, 'Sheet 1: BNF Import Format (50 Columns)');
+    final sheet1BtnFinder = find.widgetWithText(FilledButton, 'Sheet 1: BNF Import Format (49 Columns)');
     expect(sheet1BtnFinder, findsOneWidget);
 
     // Old duplicate History tab is removed from the bottom/preview toolbar (no Tab widget)

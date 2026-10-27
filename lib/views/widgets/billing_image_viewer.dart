@@ -45,6 +45,122 @@ class BillingImageViewer extends StatefulWidget {
     );
   }
 
+  /// In-memory cache for decoded base64 preview bytes (prevents UI thread jank & decodes at most once)
+  static final Map<String, Uint8List> _base64Cache = <String, Uint8List>{};
+
+  /// Resolves decoded base64 bytes for a BatchItem or raw string, caching results in memory
+  static Uint8List? resolveBase64Bytes(dynamic itemOrPath) {
+    if (itemOrPath == null) return null;
+    if (itemOrPath is String) {
+      final rawPath = itemOrPath.trim();
+      if (rawPath.startsWith('data:image/') && rawPath.contains('base64,')) {
+        final cacheKey = 'str_${rawPath.length}_${rawPath.substring(0, rawPath.length > 30 ? 30 : rawPath.length)}';
+        if (_base64Cache.containsKey(cacheKey)) return _base64Cache[cacheKey];
+        try {
+          final b64 = rawPath.split('base64,').last;
+          final bytes = base64Decode(b64);
+          _base64Cache[cacheKey] = bytes;
+          return bytes;
+        } catch (_) {}
+      }
+      return null;
+    }
+    if (itemOrPath is BatchItem) {
+      if (_base64Cache.containsKey(itemOrPath.id)) {
+        return _base64Cache[itemOrPath.id];
+      }
+
+      // 1. Check raw imagePath for data URL
+      final rawPath = itemOrPath.imagePath.trim();
+      if (rawPath.startsWith('data:image/') && rawPath.contains('base64,')) {
+        try {
+          final b64 = rawPath.split('base64,').last;
+          final bytes = base64Decode(b64);
+          _base64Cache[itemOrPath.id] = bytes;
+          return bytes;
+        } catch (_) {}
+      }
+
+      // 2. Check record attributes for preview_image or imageSrc
+      String preview = (itemOrPath.record['preview_image'] ?? '').toString().trim();
+      if (preview.isNotEmpty) {
+        if (preview.contains('base64,')) {
+          preview = preview.split('base64,').last.trim();
+        }
+        try {
+          final bytes = base64Decode(preview);
+          _base64Cache[itemOrPath.id] = bytes;
+          return bytes;
+        } catch (_) {}
+      }
+
+      final imgSrc = itemOrPath.record['imageSrc'] ?? '';
+      if (imgSrc.startsWith('data:image/') && imgSrc.contains('base64,')) {
+        try {
+          final b64 = imgSrc.split('base64,').last;
+          final bytes = base64Decode(b64);
+          _base64Cache[itemOrPath.id] = bytes;
+          return bytes;
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  /// Extracts PDF preview pages from a BatchItem's metadata
+  static List<String> getPdfPreviewPagesStatic(BatchItem item) {
+    final rawPages = item.record['preview_pages'];
+    if (rawPages != null && rawPages.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawPages);
+        if (decoded is List) {
+          final list = decoded.map((e) => e.toString()).toList();
+          if (list.isNotEmpty) return list;
+        }
+      } catch (_) {}
+    }
+    final purl = item.record['preview_url'];
+    if (purl != null && purl.isNotEmpty) {
+      return [purl];
+    }
+    return [];
+  }
+
+  /// Resolves relative preview URLs against the server URL
+  static String? resolveFullUrlStatic(String? path, String? serverUrl) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    final server = (serverUrl != null && serverUrl.trim().isNotEmpty) ? serverUrl.trim() : 'http://192.168.1.2:8000';
+    final prefix = server.endsWith('/') ? server.substring(0, server.length - 1) : server;
+    final relPath = path.startsWith('/') ? path : '/$path';
+    return '$prefix$relPath';
+  }
+
+  /// Pre-warms base64 decoding and precaches rendered PDF pages before opening viewer
+  static void prewarm(BatchItem item, [BuildContext? context, String? serverUrl]) {
+    resolveBase64Bytes(item);
+    if (context != null) {
+      final pages = getPdfPreviewPagesStatic(item);
+      for (final p in pages) {
+        final full = resolveFullUrlStatic(p, serverUrl);
+        if (full != null) {
+          try {
+            precacheImage(NetworkImage(full), context);
+          } catch (_) {}
+        }
+      }
+      final purl = (item.record['preview_url'] ?? '').toString().trim();
+      if (purl.isNotEmpty) {
+        final full = resolveFullUrlStatic(purl, serverUrl);
+        if (full != null) {
+          try {
+            precacheImage(NetworkImage(full), context);
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
   @override
   State<BillingImageViewer> createState() => _BillingImageViewerState();
 }
@@ -53,12 +169,12 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
   late int _currentIndex;
   late final PageController _pageController;
   final Map<int, int> _rotations = {}; // itemIndex -> rotation turns (0, 1, 2, 3)
+  final Map<int, int> _pdfCurrentPages = {}; // itemIndex -> pageIndex (0, 1, 2...)
   final TransformationController _transformController = TransformationController();
   final Map<int, File?> _discoveredFiles = {};
-  bool _showMetaOverlay = true;
   bool _showExcelFormat = false;
 
-  final List<String> _bnf50Columns = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
+  final List<String> _bnf49Columns = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
 
   @override
   void initState() {
@@ -66,6 +182,55 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
     _currentIndex = widget.initialIndex.clamp(0, (widget.items.length - 1).clamp(0, 9999));
     _pageController = PageController(initialPage: _currentIndex);
     _resolveAllItemFiles();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadImages();
+    });
+  }
+
+  void _preloadImages() {
+    if (!mounted) return;
+    // 1. Prioritize and precache the current document first
+    if (widget.items.isNotEmpty && _currentIndex < widget.items.length) {
+      final current = widget.items[_currentIndex];
+      BillingImageViewer.resolveBase64Bytes(current);
+      final currentPages = _getPdfPreviewPages(current);
+      for (final p in currentPages) {
+        final full = _resolveFullUrl(p);
+        if (full != null) {
+          try {
+            precacheImage(NetworkImage(full), context);
+          } catch (_) {}
+        }
+      }
+      final curUrl = _resolvePreviewUrl(current);
+      if (curUrl != null) {
+        try {
+          precacheImage(NetworkImage(curUrl), context);
+        } catch (_) {}
+      }
+    }
+
+    // 2. Precache remaining documents in background
+    for (int i = 0; i < widget.items.length; i++) {
+      if (i == _currentIndex) continue;
+      final it = widget.items[i];
+      BillingImageViewer.resolveBase64Bytes(it);
+      final pages = _getPdfPreviewPages(it);
+      for (final p in pages) {
+        final full = _resolveFullUrl(p);
+        if (full != null) {
+          try {
+            precacheImage(NetworkImage(full), context);
+          } catch (_) {}
+        }
+      }
+      final purl = _resolvePreviewUrl(it);
+      if (purl != null) {
+        try {
+          precacheImage(NetworkImage(purl), context);
+        } catch (_) {}
+      }
+    }
   }
 
   @override
@@ -100,38 +265,19 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
       File? found = _resolveLocalFile(item.imagePath, item.fileName);
       if (found == null) {
         for (final dir in searchDirs) {
-          // 1. Try lr_documents folder
-          final lrDir = Directory('${dir.path}/lr_documents');
-          if (lrDir.existsSync()) {
-            final target = File('${lrDir.path}/${item.fileName}');
-            if (target.existsSync()) {
-              found = target;
-              break;
-            }
-            try {
-              final files = lrDir.listSync();
-              for (final entity in files) {
-                if (entity is File && entity.path.endsWith(item.fileName)) {
-                  found = entity;
-                  break;
-                }
-              }
-            } catch (_) {}
-            if (found != null) break;
+          final target1 = File('${dir.path}/lr_documents/${item.fileName}');
+          if (await target1.exists()) {
+            found = target1;
+            break;
           }
-          // 2. Try snapshots folder
-          final snapDir = Directory('${dir.path}/snapshots');
-          if (snapDir.existsSync()) {
-            final target = File('${snapDir.path}/${item.fileName}');
-            if (target.existsSync()) {
-              found = target;
-              break;
-            }
+          final target2 = File('${dir.path}/snapshots/${item.fileName}');
+          if (await target2.exists()) {
+            found = target2;
+            break;
           }
-          // 3. Try root of dir
-          final target = File('${dir.path}/${item.fileName}');
-          if (target.existsSync()) {
-            found = target;
+          final target3 = File('${dir.path}/${item.fileName}');
+          if (await target3.exists()) {
+            found = target3;
             break;
           }
         }
@@ -186,63 +332,17 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
     return null;
   }
 
+  List<String> _getPdfPreviewPages(BatchItem item) => BillingImageViewer.getPdfPreviewPagesStatic(item);
+
+  String? _resolveFullUrl(String? path) => BillingImageViewer.resolveFullUrlStatic(path, widget.controller?.geminiService.serverUrl);
+
   String? _resolvePreviewUrl(BatchItem item) {
     final purl = (item.record['preview_url'] ?? '').toString().trim();
     if (purl.isEmpty) return null;
-    if (purl.startsWith('http://') || purl.startsWith('https://')) return purl;
-    final server = widget.controller?.geminiService.serverUrl.trim() ?? '';
-    if (server.isNotEmpty) {
-      final prefix = server.endsWith('/') ? server.substring(0, server.length - 1) : server;
-      final path = purl.startsWith('/') ? purl : '/$purl';
-      return '$prefix$path';
-    }
-    return null;
+    return _resolveFullUrl(purl);
   }
 
-  Uint8List? _resolveBase64Bytes(dynamic itemOrPath) {
-    if (itemOrPath == null) return null;
-    if (itemOrPath is String) {
-      final rawPath = itemOrPath.trim();
-      if (rawPath.startsWith('data:image/') && rawPath.contains('base64,')) {
-        try {
-          final b64 = rawPath.split('base64,').last;
-          return base64Decode(b64);
-        } catch (_) {}
-      }
-      return null;
-    }
-    if (itemOrPath is BatchItem) {
-      // 1. Check raw imagePath for data URL
-      final rawPath = itemOrPath.imagePath.trim();
-      if (rawPath.startsWith('data:image/') && rawPath.contains('base64,')) {
-        try {
-          final b64 = rawPath.split('base64,').last;
-          return base64Decode(b64);
-        } catch (_) {}
-      }
-
-      // 2. Check record attributes for preview_image or imageSrc
-      String preview = (itemOrPath.record['preview_image'] ?? '').toString().trim();
-      if (preview.isNotEmpty) {
-        if (preview.contains('base64,')) {
-          preview = preview.split('base64,').last.trim();
-        }
-        try {
-          return base64Decode(preview);
-        } catch (_) {}
-      }
-
-      final imgSrc = itemOrPath.record['imageSrc'] ?? '';
-      if (imgSrc.startsWith('data:image/') && imgSrc.contains('base64,')) {
-        try {
-          final b64 = imgSrc.split('base64,').last;
-          return base64Decode(b64);
-        } catch (_) {}
-      }
-    }
-
-    return null;
-  }
+  Uint8List? _resolveBase64Bytes(dynamic itemOrPath) => BillingImageViewer.resolveBase64Bytes(itemOrPath);
 
   void _rotateCurrent() {
     setState(() {
@@ -404,17 +504,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                     visualDensity: VisualDensity.compact,
                     onPressed: _resetZoom,
                   ),
-                  // Toggle Metadata Overlay
-                  IconButton(
-                    icon: Icon(
-                      _showMetaOverlay ? Icons.info : Icons.info_outline,
-                      color: _showMetaOverlay ? Colors.lightBlueAccent : Colors.white70,
-                      size: 20,
-                    ),
-                    tooltip: 'Toggle Details',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => setState(() => _showMetaOverlay = !_showMetaOverlay),
-                  ),
+
 
                 ],
               ),
@@ -440,20 +530,81 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                         final isPdf = item.imagePath.toLowerCase().endsWith('.pdf') || item.fileName.toLowerCase().endsWith('.pdf');
                         final resolvedFile = _resolveLocalFile(item.imagePath, item.fileName) ?? _discoveredFiles[index];
                         final base64Bytes = _resolveBase64Bytes(item);
-
-                        final previewNetworkUrl = _resolvePreviewUrl(item);
+                        final pdfPages = _getPdfPreviewPages(item);
+                        final curPdfPage = (_pdfCurrentPages[index] ?? 0).clamp(0, (pdfPages.length - 1).clamp(0, 999));
+                        final currentPdfPageUrl = pdfPages.isNotEmpty ? _resolveFullUrl(pdfPages[curPdfPage]) : _resolvePreviewUrl(item);
 
                         Widget contentWidget;
-                        if (base64Bytes != null) {
+                        if (isPdf) {
+                          // Page 0: Render instant 0ms memory preview from base64 if available
+                          if (curPdfPage == 0 && base64Bytes != null) {
+                            contentWidget = Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Image.memory(
+                                    base64Bytes,
+                                    fit: BoxFit.contain,
+                                    gaplessPlayback: true,
+                                  ),
+                                ),
+                                if (pdfPages.length > 1) ...[
+                                  const SizedBox(height: 8),
+                                  _buildPdfPageNav(index, curPdfPage, pdfPages.length),
+                                ],
+                              ],
+                            );
+                          } else if (currentPdfPageUrl != null) {
+                            contentWidget = Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Image.network(
+                                    currentPdfPageUrl,
+                                    fit: BoxFit.contain,
+                                    gaplessPlayback: true,
+                                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                                      if (wasSynchronouslyLoaded || frame != null) return child;
+                                      if (base64Bytes != null && curPdfPage == 0) {
+                                        return Image.memory(base64Bytes, fit: BoxFit.contain, gaplessPlayback: true);
+                                      }
+                                      return const Center(
+                                        child: SizedBox(
+                                          width: 28,
+                                          height: 28,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        (base64Bytes != null && curPdfPage == 0)
+                                            ? Image.memory(base64Bytes, fit: BoxFit.contain, gaplessPlayback: true)
+                                            : _buildPdfCard(item, resolvedFile, index),
+                                  ),
+                                ),
+                                if (pdfPages.length > 1) ...[
+                                  const SizedBox(height: 8),
+                                  _buildPdfPageNav(index, curPdfPage, pdfPages.length),
+                                ],
+                              ],
+                            );
+                          } else if (base64Bytes != null) {
+                            contentWidget = Image.memory(
+                              base64Bytes,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                              errorBuilder: (context, error, stackTrace) => _buildPdfCard(item, resolvedFile, index),
+                            );
+                          } else if (resolvedFile != null && resolvedFile.path.toLowerCase().endsWith('.pdf')) {
+                            contentWidget = _buildPdfCard(item, resolvedFile, index);
+                          } else {
+                            contentWidget = _buildPdfCard(item, resolvedFile, index);
+                          }
+                        } else if (base64Bytes != null) {
                           contentWidget = Image.memory(
                             base64Bytes,
                             fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => _buildPdfCard(item, resolvedFile, index),
-                          );
-                        } else if (isPdf && previewNetworkUrl != null) {
-                          contentWidget = Image.network(
-                            previewNetworkUrl,
-                            fit: BoxFit.contain,
+                            gaplessPlayback: true,
                             errorBuilder: (context, error, stackTrace) => _buildPdfCard(item, resolvedFile, index),
                           );
                         } else if (isPdf && resolvedFile != null && resolvedFile.path.toLowerCase().endsWith('.pdf')) {
@@ -545,44 +696,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                 ),
                               ),
                             ),
-                            if (isPdf)
-                              Positioned(
-                                top: 12,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withAlpha(200),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.redAccent.withAlpha(140)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.picture_as_pdf, color: Color(0xFFEF4444), size: 14),
-                                      const SizedBox(width: 6),
-                                      const Text('PDF Document Preview', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                                      const SizedBox(width: 8),
-                                      InkWell(
-                                        onTap: () {
-                              _pageController.animateToPage(
-                                index,
-                                duration: const Duration(milliseconds: 250),
-                                curve: Curves.easeInOut,
-                              );
-                            },
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text('Open PDF', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
-                                            SizedBox(width: 3),
-                                            Icon(Icons.open_in_new, size: 12, color: Color(0xFF38BDF8)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+
                           ],
                         );
                       },
@@ -622,7 +736,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandNavy),
                                         ),
                                         const Text(
-                                          'All 50 BNF logistics columns captured from this document',
+                                          'All 49 BNF logistics columns captured from this document',
                                           style: TextStyle(fontSize: 10, color: Colors.grey),
                                         ),
                                       ],
@@ -637,7 +751,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                     border: Border.all(color: const Color(0xFF86EFAC)),
                                   ),
                                   child: const Text(
-                                    '50 BNF Columns',
+                                    '49 BNF Columns',
                                     style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold, fontSize: 10),
                                   ),
                                 ),
@@ -677,8 +791,8 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                       ),
                                     ],
                                   ),
-                                  ...List.generate(_bnf50Columns.length, (colIdx) {
-                                    final colName = _bnf50Columns[colIdx];
+                                  ...List.generate(_bnf49Columns.length, (colIdx) {
+                                    final colName = _bnf49Columns[colIdx];
                                     final val = _getFieldValue(currentItem, colName);
                                     final hasVal = val.isNotEmpty;
 
@@ -775,61 +889,6 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                       ),
                     ),
 
-                  // Extracted Details Floating Overlay on Bottom Left
-                  if (!_showExcelFormat && _showMetaOverlay && currentItem.record.isNotEmpty)
-                    Positioned(
-                      left: 16,
-                      bottom: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xDD0F172A),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'LR: $lrNo',
-                                  style: const TextStyle(
-                                    color: Colors.lightBlueAccent,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                Text(
-                                  'Veh: $vehNo',
-                                  style: const TextStyle(
-                                    color: Colors.lightGreenAccent,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Party: ${_getFieldValue(currentItem, 'Customer Name *').isNotEmpty ? _getFieldValue(currentItem, 'Customer Name *') : _getFieldValue(currentItem, 'cngr *')}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 11),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              'Route: ${_getFieldValue(currentItem, 'orgrefcode')} -> ${_getFieldValue(currentItem, 'destrefcode')} • Pkgs: ${_getFieldValue(currentItem, 'bookedpckgs')} • Wt: ${_getFieldValue(currentItem, 'bookedaweight')} kg',
-                              style: const TextStyle(color: Colors.white54, fontSize: 10),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -860,18 +919,31 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                           final rFile = _resolveLocalFile(item.imagePath, item.fileName) ?? _discoveredFiles[idx];
                           final b64Bytes = _resolveBase64Bytes(item);
 
+                          final previewUrl = _resolvePreviewUrl(item);
                           Widget thumbWidget;
-                          if (isThumbPdf) {
+                          if (b64Bytes != null) {
+                            thumbWidget = Image.memory(b64Bytes, fit: BoxFit.cover, gaplessPlayback: true);
+                          } else if (previewUrl != null) {
+                            thumbWidget = Image.network(
+                              previewUrl,
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                              errorBuilder: (_, _, _) => Container(
+                                color: const Color(0xFF7F1D1D),
+                                child: const Center(
+                                  child: Icon(Icons.picture_as_pdf, size: 22, color: Colors.white),
+                                ),
+                              ),
+                            );
+                          } else if (rFile != null && rFile.existsSync() && !isThumbPdf) {
+                            thumbWidget = Image.file(rFile, fit: BoxFit.cover);
+                          } else if (isThumbPdf) {
                             thumbWidget = Container(
                               color: const Color(0xFF7F1D1D),
                               child: const Center(
                                 child: Icon(Icons.picture_as_pdf, size: 22, color: Colors.white),
                               ),
                             );
-                          } else if (b64Bytes != null) {
-                            thumbWidget = Image.memory(b64Bytes, fit: BoxFit.cover);
-                          } else if (rFile != null && rFile.existsSync()) {
-                            thumbWidget = Image.file(rFile, fit: BoxFit.cover);
                           } else {
                             thumbWidget = Container(
                               color: Colors.grey.shade900,
@@ -1041,6 +1113,44 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPdfPageNav(int itemIndex, int curPdfPage, int totalPages) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: curPdfPage > 0
+                ? () => setState(() => _pdfCurrentPages[itemIndex] = curPdfPage - 1)
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Page ${curPdfPage + 1} of $totalPages',
+            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: curPdfPage < totalPages - 1
+                ? () => setState(() => _pdfCurrentPages[itemIndex] = curPdfPage + 1)
+                : null,
+          ),
+        ],
       ),
     );
   }
