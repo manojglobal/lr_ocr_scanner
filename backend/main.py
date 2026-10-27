@@ -322,7 +322,7 @@ B. PATANJALI (COMPANY NAME)
 - "Depatment Name": Destination depot name if printed in Consignee block (e.g., "Depot Popular -Varanasi"); else "".
 - "Valid Upto": E-Way Bill validity date from attached E-Way Bill page (DD/MM/YYYY); else "".
 - "Transit Days": Integer difference between grdt and Valid Upto; else "".
-- "oamount": If handwritten notes at bottom specify unloading charge (e.g., 'Unloading charge 1000/-'), capture numeric (1000), else matches valgoods.
+- "oamount": Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written in bilty or notes (e.g., 'Unloading charge 1000/-' -> 1000.00). If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 - "productcode": Product code if itemized; else "".
 
 3. absent:
@@ -377,7 +377,7 @@ C. HIMALAYA (COMPANY NAME)
 - "Mobile no   *": Driver 10-digit phone number. Extract ONLY if explicitly written for the driver; else "".
 - "Liscense No *": Commercial driving licence number from attached DL card (e.g., "MH02 20040039639"). If absent, leave strictly as "".
 - "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, DD/MM/YYYY, e.g., "27/08/2030"). If absent, leave strictly as "".
-- "oamount": Other charges. If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). Otherwise matches valgoods or 0.00.
+- "oamount": Other charges (unloading, hamali, detention). If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 - "Depatment Name": Destination department name matched against manifest (e.g., "HIMALAYA-INDORE", "HIMALAYA-KOLKATA").
 - "custrefcode", "productcode", "branchrefcode" / "Counter name": Extract if present; else "".
 
@@ -433,7 +433,7 @@ D. GOLD PLUS (COMPANY NAME)
 - "branchrefcode" / "Counter name": Hub center code (e.g., "BEL" / "BELGAUM") if printed.
 - "custrefcode": Customer account code (e.g., "GOLDPLUS" or party code) if printed.
 - "productcode": Product / HSN code if itemized (e.g., "7005" for float glass).
-- "oamount": Matches valgoods unless special handling or unloading charges appear.
+- "oamount": Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written; if absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 
 3. absent:
 - "BNF LR No": Permanently removed from schema. Never extract.
@@ -512,7 +512,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 - "Mobile no   *": Driver 10-digit phone number. Extract ONLY if explicitly written for the driver; else "".
 - "Liscense No *": Commercial driving licence number from attached DL card (e.g., "MH02 20040039639"). If absent, leave strictly as "".
 - "Valid Up to *": Transport validity expiry date on attached DL card ('TR' date, DD/MM/YYYY, e.g., "27/08/2030"). If absent, leave strictly as "".
-- "oamount": Other charges. If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). Otherwise matches valgoods or 0.00.
+- "oamount": Other charges (unloading, hamali, detention). If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 - "Depatment Name": Destination department name matched against manifest (e.g., "HIMALAYA-INDORE", "HIMALAYA-KOLKATA").
 - "custrefcode", "productcode", "branchrefcode" / "Counter name": Extract if present; else "".
 
@@ -580,7 +580,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 - "branchrefcode" / "Counter name": Hub center code (e.g., "BEL" / "BELGAUM") if printed.
 - "custrefcode": Customer account code (e.g., "GOLDPLUS" or party code) if printed.
 - "productcode": Product / HSN code if itemized (e.g., "7005" for float glass).
-- "oamount": Matches valgoods unless special handling or unloading charges appear.
+- "oamount": Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written; if absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 
 3. absent:
 - "BNF LR No": Permanently removed from schema. Never extract.
@@ -646,7 +646,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 - "Depatment Name": Destination depot name if printed in Consignee block (e.g., "Depot Popular -Varanasi"); else "".
 - "Valid Upto": E-Way Bill validity date from attached E-Way Bill page (DD/MM/YYYY); else "".
 - "Transit Days": Integer difference between grdt and Valid Upto; else "".
-- "oamount": If handwritten notes at bottom specify unloading charge (e.g., 'Unloading charge 1000/-'), capture numeric (1000), else matches valgoods.
+- "oamount": Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written in bilty or notes (e.g., 'Unloading charge 1000/-' -> 1000.00). If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 - "productcode": Product code if itemized; else "".
 
 3. absent:
@@ -1675,11 +1675,28 @@ async def extract_handwriting(
                     item["value"] = ""
 
         # Clean pmark: Extract ONLY actual seal code or digits (strip Seal, Sealv0, No, =, :, etc.)
-        if data_dict.get("pmark"):
-            data_dict["pmark"] = _clean_pmark(data_dict["pmark"])
+        pmark_candidate = (
+            data_dict.get("pmark")
+            or data_dict.get("Private Mark")
+            or data_dict.get("private mark")
+            or data_dict.get("Seal No")
+            or data_dict.get("seal no")
+            or data_dict.get("seal_no")
+            or data_dict.get("seal")
+            or data_dict.get("Seal")
+            or data_dict.get("Seal No / Private Mark")
+        )
+        if pmark_candidate:
+            cleaned_pm = _clean_pmark(pmark_candidate)
+            data_dict["pmark"] = cleaned_pm
+            has_pmark = False
             for item in kv_pairs:
-                if item.get("key") == "pmark":
-                    item["value"] = data_dict["pmark"]
+                if item.get("key") in ("pmark", "Private Mark", "private mark", "Seal No", "seal no", "seal_no", "seal", "Seal", "Seal No / Private Mark"):
+                    item["key"] = "pmark"
+                    item["value"] = cleaned_pm
+                    has_pmark = True
+            if not has_pmark:
+                kv_pairs.append({"key": "pmark", "value": cleaned_pm})
 
         # igst: Always output 0.00 or 0 for manual data entry purposes
         data_dict["igst"] = "0.00"
@@ -1818,13 +1835,24 @@ async def extract_handwriting(
             data_dict["freight  *"] = "0"
             data_dict["freight"] = "0"
 
-        oamt_raw = data_dict.get("oamount")
-        if not oamt_raw or str(oamt_raw).strip() in ("", "0"):
-            fallback_oamt = data_dict.get("valgoods") or data_dict.get("declared value") or data_dict.get("other amount") or data_dict.get("other charges") or data_dict.get("hamali") or "0"
-            data_dict["oamount"] = fallback_oamt
+        oamt_raw = data_dict.get("oamount") or data_dict.get("other amount") or data_dict.get("other charges") or data_dict.get("hamali")
+        if oamt_raw and str(oamt_raw).strip() not in ("", "0", "0.00", "None", "null", "nan"):
+            data_dict["oamount"] = str(oamt_raw).strip()
+        else:
+            data_dict["oamount"] = "0.00"
 
         # Clean pmark according to rule (strip prefixes/labels)
-        pmark_raw = data_dict.get("pmark") or data_dict.get("seal no") or data_dict.get("seal")
+        pmark_raw = (
+            data_dict.get("pmark")
+            or data_dict.get("Private Mark")
+            or data_dict.get("private mark")
+            or data_dict.get("Seal No")
+            or data_dict.get("seal no")
+            or data_dict.get("seal_no")
+            or data_dict.get("seal")
+            or data_dict.get("Seal")
+            or data_dict.get("Seal No / Private Mark")
+        )
         if pmark_raw is not None:
             data_dict["pmark"] = _clean_pmark(pmark_raw)
 

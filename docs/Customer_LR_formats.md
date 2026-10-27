@@ -34,7 +34,7 @@
 | 24 | `Valid Up to *` | Partially Present (DL only) | Partially Present (DL only) | Partially Present (DL only) | Partially Present (DL only) |
 | 25 | `Loading Start date *` | **Present** (grdt) | **Present** (grdt) | **Present** (grdt) | **Present** (grdt) |
 | 26 | `freight  *` | **Absent** (0 - FTL) | **Absent** (0 - FTL 'xxxx') | **Absent** (0 - FTL) | **Absent** (0 - FTL) |
-| 27 | `oamount` | Partially Present (valgoods) | Partially Present (Unloading note) | Partially Present (Unloading note) | Partially Present (valgoods) |
+| 27 | `oamount` | Partially Present (Unloading note) | Partially Present (Unloading note) | Partially Present (Unloading note) | Partially Present (Unloading note) |
 | 28 | `cgst` | **Absent** (0.00 - FTL) | **Absent** (0.00 - 'xxxx') | **Absent** (0.00 - FTL) | **Absent** (0.00 - FTL) |
 | 29 | `sgst` | **Absent** (0.00 - FTL) | **Absent** (0.00 - 'xxxx') | **Absent** (0.00 - FTL) | **Absent** (0.00 - FTL) |
 | 30 | `igst` | **Absent** (0.00 - Manual) | **Absent** (0.00 - Manual) | **Absent** (0.00 - Manual) | **Absent** (0.00 - Manual) |
@@ -121,7 +121,7 @@
 * **`custrefcode`**: Customer account reference code (e.g., `"UNICHARM"` or party code). Left empty `""` if omitted.
 * **`Depatment Name`**: Designated warehouse department name (e.g., `"GLOBAL-BANGLORE"`, `"GLOBAL MARKETING-MT"`). Left empty `""` if not specifically designated.
 * **`branchrefcode` / `Counter name`**: Hub center code (e.g., `"GURGAON"`, `"DELHI"`, `"SANAND"`) if specified in bilty header.
-* **`oamount`**: Gross total amount (matches `valgoods` unless specific unloading charges appear).
+* **`oamount`**: Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written in the bilty or notes (e.g. 1000.00). If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 
 #### 3. absent
 * **`BNF LR No`**: Permanently removed / discontinued from Excel schema. Never extracted.
@@ -195,7 +195,7 @@
 * **`Depatment Name`**: Destination depot name if printed in Consignee block (e.g., `"Depot Popular -Varanasi"`). Left empty `""` if absent.
 * **`Valid Upto`**: E-Way Bill validity expiry date from attached E-Way Bill page (`DD/MM/YYYY`). Left empty `""` if E-Way page absent.
 * **`Transit Days`**: Integer difference between `grdt *` and `Valid Upto`. Left empty `""` if E-Way bill date absent.
-* **`oamount`**: If handwritten receiver notes at bottom specify an unloading charge (e.g., `'Unloading charge 1000/-'`), capture numeric `1000`. Otherwise matches `valgoods`.
+* **`oamount`**: Other charges (unloading, hamali, detention). If handwritten receiver notes at bottom specify an unloading charge (e.g., 'Unloading charge 1000/-'), capture numeric 1000. If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 * **`productcode`**: Product code if itemized; otherwise empty string `""`.
 
 #### 3. absent
@@ -266,7 +266,7 @@
 * **`Mobile no   *`**: Driver 10-digit phone number. Extracted ONLY if explicitly written for the driver. Left strictly as empty string `""` otherwise.
 * **`Liscense No *`**: Commercial driving licence number from attached DL card (e.g., `"MH02 20040039639"`, `"RJ40 20210005214"`). Left strictly as `""` if not attached.
 * **`Valid Up to *`**: Transport validity expiry date on attached DL card (`"TR"` validity date, `DD/MM/YYYY`, e.g., `"27/08/2030"`). Left strictly as `""` if not attached.
-* **`oamount`**: Other charges. If handwritten margin notes specify unloading charges (e.g., `"Unloading charges RS. 4200./-"`, `"unloading Charge = 1500/-"`), captured as numeric (`4200` or `1500`). Otherwise matches `valgoods` or `0.00`.
+* **`oamount`**: Other charges (unloading, hamali, detention). If handwritten margin notes specify unloading charges (e.g., "Unloading charges RS. 4200./-", "unloading Charge = 1500/-"), capture numeric (4200 or 1500). If absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 * **`Depatment Name`**: Destination department name matched against [`docs/ManiFest.xlsx`](file:///C:/Users/DELL/OCR_project/ocr_to_excel/ocr_to_excel/docs/ManiFest.xlsx) (e.g., `"HIMALAYA-INDORE"`, `"HIMALAYA-KOLKATA"`, `"HIMALAYA-RAIPUR"`).
 * **`custrefcode`**: Customer account reference code if specified.
 * **`productcode`**: Product / HSN code if itemized in Tax Invoice.
@@ -348,7 +348,7 @@
 * **`branchrefcode` / `Counter name`**: Hub center name (e.g. `"BEL"` / `"BELGAUM"`) if printed on bilty header.
 * **`custrefcode`**: Customer account code (e.g. `"GOLDPLUS"` or party code) if printed.
 * **`productcode`**: Product / HSN code if itemized (e.g., HSN 7005 for float glass).
-* **`oamount`**: Matches `valgoods` unless special handling or unloading charges appear.
+* **`oamount`**: Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written; if absent or FTL without extra charges, return strictly 0.00. NEVER copy valgoods into oamount.
 
 #### 3. absent
 * **`BNF LR No`**: Permanently removed from schema. Never extracted.

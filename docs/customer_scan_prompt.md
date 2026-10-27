@@ -73,7 +73,7 @@ When processing logistics consignment notes (bilties), commercial tax invoices, 
 * **`custrefcode`**: Customer account reference code (e.g., `"UNICHARM"` or party code). Left empty `""` if omitted.
 * **`Depatment Name`**: Designated warehouse department name (e.g., `"GLOBAL-BANGLORE"`, `"GLOBAL MARKETING-MT"`). Left empty `""` if not specifically designated.
 * **`branchrefcode` / `Counter name`**: Hub center code (e.g., `"GURGAON"`, `"DELHI"`, `"SANAND"`) if specified in bilty header.
-* **`oamount`**: Gross total amount (matches `valgoods` unless specific unloading charges appear).
+* **`oamount`**: Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written; if absent, return strictly 0.00. NEVER copy valgoods into oamount.
 
 #### 3. absent
 * **`BNF LR No`**: Permanently removed / discontinued from Excel schema. Never extracted.
@@ -146,7 +146,7 @@ When processing logistics consignment notes (bilties), commercial tax invoices, 
 * **`Depatment Name`**: Destination depot name if printed in Consignee block (e.g., `"Depot Popular -Varanasi"`). Left empty `""` if absent.
 * **`Valid Upto`**: E-Way Bill validity expiry date from attached E-Way Bill page (`DD/MM/YYYY`). Left empty `""` if E-Way page absent.
 * **`Transit Days`**: Integer difference between `grdt *` and `Valid Upto`. Left empty `""` if E-Way bill date absent.
-* **`oamount`**: If handwritten receiver notes at bottom specify an unloading charge (e.g., `'Unloading charge 1000/-'`), capture numeric `1000`. Otherwise matches `valgoods`.
+* **`oamount`**: Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written in bilty or notes; if absent, return strictly 0.00. NEVER copy valgoods into oamount.
 * **`productcode`**: Product code if itemized; otherwise empty string `""`.
 
 #### 3. absent
@@ -216,7 +216,7 @@ When processing logistics consignment notes (bilties), commercial tax invoices, 
 * **`Mobile no   *`**: Driver 10-digit phone number. Extracted ONLY if explicitly written for the driver. Left strictly as empty string `""` otherwise.
 * **`Liscense No *`**: Commercial driving licence number from attached DL card (e.g., `"MH02 20040039639"`, `"RJ40 20210005214"`). Left strictly as `""` if not attached.
 * **`Valid Up to *`**: Transport validity expiry date on attached DL card (`"TR"` validity date, `DD/MM/YYYY`, e.g., `"27/08/2030"`). Left strictly as `""` if not attached.
-* **`oamount`**: Other charges. If handwritten margin notes specify unloading charges (e.g., `"Unloading charges RS. 4200./-"`, `"unloading Charge = 1500/-"`), captured as numeric (`4200` or `1500`). Otherwise matches `valgoods` or `0.00`.
+* **`oamount`**: Other charges (unloading, hamali, detention). If handwritten margin notes specify unloading charges, capture numeric; otherwise return strictly 0.00. NEVER copy valgoods into oamount.
 * **`Depatment Name`**: Destination department name matched against [`docs/ManiFest.xlsx`](file:///C:/Users/DELL/OCR_project/ocr_to_excel/ocr_to_excel/docs/ManiFest.xlsx) (e.g., `"HIMALAYA-INDORE"`, `"HIMALAYA-KOLKATA"`, `"HIMALAYA-RAIPUR"`).
 * **`custrefcode`**: Customer account reference code if specified.
 * **`productcode`**: Product / HSN code if itemized in Tax Invoice.
@@ -299,7 +299,7 @@ When processing logistics consignment notes (bilties), commercial tax invoices, 
 * **`branchrefcode` / `Counter name`**: Hub center name (e.g. `"BEL"` / `"BELGAUM"`) if printed on bilty header.
 * **`custrefcode`**: Customer account code (e.g. `"GOLDPLUS"` or party code) if printed.
 * **`productcode`**: Product / HSN code if itemized (e.g., HSN 7005 for float glass).
-* **`oamount`**: Matches `valgoods` unless special handling or unloading charges appear.
+* **`oamount`**: Other charges (unloading, hamali, detention). Extract numeric value ONLY if explicitly written; if absent, return strictly 0.00. NEVER copy valgoods into oamount.
 
 #### 3. absent
 * **`BNF LR No`**: Permanently removed from schema. Never extracted.
@@ -413,7 +413,7 @@ A. UNICHARM RULES:
      * If no container seal code exists -> return strictly "".
    - "Driver Name *", "Mobile no *", "Liscense No *", "Valid Up to *": Extract ONLY if an official Driving Licence (DL) is attached in the multi-page dossier. If absent, leave strictly as empty string "".
    - "productcode" (HSN 96190030), "custrefcode", "Depatment Name": Extract if present; else "".
-   - "oamount": Matches valgoods unless specific unloading charge is noted.
+   - "oamount": Other charges (unloading, hamali, detention). Return numeric only if explicitly written; otherwise return strictly 0.00. NEVER copy valgoods into oamount.
 3. absent:
    - "BNF LR No": Permanently removed from schema. Never extract.
    - "freight *", "cgst", "sgst", "igst": Contracted under FTL -> return 0 or 0.00.
@@ -445,7 +445,7 @@ B. PATANJALI RULES:
    - "pmark": Extract ONLY if an explicit seal code is stamped (e.g. CJ007567); else "".
    - "Driver Name *", "Mobile no *", "Liscense No *", "Valid Up to *": Extract ONLY if an official DL card is attached. If absent, leave strictly as "".
    - "cngegstno", "Depatment Name", "Valid Upto", "Transit Days", "productcode": Extract if present; else "".
-   - "oamount": If bottom notes specify unloading charge (e.g. 'Unloading charge 1000/-'), capture numeric (1000), else matches valgoods.
+   - "oamount": Other charges (unloading, hamali, detention). Extract numeric only if explicitly written; otherwise return strictly 0.00. NEVER copy valgoods into oamount.
 3. absent:
    - "BNF LR No": Permanently removed.
    - "freight *", "cgst", "sgst", "igst", "received", "advance": Printed as 'xxxx' on bilty face -> return 0 or 0.00.
@@ -506,7 +506,7 @@ D. GOLD PLUS RULES:
    - "Driver Name *", "Liscense No *", "Valid Up to *": Extract ONLY if an official DL card is attached; else "".
    - "Depatment Name": "GOLD PLUS-BELGUAM".
    - "custrefcode", "productcode", "branchrefcode" / "Counter name": Extract if present; else "".
-   - "oamount": Matches valgoods unless unloading charge appears.
+   - "oamount": Other charges (unloading, hamali, detention). Return numeric only if explicitly written; otherwise return strictly 0.00. NEVER copy valgoods into oamount.
 3. absent:
    - "BNF LR No": Permanently removed.
    - "freight *", "cgst", "sgst", "igst", "received", "advance", surcharges: Contracted under FTL -> return 0 or 0.00.

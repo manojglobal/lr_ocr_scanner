@@ -1635,7 +1635,7 @@
         return '0.00';
       }
       if (fieldKey === 'pmark') {
-        const rawPm = String(data['pmark'] || data['Private Mark'] || data['seal_no'] || data['seal'] || '').trim();
+        const rawPm = String(data['pmark'] || data['Private Mark'] || data['private mark'] || data['Seal No'] || data['seal_no'] || data['seal'] || data['Seal'] || data['Seal No / Private Mark'] || '').trim();
         return rawPm.replace(/^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+/i, '').replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '');
       }
       if (data[fieldKey] !== undefined && data[fieldKey] !== '') return String(data[fieldKey]);
@@ -1693,7 +1693,7 @@
       if (fieldKey === 'ewaybillno') return data['ewaybillno'] || data['E-way Bill No'] || data['eway_bill_no'] || '';
       if (fieldKey === 'productcode') return data['productcode'] || data['Product Code'] || '';
       if (fieldKey === 'pmark') {
-        const rawPm = String(data['pmark'] || data['Private Mark'] || data['seal_no'] || data['seal'] || '').trim();
+        const rawPm = String(data['pmark'] || data['Private Mark'] || data['private mark'] || data['Seal No'] || data['seal_no'] || data['seal'] || data['Seal'] || data['Seal No / Private Mark'] || '').trim();
         return rawPm.replace(/^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+/i, '').replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '');
       }
       if (fieldKey === 'grtype(Don’t know)' || fieldKey === 'grtype') return data['grtype(Don’t know)'] || data['grtype'] || data['Payment Term'] || data['Freight Term'] || '';
@@ -4756,7 +4756,7 @@
       setVal('edit_packing', d['packing'] || '');
       setVal('edit_aweight', d['bookedaweight'] || d['stockaweight'] || d['weight'] || '');
       setVal('edit_cweight', d['bookedcweight'] || d['stockcweight'] || d['bookedaweight'] || '');
-      setVal('edit_pmark', d['pmark'] || '');
+      setVal('edit_pmark', d['pmark'] || d['Private Mark'] || d['private mark'] || d['Seal No'] || d['seal_no'] || d['seal'] || d['Seal'] || d['Seal No / Private Mark'] || '');
       setVal('edit_valgoods', d['valgoods'] || '');
 
       // Tab 4: Other Details (Additional Details only)
@@ -4766,7 +4766,7 @@
       setVal('edit_invno', d['invoiceno'] || '');
       setVal('edit_invdt', formatDdMmYyyyWeb(d['invoiedt'] || d['grdt'] || ''));
       setVal('edit_grtype', d['grtype(Don’t know)'] || d['grtype'] || '');
-      setVal('edit_oamount', d['oamount'] || '');
+      setVal('edit_oamount', d['oamount'] || d['Other Charges'] || d['other_amount'] || d['other charges'] || d['hamali'] || '');
 
 
       const fallbackBanner = document.getElementById('s4_fallback_banner');
