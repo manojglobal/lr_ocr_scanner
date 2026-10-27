@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/user_cloud_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -37,6 +40,7 @@ class BatchProcessingController extends ChangeNotifier {
   String? _activeUserMobile;
   String? _activeUserName;
   String? _activeSessionToken;
+  Timer? _cloudSyncTimer;
 
   BatchProcessingController({
     PermissionService? permissionService,
@@ -54,10 +58,12 @@ class BatchProcessingController extends ChangeNotifier {
         _excelService = excelService ?? ExcelService(),
         _geminiService = geminiService ?? GeminiBackendService(),
         _uuid = uuid ?? const Uuid(),
+        // ignore: prefer_initializing_formals
         _useGeminiBackend = useGeminiBackend {
     // Automated 30-day snapshot and data retention purge
     FileLifecycleService.instance.purgeLocalSnapshotsOlderThan(days: 30);
     _purgeOldItems();
+    _loadSavedSession();
   }
 
   void _purgeOldItems() {
@@ -232,6 +238,63 @@ class BatchProcessingController extends ChangeNotifier {
   String? get activeSessionToken => _activeSessionToken;
   String? get sessionToken => _activeSessionToken;
 
+  Future<void> _loadSavedSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mob = prefs.getString('bnf_user_mobile');
+      final name = prefs.getString('bnf_user_name');
+      final token = prefs.getString('bnf_session_token');
+      if (mob != null && mob.trim().isNotEmpty) {
+        _activeUserMobile = mob.trim();
+        _activeUserName = name ?? _activeUserName;
+        _activeSessionToken = token;
+        await hydrateFromCloud();
+      }
+    } catch (_) {}
+  }
+
+  /// Hydrates active batch from shared cloud JSON DB (/api/user-cloud-storage)
+  Future<void> hydrateFromCloud() async {
+    final mob = _activeUserMobile;
+    if (mob == null || mob.trim().isEmpty) return;
+    try {
+      final cloudData = await UserCloudService.instance.fetchUserCloudData(mob, baseUrl: _geminiService.serverUrl);
+      if (cloudData != null && cloudData['active_batch'] is List) {
+        final cloudList = (cloudData['active_batch'] as List);
+        if (cloudList.isNotEmpty && _items.isEmpty) {
+          for (final rawDoc in cloudList) {
+            if (rawDoc is Map) {
+              final item = BatchItem.fromCloudDoc(Map<String, dynamic>.from(rawDoc));
+              _items.add(item);
+            }
+          }
+          if (!_isDisposed) notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[BatchController] Cloud hydration notice: $e');
+    }
+  }
+
+  /// Pushes active batch items to shared cloud JSON DB with debouncing
+  void triggerCloudSync() {
+    final mob = _activeUserMobile;
+    if (mob == null || mob.trim().isEmpty) return;
+    _cloudSyncTimer?.cancel();
+    _cloudSyncTimer = Timer(const Duration(milliseconds: 400), () async {
+      try {
+        await UserCloudService.instance.saveActiveBatch(
+          mob,
+          _items,
+          userName: _activeUserName,
+          baseUrl: _geminiService.serverUrl,
+        );
+      } catch (e) {
+        debugPrint('[BatchController] Cloud sync push notice: $e');
+      }
+    });
+  }
+
   /// Sets active user session and guarantees complete data isolation between logins
   void setActiveUser(String? mobile, {String? name, String? sessionToken}) {
     final bool sessionChanged = (sessionToken != null && _activeSessionToken != sessionToken) ||
@@ -244,6 +307,7 @@ class BatchProcessingController extends ChangeNotifier {
       _activeUserName = name ?? _activeUserName;
       _activeSessionToken = sessionToken;
       notifyListeners();
+      hydrateFromCloud();
     } else {
       bool changed = false;
       if (name != null && _activeUserName != name) {
@@ -289,47 +353,7 @@ class BatchProcessingController extends ChangeNotifier {
 
   /// Checks whether an individual item has all mandatory (*) fields filled.
   bool isItemVerified(BatchItem item) {
-    if (item.status == BatchItemStatus.error) return false;
-    const mandatoryKeys = [
-      'grno (*)',
-      'grdt *',
-      'Customer Name *',
-      'cngr *',
-      'cnge *',
-      'cngrgstno *',
-      'cngegstno *',
-      'Vehicle No *',
-      'Vehicle Type *',
-      'Driver Name *',
-      'Mobile no   *',
-      'Liscense No *',
-      'Valid Up to *',
-      'Loading Start date *',
-      'freight  *',
-    ];
-
-    for (final mKey in mandatoryKeys) {
-      final cleanM = mKey.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-      bool found = false;
-      for (final entry in item.record.entries) {
-        final cleanE = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-        if (cleanE == cleanM) {
-          final val = entry.value.trim();
-          if (val.isNotEmpty && val != '-' && val != 'null' && val != 'None') {
-            found = true;
-            break;
-          }
-        }
-      }
-      if (!found && (cleanM == 'grno' || cleanM == 'lrno')) {
-        final lrVal = item.record['grno'] ?? item.record['LR No *'] ?? item.record['grno (*)'] ?? '';
-        if (lrVal.trim().isNotEmpty && lrVal.trim() != '-') {
-          found = true;
-        }
-      }
-      if (!found) return false;
-    }
-    return true;
+    return item.isVerified;
   }
 
   /// True if all consignment notes in the batch have all mandatory fields filled.
@@ -782,6 +806,7 @@ class BatchProcessingController extends ChangeNotifier {
       _isProcessing = false;
       _statusMessage = 'Processing complete. Saving Excel...';
       notifyListeners();
+      triggerCloudSync();
 
       // AUTO-SAVE: silently write a fresh Excel file after every batch.
       _autoSaveExcel();
@@ -904,6 +929,7 @@ class BatchProcessingController extends ChangeNotifier {
       versions: updatedVersions,
     );
     notifyListeners();
+    triggerCloudSync();
   }
 
   /// Updates a single cell within a batch item's detected 2D table grid.
@@ -945,6 +971,7 @@ class BatchProcessingController extends ChangeNotifier {
     if (index != -1) {
       _items[index] = item;
       notifyListeners();
+      triggerCloudSync();
     }
   }
 
@@ -995,8 +1022,17 @@ class BatchProcessingController extends ChangeNotifier {
         );
       } catch (_) {}
     }
+    final removed = _items.where((i) => i.id == itemId).toList();
     _items.removeWhere((i) => i.id == itemId);
     notifyListeners();
+    triggerCloudSync();
+    if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty) {
+      UserCloudService.instance.deleteCloudLr(
+        _activeUserMobile!,
+        [itemId, ...removed.map((r) => r.fileName)],
+        baseUrl: _geminiService.serverUrl,
+      );
+    }
   }
 
   /// Clears the entire queue and records lifecycle deletion.
@@ -1042,10 +1078,19 @@ class BatchProcessingController extends ChangeNotifier {
         );
       } catch (_) {}
     }
+    final allIds = _items.map((i) => i.id).toList();
     _items.clear();
     _lastExportedPath = null;
     _statusMessage = null;
     notifyListeners();
+    triggerCloudSync();
+    if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty && allIds.isNotEmpty) {
+      UserCloudService.instance.deleteCloudLr(
+        _activeUserMobile!,
+        allIds,
+        baseUrl: _geminiService.serverUrl,
+      );
+    }
   }
 
   /// Restores a soft-deleted item back to active batch.
@@ -1143,9 +1188,11 @@ class BatchProcessingController extends ChangeNotifier {
     _processQueue();
   }
 
-  /// Exports all items into a single styled Excel file (manual trigger from ReviewScreen).
-  Future<String?> exportToExcel({DocumentSchema? schema}) async {
-    if (_items.isEmpty) return null;
+  /// Exports items into a single styled Excel file.
+  /// If [itemsToExport] is provided, only those items (e.g. verified-only) are exported.
+  Future<String?> exportToExcel({DocumentSchema? schema, List<BatchItem>? itemsToExport}) async {
+    final list = itemsToExport ?? _items;
+    if (list.isEmpty) return null;
 
     try {
       _statusMessage = 'Generating Excel spreadsheet...';
@@ -1155,8 +1202,9 @@ class BatchProcessingController extends ChangeNotifier {
 
       final bytes = await Future.microtask(
         () => _excelService.generateExcelBytes(
-          items: _items,
+          items: list,
           schema: activeSchema,
+          userName: _activeUserName,
         ),
       );
 
@@ -1190,6 +1238,7 @@ class BatchProcessingController extends ChangeNotifier {
   void dispose() {
     if (!_isDisposed) {
       _isDisposed = true;
+      _cloudSyncTimer?.cancel();
       _ocrService.dispose();
       super.dispose();
     }

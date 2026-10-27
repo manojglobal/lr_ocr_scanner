@@ -5,12 +5,10 @@ import 'package:path_provider/path_provider.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
-import '../widgets/billing_image_viewer.dart';
 import '../widgets/ocr_processing_dialog.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'edit_bilty_screen.dart';
 import 'excel_preview_screen.dart';
-import 'file_history_screen.dart';
 
 /// Screen 7: LR Batch Queue List (For Consolidated Excel Export).
 class BatchQueueScreen extends StatefulWidget {
@@ -29,8 +27,15 @@ class BatchQueueScreen extends StatefulWidget {
 
 class _BatchQueueScreenState extends State<BatchQueueScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _customerController = TextEditingController();
+  final TextEditingController _vehicleController = TextEditingController();
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
   String _searchQuery = '';
+  String _customerQuery = '';
+  String _vehicleQuery = '';
   bool _isExporting = false;
+  bool _showFilters = false;
 
   @override
   void initState() {
@@ -47,7 +52,38 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
   void dispose() {
     widget.controller.removeListener(_checkDuplicateNotice);
     _searchController.dispose();
+    _customerController.dispose();
+    _vehicleController.dispose();
     super.dispose();
+  }
+
+  void _resetBatchFilters() {
+    setState(() {
+      _searchController.clear();
+      _customerController.clear();
+      _vehicleController.clear();
+      _searchQuery = '';
+      _customerQuery = '';
+      _vehicleQuery = '';
+      _dateFrom = null;
+      _dateTo = null;
+    });
+  }
+
+  DateTime? _parseRecordDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final clean = raw.trim().split(RegExp(r'[\sT]'))[0];
+    final parts = clean.split(RegExp(r'[\/\-\.]'));
+    if (parts.length == 3) {
+      final d = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      var y = int.tryParse(parts[2]);
+      if (d != null && m != null && y != null) {
+        if (y < 100) y += 2000;
+        return DateTime(y, m, d);
+      }
+    }
+    return DateTime.tryParse(clean);
   }
 
   void _checkDuplicateNotice() {
@@ -200,12 +236,23 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
       final bytes = await file.readAsBytes();
       if (bytes.isNotEmpty) {
         final tmp = await getTemporaryDirectory();
-        final localFile = File('${tmp.path}/${file.name}');
-        await localFile.writeAsBytes(bytes);
+        final safeName = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final localFile = File('${tmp.path}/$safeName');
+        await localFile.writeAsBytes(bytes, flush: true);
         return localFile.path;
       }
     } catch (_) {}
-    return file.path;
+    try {
+      final bytes = await file.xFile.readAsBytes();
+      if (bytes.isNotEmpty) {
+        final tmp = await getTemporaryDirectory();
+        final safeName = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final localFile = File('${tmp.path}/$safeName');
+        await localFile.writeAsBytes(bytes, flush: true);
+        return localFile.path;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _pickAndAddPdfs() async {
@@ -260,17 +307,44 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
     }
   }
 
-  void _openExcelPreview() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ExcelPreviewScreen(controller: widget.controller),
-      ),
-    );
-  }
-
   Future<void> _handleDirectDownloadExcel() async {
     final allItems = widget.controller.items;
-    if (allItems.isEmpty) return;
+    final verifiedItems = allItems.where((i) => i.isVerified).toList();
+    final verifiedCount = verifiedItems.length;
+
+    // Web Parity: If no verified LRs are available, show alert modal
+    if (verifiedCount == 0) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 24),
+              SizedBox(width: 8),
+              Text('Download Excel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: const Text(
+            'No verified LRs available for download.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final unverifiedCount = allItems.length - verifiedCount;
+    final message = unverifiedCount > 0
+        ? 'Download $verifiedCount Verified consignment note(s)?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
+        : 'Are you sure you want to download $verifiedCount verified consignment note(s)?';
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -284,7 +358,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
           ],
         ),
         content: Text(
-          'Are you sure you want to generate and download the Excel sheet with ${allItems.length} consignment notes?',
+          message,
           style: const TextStyle(fontSize: 14),
         ),
         actions: [
@@ -293,10 +367,10 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
             onPressed: () => Navigator.of(ctx).pop(true),
             icon: const Icon(Icons.download, size: 16),
-            label: const Text('Download Excel'),
+            label: Text('Download ($verifiedCount LRs)'),
           ),
         ],
       ),
@@ -306,15 +380,20 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
     setState(() => _isExporting = true);
     try {
-      final filePath = await widget.controller.exportToExcel(schema: DocumentSchema.grBnf);
+      final filePath = await widget.controller.exportToExcel(
+        schema: DocumentSchema.grBnf,
+        itemsToExport: verifiedItems,
+      );
       if (!mounted) return;
 
       if (filePath != null) {
         final defaultFilename = filePath.split(RegExp(r'[/\\]')).last;
-        await widget.controller.excelService.saveFileToDownloads(
+        final savedPath = await widget.controller.excelService.saveFileToDownloads(
           filePath,
           targetFileName: defaultFilename,
         );
+        final finalPath = savedPath ?? filePath;
+        widget.controller.setLastExportedPath(finalPath);
         if (!mounted) return;
 
         showDialog<void>(
@@ -334,7 +413,11 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
               children: [
                 Text('File: $defaultFilename', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
-                Text('Total LRs: ${allItems.length}', style: const TextStyle(fontSize: 13)),
+                Text('Verified LRs Exported: $verifiedCount', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF16A34A))),
+                if (unverifiedCount > 0) ...[
+                  const SizedBox(height: 4),
+                  Text('Unverified LRs Excluded: $unverifiedCount', style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
+                ],
                 const SizedBox(height: 6),
                 Text('Saved to: $filePath', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
               ],
@@ -397,45 +480,102 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
       builder: (context, _) {
         final allItems = widget.controller.items;
         final filteredItems = allItems.where((item) {
-          if (_searchQuery.isEmpty) return true;
-          final q = _searchQuery.toLowerCase();
-          final lr = _getField(item, 'LR No *', item.fileName).toLowerCase();
-          final veh = _getField(item, 'Vehicle No *', '').toLowerCase();
-          final cust = _getField(item, 'Customer Name *', '').toLowerCase();
-          return lr.contains(q) || veh.contains(q) || cust.contains(q) || item.fileName.toLowerCase().contains(q);
+          final d = item.record;
+
+          // 1. Text Search across LR, Route, City, Goods, Vehicle, Customer, Filename
+          if (_searchQuery.isNotEmpty) {
+            final q = _searchQuery.toLowerCase();
+            final allText = [
+              item.fileName,
+              _getField(item, 'LR No *', ''),
+              _getField(item, 'grno', ''),
+              _getField(item, 'Vehicle No *', ''),
+              _getField(item, 'Customer Name *', ''),
+              _getField(item, 'cngr *', ''),
+              _getField(item, 'cnge *', ''),
+              _getField(item, 'from', ''),
+              _getField(item, 'to', ''),
+              _getField(item, 'descgoods', ''),
+            ].join(' ').toLowerCase();
+            if (!allText.contains(q)) return false;
+          }
+
+          // 2. Customer Filter
+          if (_customerQuery.isNotEmpty) {
+            final cust = '${_getField(item, 'Customer Name *', '')} ${_getField(item, 'cngr *', '')}'.toLowerCase();
+            if (!cust.contains(_customerQuery.toLowerCase())) return false;
+          }
+
+          // 3. Vehicle No Filter
+          if (_vehicleQuery.isNotEmpty) {
+            final veh = _getField(item, 'Vehicle No *', '').replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+            final vq = _vehicleQuery.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+            if (!veh.contains(vq)) return false;
+          }
+
+          // 4. Date Range Filter
+          if (_dateFrom != null || _dateTo != null) {
+            final dtCandidates = [
+              _parseRecordDate(d['grdt *']),
+              _parseRecordDate(d['stockdt ']),
+              _parseRecordDate(d['Loading Start date *']),
+              _parseRecordDate(d['date']),
+              item.createdAt,
+            ].whereType<DateTime>().toList();
+
+            if (dtCandidates.isEmpty) return false;
+            final matched = dtCandidates.any((dt) {
+              if (_dateFrom != null && dt.isBefore(_dateFrom!)) return false;
+              if (_dateTo != null && dt.isAfter(_dateTo!.add(const Duration(days: 1)))) return false;
+              return true;
+            });
+            if (!matched) return false;
+          }
+
+          return true;
         }).toList();
+
+        final hasActiveFilters = _searchQuery.isNotEmpty ||
+            _customerQuery.isNotEmpty ||
+            _vehicleQuery.isNotEmpty ||
+            _dateFrom != null ||
+            _dateTo != null;
 
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFC),
           appBar: AppBar(
             titleSpacing: 8,
-            title: const Text('LR Batch List', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            title: const Text('LR List (For Excel Export)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             actions: [
+              // Excel Preview Button (Web Parity)
               IconButton(
                 padding: const EdgeInsets.all(6),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: Badge(
-                  isLabelVisible: widget.controller.deletedItems.isNotEmpty,
-                  label: Text('${widget.controller.deletedItems.length}'),
-                  child: const Icon(Icons.history, color: brandBlue, size: 20),
-                ),
-                tooltip: 'File History & Snapshots',
+                icon: const Icon(Icons.table_view_outlined, color: Color(0xFFD97706), size: 20),
+                tooltip: 'Excel Preview',
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => FileHistoryScreen(controller: widget.controller),
+                      builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 0),
                     ),
                   );
                 },
               ),
-              if (allItems.isNotEmpty)
-                IconButton(
-                  padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  icon: const Icon(Icons.photo_library_outlined, color: brandBlue, size: 20),
-                  tooltip: 'View LR Image',
-                  onPressed: () => BillingImageViewer.show(context, items: allItems, controller: widget.controller),
-                ),
+              // History Button (Web Parity)
+              IconButton(
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                icon: const Icon(Icons.history, color: brandBlue, size: 20),
+                tooltip: 'History',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 1),
+                    ),
+                  );
+                },
+              ),
+              // Add More LR (Web Parity)
               InkWell(
                 onTap: _showAddMoreDialog,
                 borderRadius: BorderRadius.circular(16),
@@ -450,7 +590,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                     children: [
                       Icon(Icons.add, size: 14, color: Colors.white),
                       SizedBox(width: 4),
-                      Text('+ Add LR', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('Add More LR', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -460,50 +600,218 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
           ),
           body: Column(
             children: [
-              // Search & Filter Box
+              // Web-Matching Multi-Filter Bar
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 color: Colors.white,
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
-                  style: const TextStyle(fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: 'Search by LR No., Vehicle, Customer...',
-                    prefixIcon: const Icon(Icons.search, size: 18, color: Colors.blueGrey),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 16),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: const Color(0xFFF1F5F9),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
+                child: Column(
+                  children: [
+                    // Row 1: Text Search with Clear (x) and Filter Toggle Button
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                            style: const TextStyle(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: 'Search LR, Route, City, Goods...',
+                              prefixIcon: const Icon(Icons.search, size: 16, color: Colors.blueGrey),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.close, size: 14),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _searchQuery = '');
+                                      },
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: const Color(0xFFF1F5F9),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: Icon(
+                            _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+                            color: hasActiveFilters ? brandBlue : Colors.blueGrey,
+                            size: 20,
+                          ),
+                          tooltip: 'Filters',
+                          onPressed: () => setState(() => _showFilters = !_showFilters),
+                        ),
+                        if (hasActiveFilters)
+                          TextButton.icon(
+                            onPressed: _resetBatchFilters,
+                            icon: const Icon(Icons.refresh, size: 14, color: Colors.blueGrey),
+                            label: const Text('Reset', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                          ),
+                      ],
+                    ),
+
+                    // Expandable Multi-Filter Drawer (Customer, Vehicle No, Date Range)
+                    if (_showFilters) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          // Customer Filter
+                          Expanded(
+                            child: TextField(
+                              controller: _customerController,
+                              onChanged: (val) => setState(() => _customerQuery = val.trim()),
+                              style: const TextStyle(fontSize: 11),
+                              decoration: InputDecoration(
+                                hintText: 'Customer...',
+                                prefixIcon: const Icon(Icons.business_outlined, size: 14, color: Colors.blueGrey),
+                                suffixIcon: _customerQuery.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.close, size: 12),
+                                        onPressed: () {
+                                          _customerController.clear();
+                                          setState(() => _customerQuery = '');
+                                        },
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Vehicle No Filter
+                          Expanded(
+                            child: TextField(
+                              controller: _vehicleController,
+                              onChanged: (val) => setState(() => _vehicleQuery = val.trim()),
+                              style: const TextStyle(fontSize: 11),
+                              decoration: InputDecoration(
+                                hintText: 'Vehicle No...',
+                                prefixIcon: const Icon(Icons.local_shipping_outlined, size: 14, color: Colors.blueGrey),
+                                suffixIcon: _vehicleQuery.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.close, size: 12),
+                                        onPressed: () {
+                                          _vehicleController.clear();
+                                          setState(() => _vehicleQuery = '');
+                                        },
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Date Range Pickers (From & To)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final d = await showDatePicker(
+                                  context: context,
+                                  initialDate: _dateFrom ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2035),
+                                );
+                                if (d != null) setState(() => _dateFrom = d);
+                              },
+                              icon: const Icon(Icons.calendar_today, size: 12),
+                              label: Text(
+                                _dateFrom != null ? '${_dateFrom!.day}/${_dateFrom!.month}/${_dateFrom!.year}' : 'From Date',
+                                style: const TextStyle(fontSize: 10.5),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                          if (_dateFrom != null)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 12),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => setState(() => _dateFrom = null),
+                            ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final d = await showDatePicker(
+                                  context: context,
+                                  initialDate: _dateTo ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2035),
+                                );
+                                if (d != null) setState(() => _dateTo = d);
+                              },
+                              icon: const Icon(Icons.calendar_today, size: 12),
+                              label: Text(
+                                _dateTo != null ? '${_dateTo!.day}/${_dateTo!.month}/${_dateTo!.year}' : 'To Date',
+                                style: const TextStyle(fontSize: 10.5),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                          if (_dateTo != null)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 12),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => setState(() => _dateTo = null),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
 
-              // Batch Summary Subtitle
+              // Filter Stats Badge Matching Web (Total: N LRs or Showing X of N LRs)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Ready for Excel Export (${filteredItems.length} LRs):',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                    ),
-                    if (allItems.isNotEmpty)
-                      Text(
-                        'Total in batch: ${allItems.length}',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: hasActiveFilters ? const Color(0xFFF0F9FF) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: hasActiveFilters ? const Color(0xFFBAE6FD) : const Color(0xFFE2E8F0),
+                        ),
                       ),
+                      child: Text(
+                        hasActiveFilters
+                            ? 'Showing ${filteredItems.length} of ${allItems.length} LRs'
+                            : 'Total: ${allItems.length} ${allItems.length == 1 ? 'LR' : 'LRs'}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: hasActiveFilters ? const Color(0xFF0369A1) : const Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${allItems.where((i) => i.isVerified).length} Verified',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF16A34A)),
+                    ),
                   ],
                 ),
               ),
@@ -556,23 +864,29 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.shade50,
-                                              borderRadius: BorderRadius.circular(6),
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade50,
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text('#${idx + 1}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
                                             ),
-                                            child: Text('#${idx + 1}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            lrNo,
-                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                                          ),
-                                        ],
+                                            const SizedBox(width: 8),
+                                            Flexible(
+                                              child: Text(
+                                                lrNo,
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
+                                      const SizedBox(width: 8),
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
@@ -611,13 +925,19 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                             decoration: BoxDecoration(
-                                              color: Colors.green.shade50,
+                                              color: item.isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
                                               borderRadius: BorderRadius.circular(10),
-                                              border: Border.all(color: Colors.green.shade200),
+                                              border: Border.all(
+                                                color: item.isVerified ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
+                                              ),
                                             ),
                                             child: Text(
-                                              'Verified',
-                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                                              item.isVerified ? 'Verified' : 'Unverified',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: item.isVerified ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -667,50 +987,44 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                     children: [
                                       TextButton.icon(
                                         onPressed: () {
-                                          final realIdx = allItems.indexWhere((i) => i.id == item.id);
-                                          BillingImageViewer.show(
-                                            context,
-                                            items: allItems,
-                                            initialIndex: realIdx >= 0 ? realIdx : 0,
-                                            controller: widget.controller,
-                                          );
-                                        },
-                                        icon: const Icon(Icons.image_outlined, size: 14),
-                                        label: const Text('View LR Image', style: TextStyle(fontSize: 11)),
-                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                                      ),
-                                      TextButton.icon(
-                                        onPressed: () {
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => FileHistoryScreen(
-                                                controller: widget.controller,
-                                                initialItemId: item.id,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        icon: const Icon(Icons.history, size: 14),
-                                        label: const Text('History', style: TextStyle(fontSize: 11)),
-                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                                      ),
-                                      TextButton.icon(
-                                        onPressed: () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
                                               builder: (_) => EditBiltyScreen(item: item, controller: widget.controller),
                                             ),
                                           );
                                         },
-                                        icon: const Icon(Icons.edit_outlined, size: 14),
-                                        label: const Text('Edit', style: TextStyle(fontSize: 11)),
-                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                        icon: const Icon(Icons.edit_outlined, size: 15),
+                                        label: const Text('Edit', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: brandBlue,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
                                       ),
+                                      const SizedBox(width: 8),
                                       IconButton(
                                         icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                                        tooltip: 'Remove',
+                                        tooltip: 'Delete',
                                         visualDensity: VisualDensity.compact,
-                                        onPressed: () => widget.controller.removeItem(item.id),
+                                        onPressed: () {
+                                          showDialog<void>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Remove Consignment?'),
+                                              content: Text('Remove consignment "${_getField(item, 'LR No *', item.fileName)}" from this batch?'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+                                                FilledButton(
+                                                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                                  onPressed: () {
+                                                    widget.controller.removeItem(item.id);
+                                                    Navigator.of(ctx).pop();
+                                                  },
+                                                  child: const Text('Delete'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
                                       ),
                                     ],
                                   ),
@@ -772,7 +1086,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                       Expanded(
                         child: FilledButton.icon(
                           key: const Key('direct_download_excel_btn'),
-                          onPressed: allItems.isEmpty || _isExporting ? null : _handleDirectDownloadExcel,
+                          onPressed: _isExporting ? null : _handleDirectDownloadExcel,
                           icon: _isExporting
                               ? const SizedBox(
                                   width: 14,
@@ -781,7 +1095,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                 )
                               : const Icon(Icons.download, size: 16),
                           label: Text(
-                            _isExporting ? 'Exporting...' : 'Download Excel',
+                            _isExporting
+                                ? 'Exporting...'
+                                : 'Download Excel (${allItems.where((i) => i.isVerified).length} LRs)',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                             overflow: TextOverflow.ellipsis,
                           ),

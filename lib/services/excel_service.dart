@@ -18,6 +18,7 @@ class ExcelService {
     List<BatchItem> deletedItems = const [],
     DocumentSchema schema = DocumentSchema.active,
     String? userName,
+    bool includeAuditMeta = false,
   }) {
     final excel = Excel.createExcel();
     final Set<String> existingSheetNames = {};
@@ -94,13 +95,13 @@ class ExcelService {
       final exportedAt = _formatDateTime(now);
       final effectiveUser = userName ?? 'Ruchita Patel';
 
-      if (isLogisticsGr) {
+      if (isLogisticsGr && includeAuditMeta) {
         final metaStyle = CellStyle(
           bold: true,
           fontColorHex: ExcelColor.fromHexString('#000000'),
         );
 
-        // Rows 0-3: Metadata headers above the table
+        // Rows 0-3: Metadata headers above the table (Audit mode only)
         sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
           ..value = TextCellValue('User Name: $effectiveUser')
           ..cellStyle = metaStyle;
@@ -121,18 +122,18 @@ class ExcelService {
           cell.cellStyle = cleanHeaderStyle;
         }
       } else {
-        // Write Header Row (Row 0)
+        // Exact Web Parity: Write Header Row at Row 0 (Excel Row 1, 0 metadata rows)
         for (int col = 0; col < headers.length; col++) {
           final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0));
           cell.value = TextCellValue(headers[col]);
-          cell.cellStyle = headerStyle;
+          cell.cellStyle = isLogisticsGr ? cleanHeaderStyle : headerStyle;
         }
       }
 
-      // Write Data Rows
+      // Write Data Rows (Row 1+ in Excel, right below headers)
       for (int rowIdx = 0; rowIdx < items.length; rowIdx++) {
         final item = items[rowIdx];
-        final targetRow = isLogisticsGr ? (rowIdx + 5) : (rowIdx + 1);
+        final targetRow = (isLogisticsGr && includeAuditMeta) ? (rowIdx + 5) : (rowIdx + 1);
 
         final formattedDate = item.processedAt != null
             ? _formatDateTime(item.processedAt!)
@@ -202,12 +203,11 @@ class ExcelService {
               return fr.isNotEmpty ? fr : '0';
             }
             if (f.key == 'oamount') {
-              final oamt = normRecord['oamount'] ?? normRecord['totalinvoiceamount'] ?? normRecord['grossinvoicevalue'] ?? normRecord['grandtotal'] ?? normRecord['totalinvoicevalue'] ?? normRecord['totalamount'];
-              if (oamt != null && oamt.isNotEmpty && oamt != '0') return oamt;
-              final valG = normRecord['valgoods'] ?? normRecord['valueofgoods'] ?? normRecord['invoicevalue'] ?? normRecord['declaredvalue'];
-              if (valG != null && valG.isNotEmpty) return valG;
-              if (oamt != null && oamt.isNotEmpty) return oamt;
-              return normRecord['otheramount'] ?? normRecord['othercharges'] ?? normRecord['hamali'] ?? normRecord['loadingcharges'] ?? normRecord['aoc'] ?? normRecord['labour'] ?? normRecord['stcharge'] ?? '0';
+              final oamt = normRecord['oamount'] ?? normRecord['otheramount'] ?? normRecord['othercharges'] ?? normRecord['hamali'] ?? normRecord['loadingcharges'] ?? normRecord['unloadingcharges'] ?? normRecord['aoc'] ?? normRecord['labour'] ?? normRecord['misc'];
+              if (oamt != null && oamt.trim().isNotEmpty && oamt.trim() != '0' && oamt.trim() != '0.00' && oamt.trim().toLowerCase() != 'null' && oamt.trim().toLowerCase() != 'none') {
+                return oamt.trim();
+              }
+              return '0.00';
             }
             if (f.key == 'cgst') {
               final ig = normRecord['igst'] ?? normRecord['igstamount'] ?? normRecord['integratedgst'] ?? '';
@@ -357,8 +357,10 @@ class ExcelService {
         }
       }
 
-      // Append dedicated History sheet with all 49/50 columns and metadata
-      _appendAuditSheet(excel, items, deletedItems, existingSheetNames, schema, userName: effectiveUser);
+      // Append dedicated History sheet with all 49/50 columns and metadata ONLY in audit mode
+      if (includeAuditMeta) {
+        _appendAuditSheet(excel, items, deletedItems, existingSheetNames, schema, userName: effectiveUser);
+      }
 
       final bytes = excel.save();
       if (bytes == null) {
@@ -785,18 +787,22 @@ class ExcelService {
       final fileName = targetFileName ?? sourceFilePath.split(RegExp(r'[/\\]')).last;
 
       if (Platform.isAndroid) {
-        final downloadDir = Directory('/storage/emulated/0/Download');
-        if (await downloadDir.exists()) {
-          final targetPath = '${downloadDir.path}/$fileName';
-          final targetFile = File(targetPath);
-          await targetFile.writeAsBytes(bytes, flush: true);
-          try {
-            await FileLifecycleService.instance.recordFileExport(
-              targetFile.path,
-              destination: 'public_downloads',
-            );
-          } catch (_) {}
-          return targetFile.path;
+        try {
+          final downloadDir = Directory('/storage/emulated/0/Download');
+          if (await downloadDir.exists()) {
+            final targetPath = '${downloadDir.path}/$fileName';
+            final targetFile = File(targetPath);
+            await targetFile.writeAsBytes(bytes, flush: true);
+            try {
+              await FileLifecycleService.instance.recordFileExport(
+                targetFile.path,
+                destination: 'public_downloads',
+              );
+            } catch (_) {}
+            return targetFile.path;
+          }
+        } catch (e) {
+          debugPrint('Scoped storage public download write notice: $e. Falling back to app storage.');
         }
       }
 

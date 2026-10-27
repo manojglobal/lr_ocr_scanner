@@ -10,6 +10,7 @@ import 'package:ocr_to_excel/state/batch_controller.dart';
 import 'package:ocr_to_excel/views/home_screen.dart';
 import 'package:ocr_to_excel/views/screens/lr_preview_screen.dart';
 import 'package:ocr_to_excel/views/screens/verified_screen.dart';
+import 'package:ocr_to_excel/views/screens/edit_bilty_screen.dart';
 import 'package:ocr_to_excel/views/widgets/billing_image_viewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -113,7 +114,7 @@ void main() {
     expect(find.byType(BillingImageViewer), findsOneWidget);
   });
 
-  testWidgets('HomeScreen renders Previously Uploaded LRs and tapping item opens BillingImageViewer', (tester) async {
+  testWidgets('HomeScreen renders Previously Uploaded LRs and tapping item opens EditBiltyScreen (Step 2)', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.0;
     addTearDown(() => tester.view.resetPhysicalSize());
@@ -138,7 +139,7 @@ void main() {
     await tester.tap(itemFinder);
     await tester.pumpAndSettle();
 
-    // Verify BillingImageViewer opens with the document
-    expect(find.byType(BillingImageViewer), findsOneWidget);
+    // Verify EditBiltyScreen (Step 2) opens with the document as per Web parity
+    expect(find.byType(EditBiltyScreen), findsOneWidget);
   });
 }

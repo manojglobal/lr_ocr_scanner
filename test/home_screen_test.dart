@@ -70,6 +70,10 @@ void main() {
     controller.setActiveUser('9876543210', name: 'Test User');
   });
 
+  tearDown(() {
+    controller.dispose();
+  });
+
   Widget buildTestableWidget() {
     return MaterialApp(
       home: HomeScreen(controller: controller),
@@ -91,18 +95,22 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
-  testWidgets('renders queue cards and enables review button when items are present', (tester) async {
+  testWidgets('Screen 2 Parity: Consignment Queue and Current Batch banner are removed from HomeScreen', (tester) async {
     // Add completed item directly to queue for UI testing
     controller.addImagePath('/fake/doc1.jpg');
 
     await tester.pumpWidget(buildTestableWidget());
     await tester.pump();
 
-    expect(find.byType(ImageQueueCard), findsOneWidget);
-    expect(find.descendant(of: find.byType(ImageQueueCard), matching: find.text('doc1.jpg')), findsOneWidget);
+    // Verify Consignment Queue section and ImageQueueCard are removed from HomeScreen
+    expect(find.byType(ImageQueueCard), findsNothing);
+    expect(find.textContaining('Current Batch:'), findsNothing);
 
-    // Review & Export button should now reflect count
-    expect(find.text('Review & Export (1)'), findsOneWidget);
+    // Bottom action bar reflects queue count and is enabled
+    final queueBtnFinder = find.widgetWithText(FilledButton, 'Review & Export (1)');
+    expect(queueBtnFinder, findsOneWidget);
+    final button = tester.widget<FilledButton>(queueBtnFinder);
+    expect(button.onPressed, isNotNull);
   });
 
   testWidgets('Navbar contains History button immediately left of user profile without circular profile icon, and opens History view', (tester) async {

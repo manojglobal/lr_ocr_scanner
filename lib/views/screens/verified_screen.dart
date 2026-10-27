@@ -177,7 +177,53 @@ class VerifiedScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
 
-                    // Primary Action Buttons: View LR Image & Add More LR
+                    // Primary Action Buttons matching Web Screen 5: Edit Again & Next
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (_) => EditBiltyScreen(item: item, controller: controller, initialTab: 0),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            label: const Text('Edit Again', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF334155),
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              side: const BorderSide(color: Color(0xFFCBD5E1)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (_) => BatchQueueScreen(controller: controller),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.arrow_forward, size: 18),
+                            label: const Text('Next', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEA580C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Secondary Actions: View LR Image & Add More LR
                     Row(
                       children: [
                         Expanded(
@@ -191,17 +237,17 @@ class VerifiedScreen extends StatelessWidget {
                                 controller: controller,
                               );
                             },
-                            icon: const Icon(Icons.image_outlined, size: 18),
-                            label: const Text('View LR Image', style: TextStyle(fontWeight: FontWeight.bold)),
+                            icon: const Icon(Icons.image_outlined, size: 16),
+                            label: const Text('View LR Image', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: brandBlue,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () {
@@ -211,13 +257,13 @@ class VerifiedScreen extends StatelessWidget {
                                 ),
                               );
                             },
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add More LR', style: TextStyle(fontWeight: FontWeight.bold)),
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Add More LR', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: brandBlue,
-                              side: const BorderSide(color: brandBlue, width: 1.5),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              side: const BorderSide(color: Color(0xFFBAE6FD)),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                           ),
                         ),
@@ -247,7 +293,7 @@ class VerifiedScreen extends StatelessWidget {
 
             // Step Indicator Flow Bar (Step 7 Active)
             StepIndicatorBar(
-              currentStep: 7,
+              currentStep: 2,
               controller: controller,
             ),
           ],

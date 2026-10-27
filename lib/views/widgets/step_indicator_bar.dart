@@ -25,10 +25,15 @@ class StepIndicatorBar extends StatelessWidget {
   ];
 
   int get normalizedStep {
-    if (currentStep <= 1) return 1;
-    if (currentStep == 2 && steps.length > 2) return 2;
-    if (currentStep >= 3 && currentStep <= 8) return 2;
-    if (currentStep >= 9) return 3;
+    if (currentStep == 1) return 1;
+    if (currentStep == 2) return 2;
+    if (currentStep == 3) return 3;
+    // Map legacy screen numbers matching Web screenMap:
+    // Screen 1-3 -> Step 1 (Upload LR)
+    // Screen 4-6 -> Step 2 (LR & Master Verification)
+    // Screen 7-10 -> Step 3 (LR List & Excel Preview)
+    if (currentStep >= 4 && currentStep <= 6) return 2;
+    if (currentStep >= 7) return 3;
     return currentStep.clamp(1, 3);
   }
 

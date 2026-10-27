@@ -1,3 +1,4 @@
+import 'package:ocr_to_excel/models/batch_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ocr_to_excel/services/excel_service.dart';
@@ -17,6 +18,13 @@ class StubOcrService extends OcrService {
   Future<void> dispose() async {}
 }
 
+
+void _makeItemVerified(BatchProcessingController ctrl, String id) {
+  for (final key in BatchItem.mandatoryKeys) {
+    ctrl.updateRecordField(id, key, 'Val-$key');
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -34,6 +42,10 @@ void main() {
       parserService: FormatParserService(),
       excelService: ExcelService(),
     );
+  });
+
+  tearDown(() {
+    controller.dispose();
   });
 
   Widget buildTestableWidget() {
@@ -65,6 +77,7 @@ void main() {
 
     final downloadBtnFinder = find.byKey(const Key('direct_download_excel_btn'));
     expect(downloadBtnFinder, findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
   });
 
   testWidgets('ExcelPreviewScreen: Navbar History button switches to Sheet 2 and old History tab is removed', (tester) async {
@@ -106,33 +119,33 @@ void main() {
   testWidgets('BatchQueueScreen renders direct Download Excel button and opens confirmation dialog', (tester) async {
     controller.addImagePath('/docs/test_lr.jpg');
     final item = controller.items.first;
-    controller.updateRecordField(item.id, 'LR No *', 'LR-12345');
+    _makeItemVerified(controller, item.id);
 
     await tester.pumpWidget(buildTestableWidget());
     await tester.pumpAndSettle();
 
     final downloadBtnFinder = find.byKey(const Key('direct_download_excel_btn'));
     expect(downloadBtnFinder, findsOneWidget);
-    expect(find.text('Download Excel'), findsOneWidget);
+    expect(find.text('Download Excel (1 LRs)'), findsOneWidget);
 
     await tester.tap(downloadBtnFinder);
     await tester.pumpAndSettle();
 
     // Verify confirmation dialog
     expect(find.text('Download Excel'), findsWidgets);
-    expect(find.text('Are you sure you want to generate and download the Excel sheet with 1 consignment notes?'), findsOneWidget);
+    expect(find.text('Are you sure you want to download 1 verified consignment note(s)?'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
 
     // Cancel dismisses dialog
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.text('Are you sure you want to generate and download the Excel sheet with 1 consignment notes?'), findsNothing);
+    expect(find.text('Are you sure you want to download 1 verified consignment note(s)?'), findsNothing);
   });
 
   testWidgets('ExcelPreviewScreen generates Excel with in-place confirmation without opening ExcelGeneratedScreen', (tester) async {
     controller.addImagePath('/docs/test_lr.jpg');
     final item = controller.items.first;
-    controller.updateRecordField(item.id, 'LR No *', 'LR-12345');
+    _makeItemVerified(controller, item.id);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -147,13 +160,13 @@ void main() {
     await tester.tap(genBtnFinder);
     await tester.pumpAndSettle();
 
-    expect(find.text('Are you sure you want to generate the Excel sheet?'), findsOneWidget);
+    expect(find.text('Are you sure you want to generate the Excel sheet with 1 verified consignment note(s)?'), findsOneWidget);
 
     // Tap Cancel
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Are you sure you want to generate the Excel sheet?'), findsNothing);
+    expect(find.text('Are you sure you want to generate the Excel sheet with 1 verified consignment note(s)?'), findsNothing);
     // Verified: ExcelGeneratedScreen was NOT opened
     expect(find.byType(ExcelPreviewScreen), findsOneWidget);
   });

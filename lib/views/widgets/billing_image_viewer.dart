@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:open_filex/open_filex.dart';
+// In-app viewing only matching Web (no external apps)
 import 'package:path_provider/path_provider.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
@@ -90,9 +90,9 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
     } catch (_) {}
 
     final searchDirs = <Directory>[
-      if (docsDir != null) docsDir,
-      if (tempDir != null) tempDir,
-      if (supportDir != null) supportDir,
+      ?docsDir,
+      ?tempDir,
+      ?supportDir,
     ];
 
     for (int i = 0; i < widget.items.length; i++) {
@@ -186,6 +186,19 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
     return null;
   }
 
+  String? _resolvePreviewUrl(BatchItem item) {
+    final purl = (item.record['preview_url'] ?? '').toString().trim();
+    if (purl.isEmpty) return null;
+    if (purl.startsWith('http://') || purl.startsWith('https://')) return purl;
+    final server = widget.controller?.geminiService.serverUrl.trim() ?? '';
+    if (server.isNotEmpty) {
+      final prefix = server.endsWith('/') ? server.substring(0, server.length - 1) : server;
+      final path = purl.startsWith('/') ? purl : '/$purl';
+      return '$prefix$path';
+    }
+    return null;
+  }
+
   Uint8List? _resolveBase64Bytes(dynamic itemOrPath) {
     if (itemOrPath == null) return null;
     if (itemOrPath is String) {
@@ -209,11 +222,13 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
       }
 
       // 2. Check record attributes for preview_image or imageSrc
-      final preview = itemOrPath.record['preview_image'] ?? '';
-      if (preview.startsWith('data:image/') && preview.contains('base64,')) {
+      String preview = (itemOrPath.record['preview_image'] ?? '').toString().trim();
+      if (preview.isNotEmpty) {
+        if (preview.contains('base64,')) {
+          preview = preview.split('base64,').last.trim();
+        }
         try {
-          final b64 = preview.split('base64,').last;
-          return base64Decode(b64);
+          return base64Decode(preview);
         } catch (_) {}
       }
 
@@ -400,13 +415,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                     visualDensity: VisualDensity.compact,
                     onPressed: () => setState(() => _showMetaOverlay = !_showMetaOverlay),
                   ),
-                  // Open in System Viewer
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new, color: Colors.white, size: 20),
-                    tooltip: 'Open in System App',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _openDocInExternalApp(widget.items[_currentIndex], _currentIndex),
-                  ),
+
                 ],
               ),
             ),
@@ -432,9 +441,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                         final resolvedFile = _resolveLocalFile(item.imagePath, item.fileName) ?? _discoveredFiles[index];
                         final base64Bytes = _resolveBase64Bytes(item);
 
-                        if (isPdf && base64Bytes == null) {
-                          return _buildPdfCard(item, resolvedFile, index);
-                        }
+                        final previewNetworkUrl = _resolvePreviewUrl(item);
 
                         Widget contentWidget;
                         if (base64Bytes != null) {
@@ -443,6 +450,14 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => _buildPdfCard(item, resolvedFile, index),
                           );
+                        } else if (isPdf && previewNetworkUrl != null) {
+                          contentWidget = Image.network(
+                            previewNetworkUrl,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => _buildPdfCard(item, resolvedFile, index),
+                          );
+                        } else if (isPdf && resolvedFile != null && resolvedFile.path.toLowerCase().endsWith('.pdf')) {
+                          contentWidget = _buildPdfCard(item, resolvedFile, index);
                         } else if (resolvedFile != null && resolvedFile.existsSync()) {
                           contentWidget = Image.file(
                             resolvedFile,
@@ -548,7 +563,13 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                       const Text('PDF Document Preview', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                       const SizedBox(width: 8),
                                       InkWell(
-                                        onTap: () => _openDocInExternalApp(item, index),
+                                        onTap: () {
+                              _pageController.animateToPage(
+                                index,
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeInOut,
+                              );
+                            },
                                         child: const Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
@@ -1074,23 +1095,28 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
               const SizedBox(height: 8),
               Text(
                 (resolvedFile != null && resolvedFile.existsSync())
-                    ? '${(resolvedFile.lengthSync() / (1024 * 1024)).toStringAsFixed(2)} MB • PDF Consignment Document'
+                    ? '${(resolvedFile.lengthSync() / (1024 * 1024)).toStringAsFixed(2)} MB • In-App PDF Preview'
                     : 'PDF Consignment Document',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: () => _openDocInExternalApp(item, index),
-                icon: const Icon(Icons.open_in_new, size: 18),
-                label: const Text(
-                  'Open PDF in Document Viewer',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF334155)),
                 ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFDC2626),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.visibility, size: 16, color: Color(0xFF38BDF8)),
+                    SizedBox(width: 8),
+                    Text(
+                      'High-Resolution Preview Rendered',
+                      style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1098,53 +1124,5 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
         ),
       ),
     );
-  }
-
-  Future<File?> _resolveFileForOpen(BatchItem item, int index) async {
-    File? f = _discoveredFiles[index] ?? _resolveLocalFile(item.imagePath, item.fileName);
-    if (f != null && f.existsSync()) return f;
-
-    Directory? tempDir;
-    try {
-      tempDir = await getTemporaryDirectory();
-    } catch (_) {}
-
-    if (tempDir != null) {
-      final tf = File('${tempDir.path}/${item.fileName}');
-      if (tf.existsSync()) return tf;
-
-      final b64 = _extractBase64String(item.imagePath) ?? _extractBase64String(item.record['pdf_base64'] ?? '');
-      if (b64 != null) {
-        try {
-          final bytes = base64Decode(b64);
-          await tf.writeAsBytes(bytes);
-          return tf;
-        } catch (_) {}
-      }
-    }
-
-    if (item.imagePath.isNotEmpty && File(item.imagePath).existsSync()) {
-      return File(item.imagePath);
-    }
-    return null;
-  }
-
-  Future<void> _openDocInExternalApp(BatchItem item, int index) async {
-    final file = await _resolveFileForOpen(item, index);
-    if (file != null && file.existsSync()) {
-      final res = await OpenFilex.open(file.path);
-      if (res.type != ResultType.done && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open document: ${res.message}'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      }
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File not found on device storage.')),
-      );
-    }
   }
 }

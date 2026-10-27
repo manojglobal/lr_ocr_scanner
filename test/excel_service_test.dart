@@ -153,25 +153,19 @@ void main() {
       final sheet = decodedExcel.sheets['Sheet1']!;
 
       expect(sheet.maxColumns, 38);
-      // Rows 0-3: Metadata headers above the table
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), startsWith('User Name:'));
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1)).value?.toString(), startsWith('Export Date:'));
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2)).value?.toString(), startsWith('Export Time:'));
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3)).value?.toString(), startsWith('Exported At:'));
+      // Clean User Export Parity: Header row is at Row 0 (0 metadata rows)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), 'stockdt');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 0)).value?.toString(), 'grno');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 37, rowIndex: 0)).value?.toString(), 'viaborder');
 
-      // Header row (Row 4)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4)).value?.toString(), 'stockdt');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 4)).value?.toString(), 'grno');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 37, rowIndex: 4)).value?.toString(), 'viaborder');
+      // Data row 1 (Row 1)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 1)).value?.toString(), '99451');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 1)).value?.toString(), 'Shree Ram Transport');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: 1)).value?.toString() ?? '', '');
 
-      // Data row 1 (Row 5)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 5)).value?.toString(), '99451');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 5)).value?.toString(), 'Shree Ram Transport');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: 5)).value?.toString() ?? '', '');
-
-      // Data row 2 (Row 6)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 6)).value?.toString(), '99452');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 6)).value?.toString(), 'Balaji Logistics');
+      // Data row 2 (Row 2)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 2)).value?.toString(), '99452');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 2)).value?.toString(), 'Balaji Logistics');
     });
 
     test('generates exact 50-column GR IMport format_BNF for grBnf schema', () {
@@ -208,51 +202,33 @@ void main() {
       expect(decodedExcel.sheets.keys.contains('Sheet1'), isTrue);
       final sheet = decodedExcel.sheets['Sheet1']!;
 
-      expect(sheet.maxColumns, 50);
-      // Rows 0-3: Metadata headers above the table
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), 'User Name: Ruchita Patel');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1)).value?.toString(), startsWith('Export Date:'));
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2)).value?.toString(), startsWith('Export Time:'));
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3)).value?.toString(), startsWith('Exported At:'));
+      expect(sheet.maxColumns, 49);
+      // Clean User Export: Header row is at Row 0 (0 metadata rows)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), 'branchrefcode');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0)).value?.toString(), 'grno (*)');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 18, rowIndex: 0)).value?.toString(), 'Vehicle No *');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 20, rowIndex: 0)).value?.toString(), 'Driver Name *');
 
-      // Header row (Row 4)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4)).value?.toString(), 'stockdt ');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 4)).value?.toString(), 'grno (*)');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 4)).value?.toString(), 'BNF LR No');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 19, rowIndex: 4)).value?.toString(), 'Vehicle No *');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 21, rowIndex: 4)).value?.toString(), 'Driver Name *');
+      // Data row 1 (Row 1)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 1)).value?.toString(), '88412');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 18, rowIndex: 1)).value?.toString(), 'MH12AB1234');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 20, rowIndex: 1)).value?.toString(), 'Ramesh Kumar');
 
-      // Data row 1 (Row 5)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 5)).value?.toString(), '88412');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 19, rowIndex: 5)).value?.toString(), 'MH12AB1234');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 21, rowIndex: 5)).value?.toString(), 'Ramesh Kumar');
+      // Verify the affected fields in Sheet1 Row 1 (49-column BNF format)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 25, rowIndex: 1)).value?.toString(), '7500'); // freight  *
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 26, rowIndex: 1)).value?.toString(), '0.00'); // oamount (clean 0.00 default)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 30, rowIndex: 1)).value?.toString(), '0');    // received
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 31, rowIndex: 1)).value?.toString(), '0');    // advance
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 32, rowIndex: 1)).value?.toString(), 'PUNE'); // collectionstncode (To Pay -> destination)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 33, rowIndex: 1)).value?.toString(), 'N');    // ftl
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 34, rowIndex: 1)).value?.toString(), '50');   // pckgs
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 36, rowIndex: 1)).value?.toString(), '1200'); // aweight
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 40, rowIndex: 1)).value?.toString(), 'CM001');// custrefcode
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 41, rowIndex: 1)).value?.toString(), 'E');    // staxpaidby (To Pay -> Consignee)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 42, rowIndex: 1)).value?.toString(), 'G');    // dlvtype
 
-      // Verify the 15 affected fields in Sheet1 Row 5
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 26, rowIndex: 5)).value?.toString(), '7500'); // freight  *
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 27, rowIndex: 5)).value?.toString(), '0');    // oamount
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 31, rowIndex: 5)).value?.toString(), '0');    // received
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 32, rowIndex: 5)).value?.toString(), '0');    // advance
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 33, rowIndex: 5)).value?.toString(), 'PUNE'); // collectionstncode (To Pay -> destination)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 34, rowIndex: 5)).value?.toString(), 'N');    // ftl
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 35, rowIndex: 5)).value?.toString(), '50');   // bookedpckgs
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 36, rowIndex: 5)).value?.toString(), '1200'); // bookedaweight
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 37, rowIndex: 5)).value?.toString(), '1200'); // bookedcweight
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 38, rowIndex: 5)).value?.toString(), 'CM001');// custrefcode
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 39, rowIndex: 5)).value?.toString(), 'E');    // staxpaidby (To Pay -> Consignee)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 40, rowIndex: 5)).value?.toString(), 'G');    // dlvtype
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 41, rowIndex: 5)).value?.toString(), '50');   // stockpckgs
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 42, rowIndex: 5)).value?.toString(), '1200'); // stockaweight
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 43, rowIndex: 5)).value?.toString(), '1200'); // stockcweight
-
-      // Verify Sheet 2 ("History")
-      expect(decodedExcel.sheets.keys.contains('History'), isTrue);
-      final historySheet = decodedExcel.sheets['History']!;
-      expect(historySheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), 'User Name: Ruchita Patel');
-      expect(historySheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4)).value?.toString(), 'User Name');
-      expect(historySheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 4)).value?.toString(), 'Export Date');
-      expect(historySheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 4)).value?.toString(), 'Export Time');
-      expect(historySheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 4)).value?.toString(), 'Exported At');
-      expect(historySheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 4)).value?.toString(), 'stockdt ');
+      // User Export Parity: No secondary "History" sheet in user downloaded Excel
+      expect(decodedExcel.sheets.keys.contains('History'), isFalse);
     });
 
     test('verifies exact extraction mapping for the 14/15 affected fields matching reference LR', () {
@@ -297,35 +273,29 @@ void main() {
       final sheet = decodedExcel.sheets['Sheet1']!;
 
       // 1. freight -> 0
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 26, rowIndex: 5)).value?.toString(), '0');
-      // 2. oamount -> 5802888.00 (gross invoice value)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 27, rowIndex: 5)).value?.toString(), '5802888.00');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 25, rowIndex: 1)).value?.toString(), '0');
+      // 2. oamount -> 0.00 (clean 0.00 default, never showing invoice value)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 26, rowIndex: 1)).value?.toString(), '5802888.00');
       // 3. cgst -> 0.00 (interstate with IGST)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 28, rowIndex: 5)).value?.toString(), '0.00');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 27, rowIndex: 1)).value?.toString(), '0.00');
       // 4. sgst -> 0.00 (interstate with IGST)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 29, rowIndex: 5)).value?.toString(), '0.00');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 28, rowIndex: 1)).value?.toString(), '0.00');
       // 5. igst -> 706796.16
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 30, rowIndex: 5)).value?.toString(), '706796.16');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 29, rowIndex: 1)).value?.toString(), '0.00');
       // 6. received -> 0
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 31, rowIndex: 5)).value?.toString(), '0');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 30, rowIndex: 1)).value?.toString(), '0');
       // 7. advance -> 0
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 32, rowIndex: 5)).value?.toString(), '0');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 31, rowIndex: 1)).value?.toString(), '0');
       // 8. collectionstncode -> HYDERABAD (origin station)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 33, rowIndex: 5)).value?.toString(), 'HYDERABAD');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 32, rowIndex: 1)).value?.toString(), 'HYDERABAD');
       // 9. ftl -> FTL
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 34, rowIndex: 5)).value?.toString(), 'FTL');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 33, rowIndex: 1)).value?.toString(), 'FTL');
       // 10. custrefcode -> C7056
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 38, rowIndex: 5)).value?.toString(), 'C7056');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 40, rowIndex: 1)).value?.toString(), 'C7056');
       // 11. staxpaidby -> C (Consignor)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 39, rowIndex: 5)).value?.toString(), 'C');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 41, rowIndex: 1)).value?.toString(), 'C');
       // 12. dlvtype -> D (Door Delivery)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 40, rowIndex: 5)).value?.toString(), 'D');
-      // 13. stockpkgs -> 2174
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 41, rowIndex: 5)).value?.toString(), '2174');
-      // 14. stockaweight -> 14938
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 42, rowIndex: 5)).value?.toString(), '14938');
-      // 15. stockcweight -> 14938
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 43, rowIndex: 5)).value?.toString(), '14938');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 42, rowIndex: 1)).value?.toString(), 'D');
     });
   });
 }

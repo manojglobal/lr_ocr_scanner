@@ -4,14 +4,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/user_cloud_service.dart';
 import '../models/batch_item.dart';
 import '../state/batch_controller.dart';
 import 'login_screen.dart';
 import 'screens/batch_queue_screen.dart';
 import 'screens/edit_bilty_screen.dart';
 import 'screens/excel_preview_screen.dart';
-import 'widgets/billing_image_viewer.dart';
-import 'widgets/image_queue_card.dart';
 import 'widgets/ocr_processing_dialog.dart';
 import 'widgets/permission_dialog.dart';
 import 'widgets/step_indicator_bar.dart';
@@ -148,6 +147,66 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       });
     }
+  }
+
+  Future<void> _deleteRecentUploadItem(int idx, Map<String, dynamic> itmData) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline, color: Color(0xFFDC2626), size: 24),
+            SizedBox(width: 8),
+            Text('Remove Consignment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: const Text('Are you sure you want to remove this LR document?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final targetId = itmData['id']?.toString() ?? '';
+    final fileName = itmData['fileName']?.toString() ?? '';
+
+    // 1. Remove from active controller items if present
+    final activeMatches = widget.controller.items
+        .where((i) => (targetId.isNotEmpty && i.id == targetId) || (fileName.isNotEmpty && i.fileName == fileName))
+        .toList();
+    for (final item in activeMatches) {
+      widget.controller.removeItem(item.id);
+    }
+
+    // 2. Remove from persisted recent uploads
+    final prefs = await SharedPreferences.getInstance();
+    _persistedRecentLrs.removeWhere(
+      (r) => (targetId.isNotEmpty && r['id']?.toString() == targetId) || (fileName.isNotEmpty && r['fileName']?.toString() == fileName),
+    );
+    await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(_persistedRecentLrs));
+
+    // 3. Notify backend API to soft-delete
+    if (targetId.isNotEmpty) {
+      final mobile = widget.controller.activeUserMobile ?? _userMobile;
+      UserCloudService.instance.deleteCloudLr(
+        mobile,
+        [targetId],
+        baseUrl: widget.controller.geminiService.serverUrl,
+      ).catchError((_) => false);
+    }
+
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadUserInfo() async {
@@ -352,12 +411,23 @@ class _HomeScreenState extends State<HomeScreen> {
       final bytes = await file.readAsBytes();
       if (bytes.isNotEmpty) {
         final tmp = await getTemporaryDirectory();
-        final localFile = File('${tmp.path}/${file.name}');
-        await localFile.writeAsBytes(bytes);
+        final safeName = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final localFile = File('${tmp.path}/$safeName');
+        await localFile.writeAsBytes(bytes, flush: true);
         return localFile.path;
       }
     } catch (_) {}
-    return file.path;
+    try {
+      final bytes = await file.xFile.readAsBytes();
+      if (bytes.isNotEmpty) {
+        final tmp = await getTemporaryDirectory();
+        final safeName = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final localFile = File('${tmp.path}/$safeName');
+        await localFile.writeAsBytes(bytes, flush: true);
+        return localFile.path;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _handleGalleryUpload() async {
@@ -625,7 +695,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     const brandNavy = Color(0xFF0F172A);
     const brandBlue = Color(0xFF0284C7);
-    const brandOrange = Color(0xFFEA580C);
 
     return ListenableBuilder(
       listenable: widget.controller,
@@ -958,14 +1027,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: displayRecent.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 10),
+                            separatorBuilder: (_, _) => const SizedBox(width: 10),
                             itemBuilder: (ctx, idx) {
                               final itmData = displayRecent[idx];
                               final isPdf = itmData['isPdf'] == true;
                               final fileName = itmData['fileName']?.toString() ?? 'LR Document';
                               final lrNo = itmData['lrNo']?.toString() ?? '';
                               final imagePath = itmData['imagePath']?.toString() ?? '';
-                              final isVerified = itmData['status']?.toString() == 'completed';
+                              final itemObj = itmData['item'] is BatchItem ? (itmData['item'] as BatchItem) : null;
+                              final rawRec = itmData['record'];
+                              final recMap = (rawRec is Map) ? rawRec.map((k, v) => MapEntry(k.toString(), v.toString())) : <String, String>{};
+                              final isVerified = itemObj != null ? itemObj.isVerified : (BatchItem(id: 'temp', imagePath: '', fileName: '', createdAt: DateTime.now(), record: recMap).isVerified);
                               final dt = DateTime.tryParse(itmData['createdAt']?.toString() ?? '') ?? DateTime.now();
                               final previewImg = (itmData['preview_image'] ?? itmData['record']?['preview_image'])?.toString() ?? '';
                               final previewPath = (itmData['preview_path'] ?? itmData['record']?['preview_path'])?.toString() ?? '';
@@ -973,9 +1045,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
                               return InkWell(
                                 onTap: () async {
+                                  BatchItem targetItem;
                                   if (itmData['item'] != null) {
-                                    final itm = itmData['item'] as BatchItem;
-                                    BillingImageViewer.show(context, items: [itm], controller: widget.controller);
+                                    targetItem = itmData['item'] as BatchItem;
                                   } else {
                                     String cleanPath = imagePath.trim();
                                     if (cleanPath.startsWith('file://')) {
@@ -1016,7 +1088,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     if (previewPath.isNotEmpty && !recordMap.containsKey('preview_path')) {
                                       recordMap['preview_path'] = previewPath;
                                     }
-                                    final batchItem = BatchItem(
+                                    targetItem = BatchItem(
                                       id: itmData['id']?.toString() ?? 'prev_$idx',
                                       imagePath: cleanPath,
                                       fileName: fileName,
@@ -1024,7 +1096,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                       createdAt: dt,
                                       record: recordMap,
                                     );
-                                    BillingImageViewer.show(context, items: [batchItem], controller: widget.controller);
+                                  }
+                                  final existingIdx = widget.controller.items.indexWhere((i) => i.id == targetItem.id);
+                                  if (existingIdx == -1) {
+                                    widget.controller.items.add(targetItem);
+                                  } else {
+                                    targetItem = widget.controller.items[existingIdx];
+                                  }
+                                  if (context.mounted) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => EditBiltyScreen(
+                                          item: targetItem,
+                                          controller: widget.controller,
+                                          initialTab: 0,
+                                        ),
+                                      ),
+                                    );
                                   }
                                 },
                                 borderRadius: BorderRadius.circular(12),
@@ -1063,28 +1152,46 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   previewUrl: previewUrl,
                                                 ),
                                               ),
-                                              // Status Badge (Top-Right)
+                                              // Status Badge & Delete Button (Top-Right)
                                               Positioned(
                                                 top: 4,
                                                 right: 4,
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                                  decoration: BoxDecoration(
-                                                    color: (isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7)).withAlpha(240),
-                                                    borderRadius: BorderRadius.circular(4),
-                                                    border: Border.all(
-                                                      color: isVerified ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
-                                                      width: 0.8,
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                      decoration: BoxDecoration(
+                                                        color: (isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2)).withAlpha(240),
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        border: Border.all(
+                                                          color: isVerified ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
+                                                          width: 0.8,
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        isVerified ? 'Verified' : 'Unverified',
+                                                        style: TextStyle(
+                                                          fontSize: 8.5,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: isVerified ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                                        ),
+                                                      ),
                                                     ),
-                                                  ),
-                                                  child: Text(
-                                                    isVerified ? 'Verified' : 'Uploaded',
-                                                    style: TextStyle(
-                                                      fontSize: 8.5,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: isVerified ? const Color(0xFF16A34A) : const Color(0xFFB45309),
+                                                    const SizedBox(width: 4),
+                                                    GestureDetector(
+                                                      onTap: () => _deleteRecentUploadItem(idx, itmData),
+                                                      child: Container(
+                                                        padding: const EdgeInsets.all(2.5),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white.withAlpha(240),
+                                                          shape: BoxShape.circle,
+                                                          border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
+                                                        ),
+                                                        child: const Icon(Icons.close, size: 10, color: Color(0xFF64748B)),
+                                                      ),
                                                     ),
-                                                  ),
+                                                  ],
                                                 ),
                                               ),
                                               // PDF indicator badge if PDF
@@ -1143,93 +1250,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                           ),
                         ),
-                      ],
-                      const SizedBox(height: 16),
-
-                      // Batch Queue Banner (if items exist in batch)
-                      if (items.isNotEmpty) ...[
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.amber.shade200),
-                          ),
-                          color: const Color(0xFFFFFBEB),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.layers, color: brandOrange, size: 24),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Current Batch: ${items.length} Consignments',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandNavy),
-                                      ),
-                                      const Text(
-                                        'Ready to review, edit, and export to Excel.',
-                                        style: TextStyle(fontSize: 11, color: Colors.blueGrey),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                FilledButton.tonal(
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => BatchQueueScreen(controller: widget.controller),
-                                      ),
-                                    );
-                                  },
-                                  style: FilledButton.styleFrom(
-                                    visualDensity: VisualDensity.compact,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  ),
-                                  child: const Text('View Batch', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Consignment Queue (${items.length}):',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                            ),
-                            TextButton.icon(
-                              onPressed: () => BillingImageViewer.show(context, items: items, controller: widget.controller),
-                              icon: const Icon(Icons.photo_library_outlined, size: 14),
-                              label: const Text('View All Images', style: TextStyle(fontSize: 11)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        // List of items in current intake queue
-                        ...List.generate(items.length, (idx) {
-                          final item = items[idx];
-                          return ImageQueueCard(
-                            item: item,
-                            schema: widget.controller.currentSchema,
-                            onRemove: () => widget.controller.removeItem(item.id),
-                            onRetry: item.status == BatchItemStatus.error
-                                ? () => widget.controller.retryItem(item.id)
-                                : null,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => EditBiltyScreen(item: item, controller: widget.controller),
-                                ),
-                              );
-                            },
-                            onViewImage: () => BillingImageViewer.show(context, items: items, initialIndex: idx, controller: widget.controller),
-                          );
-                        }),
                       ],
                     ],
                   ),

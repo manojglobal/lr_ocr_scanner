@@ -4,7 +4,7 @@ import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
 import '../widgets/step_indicator_bar.dart';
-import 'verified_screen.dart';
+import 'batch_queue_screen.dart';
 
 /// Screen 6: LR Customization & Driver Details
 /// Matches Step 6 in Logistics_LR_OCR_Workflow_App_Mockup__1_.png:
@@ -221,6 +221,97 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     super.dispose();
   }
 
+  void _showMandatoryIncompleteModal(BatchItem candidate, List<String> missingKeys) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Mandatory Fields Incomplete',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${missingKeys.length} mandatory field${missingKeys.length == 1 ? '' : 's'} across LR & Master Data ${missingKeys.length == 1 ? 'is' : 'are'} incomplete:',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: missingKeys.length,
+                  itemBuilder: (context, idx) {
+                    final key = missingKeys[idx];
+                    final label = BatchItem.getMandatoryLabel(key);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${idx + 1}. ',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                          ),
+                          Expanded(
+                            child: Text(
+                              label,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pop();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF0284C7),
+              side: const BorderSide(color: Color(0xFFBAE6FD)),
+            ),
+            child: const Text('Back to LR Data'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              widget.controller.updateItem(candidate);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => BatchQueueScreen(
+                    controller: widget.controller,
+                  ),
+                ),
+              );
+            },
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            child: const Text('Continue to LR List'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _saveAndVerify() {
     final custEmpty = _customerController.text.trim().isEmpty;
     final counterEmpty = _selectedCounter.trim().isEmpty;
@@ -289,13 +380,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
 
     final candidate = widget.item.copyWith(record: updated);
     if (!widget.controller.isItemVerified(candidate)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please complete all mandatory (*) LR fields before verifying.'),
-          backgroundColor: Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showMandatoryIncompleteModal(candidate, candidate.missingMandatoryFields);
       return;
     }
 
@@ -318,14 +403,14 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     );
     widget.controller.updateItem(newItem);
 
-    // Navigate to Screen 7 (Verification Success)
-    Navigator.of(context).pushReplacement(
+    // Web Parity: Navigate directly to Step 3: LR List (BatchQueueScreen)
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => VerifiedScreen(
-          item: newItem,
+        builder: (_) => BatchQueueScreen(
           controller: widget.controller,
         ),
       ),
+      (route) => route.isFirst,
     );
   }
 
@@ -757,7 +842,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            child: const Text('Back', style: TextStyle(fontWeight: FontWeight.bold)),
+                            child: const Text('← Back to LR Data', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -793,7 +878,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
 
             // Step Indicator Flow Bar (Step 6)
             StepIndicatorBar(
-              currentStep: 6,
+              currentStep: 2,
               controller: widget.controller,
             ),
           ],

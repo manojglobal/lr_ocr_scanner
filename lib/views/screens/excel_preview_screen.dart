@@ -223,25 +223,29 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   }
 
   void _confirmAndGenerateExcel() {
-    if (!widget.controller.allItemsVerified) {
-      final unverified = widget.controller.unverifiedItems;
+    final allItems = widget.controller.items;
+    final verifiedItems = allItems.where((i) => i.isVerified).toList();
+    final verifiedCount = verifiedItems.length;
+
+    if (verifiedCount == 0) {
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 24),
               SizedBox(width: 8),
-              Text('Excel Download Blocked', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Download Excel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ],
           ),
-          content: Text(
-            '${unverified.length} consignment note(s) in this batch are Unverified because mandatory (*) fields are not filled.\n\nExcel download is allowed only when all consignment notes are Verified. Please edit the unverified LRs and complete all mandatory fields first.',
-            style: const TextStyle(fontSize: 14),
+          content: const Text(
+            'No verified LRs available for download.',
+            style: TextStyle(fontSize: 14),
           ),
           actions: [
             FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('OK'),
             ),
@@ -251,23 +255,29 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
       return;
     }
 
+    final unverifiedCount = allItems.length - verifiedCount;
+    final message = unverifiedCount > 0
+        ? 'Generate Excel with $verifiedCount Verified consignment note(s)?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
+        : 'Are you sure you want to generate the Excel sheet with $verifiedCount verified consignment note(s)?';
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Generate Excel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: const Text('Are you sure you want to generate the Excel sheet?', style: TextStyle(fontSize: 14)),
+        content: Text(message, style: const TextStyle(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
             onPressed: () {
               Navigator.of(ctx).pop();
               _handleGenerateExcel();
             },
-            child: const Text('Generate Excel'),
+            child: Text('Generate ($verifiedCount LRs)'),
           ),
         ],
       ),
@@ -283,7 +293,9 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
       final userMobile = prefs.getString('bnf_user_mobile') ?? '';
       final userToken = prefs.getString('bnf_user_token');
 
-      final items = widget.controller.items;
+      final allItems = widget.controller.items;
+      final items = allItems.where((i) => i.isVerified).toList();
+      if (items.isEmpty) return;
       final exportIso = DateTime.now().toIso8601String();
       final docs = items.map((i) {
         return {
@@ -333,7 +345,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
 
           // Fallback: If network download failed, generate locally via ExcelService with grBnf schema
           if (savedFilePath == null) {
-            savedFilePath = await widget.controller.exportToExcel(schema: DocumentSchema.grBnf);
+            savedFilePath = await widget.controller.exportToExcel(schema: DocumentSchema.grBnf, itemsToExport: items);
             if (savedFilePath != null) {
               await widget.controller.excelService.saveFileToDownloads(
                 savedFilePath,
@@ -346,7 +358,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
         }
       } else {
         // Fallback to local on-device export with 49-column BNF schema
-        final filePath = await widget.controller.exportToExcel(schema: DocumentSchema.grBnf);
+        final filePath = await widget.controller.exportToExcel(schema: DocumentSchema.grBnf, itemsToExport: items);
         final defaultFilename = filePath?.split(RegExp(r'[/\\]')).last ?? 'BNF_Bilty_Export.xlsx';
         if (filePath != null) {
           await widget.controller.excelService.saveFileToDownloads(
@@ -452,7 +464,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         titleSpacing: 8,
-        title: const Text('Excel Preview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(_activeSheetIndex == 1 ? 'History' : 'Excel Preview', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         actions: [
           // History Button in Top Navbar
           OutlinedButton.icon(
@@ -619,7 +631,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                       label: Text(
                         _isGenerating
                             ? 'Generating Excel...'
-                            : 'Generate Excel (${items.length} LRs)',
+                            : 'Generate Excel (${items.where((i) => i.isVerified).length} LRs)',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                         overflow: TextOverflow.ellipsis,
                       ),

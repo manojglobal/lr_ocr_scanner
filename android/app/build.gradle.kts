@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.example.ocr_to_excel"
     compileSdk = 37
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "30.0.16248370"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -122,6 +122,153 @@ class BatchItem {
     return ExtractionStatus.partial;
   }
 
+  /// 15 Mandatory BNF fields defined with (*) matching Web getLrMandatoryStatus()
+  static const List<String> mandatoryKeys = [
+    'grno (*)',
+    'grdt *',
+    'Customer Name *',
+    'Vehicle No *',
+    'Vehicle Type *',
+    'cngr *',
+    'cnge *',
+    'cngrgstno *',
+    'cngegstno *',
+    'Driver Name *',
+    'Mobile no   *',
+    'Liscense No *',
+    'Valid Up to *',
+    'Loading Start date *',
+    'freight  *',
+  ];
+
+  static const Map<String, String> mandatoryLabels = {
+    'grno (*)': 'LR / Consignment No. *',
+    'grdt *': 'LR Date *',
+    'Customer Name *': 'Customer Name *',
+    'Vehicle No *': 'Vehicle No. *',
+    'Vehicle Type *': 'Vehicle Type *',
+    'cngr *': 'Consignor Name *',
+    'cnge *': 'Consignee Name *',
+    'cngrgstno *': 'Consignor GSTIN *',
+    'cngegstno *': 'Consignee GSTIN *',
+    'Driver Name *': 'Driver Name *',
+    'Mobile no   *': 'Mobile No *',
+    'Liscense No *': 'License No *',
+    'Valid Up to *': 'Valid Up to *',
+    'Loading Start date *': 'Loading Start Date *',
+    'freight  *': 'Freight Charge *',
+  };
+  static String getMandatoryLabel(String key) => mandatoryLabels[key] ?? key;
+
+
+  /// Smart field resolver matching Web getBnfFieldValue alias handling.
+  String resolveField(String key) {
+    if (record.containsKey(key) && record[key] != null && record[key]!.trim().isNotEmpty) {
+      return record[key]!.trim();
+    }
+    if (key == 'grno (*)' || key == 'LR No *' || key == 'grno') {
+      for (final a in ['grno (*)', 'LR No *', 'grno', 'LR No', 'lrno', 'biltyno']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'grdt *' || key == 'grdt') {
+      for (final a in ['grdt *', 'grdt', 'stockdt', 'stockdt ']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Customer Name *') {
+      for (final a in ['Customer Name *', 'Customer Name', 'customer_name', 'cngr *', 'cngr', 'consignor']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'cngr *' || key == 'cngr') {
+      for (final a in ['cngr *', 'cngr', 'Customer Name *', 'consignor']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'cnge *' || key == 'cnge') {
+      for (final a in ['cnge *', 'cnge', 'consignee']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'cngrgstno *' || key == 'cngrgstno') {
+      for (final a in ['cngrgstno *', 'cngrgstno', 'cngr_gst', 'consignor_gst']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'cngegstno *' || key == 'cngegstno') {
+      for (final a in ['cngegstno *', 'cngegstno', 'cnge_gst', 'consignee_gst']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Vehicle No *' || key == 'Vehicle No') {
+      for (final a in ['Vehicle No *', 'Vehicle No', 'vehno', 'vehicle_no']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Vehicle Type *' || key == 'Vehicle Category') {
+      for (final a in ['Vehicle Type *', 'Vehicle Type', 'Vehicle Category', 'vehicle_category']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Driver Name *' || key == 'Driver Name') {
+      for (final a in ['Driver Name *', 'Driver Name', 'driver_name', 'driver']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Mobile no   *' || key == 'Mobile no *' || key == 'Mobile No') {
+      for (final a in ['Mobile no   *', 'Mobile no *', 'Mobile No', 'mobile_no', 'driver_mobile']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Liscense No *' || key == 'License No *') {
+      for (final a in ['Liscense No *', 'License No *', 'Liscense No', 'License No', 'license_no']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Valid Up to *' || key == 'Valid Up to') {
+      for (final a in ['Valid Up to *', 'Valid Up to', 'valid_upto', 'driver_valid_upto']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Loading Start date *') {
+      for (final a in ['Loading Start date *', 'Loading Start Date *', 'grdt *', 'grdt', 'date']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'freight  *' || key == 'freight') {
+      for (final a in ['freight  *', 'freight', 'Freight Charge', 'basic freight', 'total freight']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'pmark') {
+      for (final a in ['pmark', 'Private Mark', 'private mark', 'Seal No', 'seal no', 'seal_no', 'seal', 'Seal', 'Seal No / Private Mark']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'oamount') {
+      for (final a in ['oamount', 'Other Charges', 'other_amount', 'other charges', 'hamali']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    }
+
+    final cleanKey = key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+    for (final entry in record.entries) {
+      final cleanEntry = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+      if (cleanKey == cleanEntry && entry.value.trim().isNotEmpty) {
+        return entry.value.trim();
+      }
+    }
+    return '';
+  }
+
+  /// Returns true only when all 15 mandatory BNF columns are filled and valid.
+  bool get isVerified {
+    for (final key in mandatoryKeys) {
+      final val = resolveField(key);
+      if (val.isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Returns list of missing mandatory field keys across all tabs.
+  List<String> get missingMandatoryFields {
+    final missing = <String>[];
+    for (final key in mandatoryKeys) {
+      final val = resolveField(key);
+      if (val.isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
+        missing.add(key);
+      }
+    }
+    return missing;
+  }
+
   /// Label string representation of the extraction status.
   String get extractionStatusLabel {
     switch (extractionStatus) {
@@ -196,6 +343,59 @@ class BatchItem {
       structureType: structureType ?? this.structureType,
       ocrEngine: ocrEngine ?? this.ocrEngine,
       imageHash: imageHash ?? this.imageHash,
+    );
+  }
+
+  Map<String, dynamic> toCloudDoc() {
+    return {
+      'id': id,
+      'filename': fileName,
+      'saved_filename': record['saved_filename'] ?? fileName,
+      'file_url': record['file_url'] ?? '',
+      'preview_url': record['preview_url'] ?? '',
+      'preview_image': record['preview_image'] ?? '',
+      'isVerified': isVerified,
+      'status': status.name,
+      'data': record,
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  static BatchItem fromCloudDoc(Map<String, dynamic> doc) {
+    final dataMap = <String, String>{};
+    if (doc['data'] is Map) {
+      (doc['data'] as Map).forEach((k, v) {
+        if (k != null && v != null) {
+          dataMap[k.toString()] = v.toString();
+        }
+      });
+    }
+    if (doc['preview_image'] != null && doc['preview_image'].toString().isNotEmpty) {
+      dataMap['preview_image'] = doc['preview_image'].toString();
+    }
+    if (doc['preview_url'] != null && doc['preview_url'].toString().isNotEmpty) {
+      dataMap['preview_url'] = doc['preview_url'].toString();
+    }
+    if (doc['saved_filename'] != null && doc['saved_filename'].toString().isNotEmpty) {
+      dataMap['saved_filename'] = doc['saved_filename'].toString();
+    }
+    if (doc['file_url'] != null && doc['file_url'].toString().isNotEmpty) {
+      dataMap['file_url'] = doc['file_url'].toString();
+    }
+
+    final dt = DateTime.tryParse(doc['createdAt']?.toString() ?? '') ?? DateTime.now();
+    final id = (doc['id'] ?? doc['file_id'] ?? 'lr_${dt.millisecondsSinceEpoch}').toString();
+    final fn = (doc['filename'] ?? doc['saved_filename'] ?? 'LR Document').toString();
+    final imgPath = (doc['file_path'] ?? doc['preview_url'] ?? doc['imagePath'] ?? fn).toString();
+
+    return BatchItem(
+      id: id,
+      imagePath: imgPath,
+      fileName: fn,
+      status: BatchItemStatus.completed,
+      createdAt: dt,
+      record: dataMap,
+      ocrEngine: 'cloud_sync',
     );
   }
 }
