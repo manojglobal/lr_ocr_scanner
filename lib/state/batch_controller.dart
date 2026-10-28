@@ -16,9 +16,11 @@ import '../services/gemini_backend_service.dart';
 import '../services/image_service.dart';
 import '../services/image_preprocessor.dart';
 import '../services/ocr_service.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../services/permission_service.dart';
 import '../services/file_lifecycle_service.dart';
 import '../services/master_data_service.dart';
+import '../services/pdf_assembler_service.dart';
 
 /// Central state management controller for the multi-image OCR-to-Excel pipeline.
 class BatchProcessingController extends ChangeNotifier {
@@ -561,9 +563,75 @@ class BatchProcessingController extends ChangeNotifier {
     final path = await _imageService.captureFromCamera();
     if (path == null) return false;
 
-    final permanentPath = await _ensurePermanentFile(path);
-    final added = _addItemFromPath(permanentPath);
-    if (!added) return false;
+    return addMultiPageScan([path]);
+  }
+
+  /// Adds a multi-page scan session (multiple photos of a single LR) to the queue as ONE single LR item.
+  Future<bool> addMultiPageScan(List<String> paths) async {
+    if (paths.isEmpty) return false;
+
+    // Ensure permanent copies of each captured page
+    final permanentPaths = <String>[];
+    for (final p in paths) {
+      permanentPaths.add(await _ensurePermanentFile(p));
+    }
+
+    String submissionFilePath;
+    String submissionFileName;
+    String? imageHash;
+
+    if (permanentPaths.length == 1) {
+      submissionFilePath = permanentPaths.first;
+      submissionFileName = submissionFilePath.split(RegExp(r'[/\\]')).last;
+      imageHash = computeImageHash(submissionFilePath);
+    } else {
+      // Assemble multiple pages into a single PDF document dossier
+      Directory? appDir;
+      try {
+        appDir = await getApplicationDocumentsDirectory();
+      } catch (_) {
+        try {
+          appDir = await getTemporaryDirectory();
+        } catch (_) {}
+      }
+      final basePath = appDir?.path ?? Directory.systemTemp.path;
+      final scansDir = Directory('$basePath/scans');
+      if (!scansDir.existsSync()) scansDir.createSync(recursive: true);
+
+      final docId = _uuid.v4();
+      final pdfPath = '${scansDir.path}/lr_scan_$docId.pdf';
+      final pdfFile = await PdfAssemblerService.assembleImagesToPdf(
+        imagePaths: permanentPaths,
+        outputPath: pdfPath,
+      );
+      submissionFilePath = pdfFile.path;
+      submissionFileName = submissionFilePath.split(RegExp(r'[/\\]')).last;
+      imageHash = computeImageHash(submissionFilePath);
+    }
+
+    // Pre-OCR duplicate check
+    if (isDuplicate(imagePath: submissionFilePath, imageHash: imageHash, fileName: submissionFileName)) {
+      triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
+      return false;
+    }
+
+    final docId = _uuid.v4();
+    final item = BatchItem(
+      id: docId,
+      imagePath: submissionFilePath,
+      fileName: submissionFileName.isEmpty ? 'document_${_items.length + 1}.pdf' : submissionFileName,
+      status: BatchItemStatus.pending,
+      createdAt: DateTime.now(),
+      imageHash: imageHash,
+      record: {
+        'preview_pages': jsonEncode(permanentPaths),
+        'page_count': permanentPaths.length.toString(),
+      },
+    );
+
+    _items.add(item);
+    notifyListeners();
+
     await _processQueue();
     return true;
   }
@@ -780,17 +848,58 @@ class BatchProcessingController extends ChangeNotifier {
             _statusMessage = 'Extracting (${item.fileName})...';
             notifyListeners();
 
-            // ML Kit On-Device Recognition
-            final recognizedText =
-                await _ocrService.recognizeTextFromPath(item.imagePath);
+            // Extract pages for multi-page document fallback
+            List<String> pagePaths = [];
+            final rawPages = item.record['preview_pages'];
+            if (rawPages != null && rawPages.isNotEmpty) {
+              try {
+                final decoded = jsonDecode(rawPages);
+                if (decoded is List) {
+                  pagePaths = decoded.map((e) => e.toString()).toList();
+                }
+              } catch (_) {}
+            }
 
-            // Parse against active schema with image type awareness
-            parseResult = _parserService.parseRecognizedText(
-              recognizedText,
-              schema: _currentSchema,
-              isOrangeYellow: isOrangeYellow,
-            );
-            rawOcrText = recognizedText.text;
+            if (pagePaths.isNotEmpty) {
+              final textBuffer = StringBuffer();
+              final allBlocks = <TextBlock>[];
+              for (int pIdx = 0; pIdx < pagePaths.length; pIdx++) {
+                final pText = await _ocrService.recognizeTextFromPath(pagePaths[pIdx]);
+                if (pText.text.isNotEmpty) {
+                  textBuffer.writeln('--- PAGE ${pIdx + 1} ---');
+                  textBuffer.writeln(pText.text);
+                  allBlocks.addAll(pText.blocks);
+                }
+              }
+              final fullText = textBuffer.toString();
+              rawOcrText = fullText;
+              final fullRecognizedText = RecognizedText(text: fullText, blocks: allBlocks);
+              parseResult = _parserService.parseRecognizedText(
+                fullRecognizedText,
+                schema: _currentSchema,
+                isOrangeYellow: isOrangeYellow,
+              );
+            } else {
+              // ML Kit On-Device Recognition
+              final recognizedText =
+                  await _ocrService.recognizeTextFromPath(item.imagePath);
+
+              // Parse against active schema with image type awareness
+              parseResult = _parserService.parseRecognizedText(
+                recognizedText,
+                schema: _currentSchema,
+                isOrangeYellow: isOrangeYellow,
+              );
+              rawOcrText = recognizedText.text;
+            }
+          }
+
+          // Retain multi-page scan metadata
+          if (item.record['preview_pages'] != null && !parseResult.data.containsKey('preview_pages')) {
+            parseResult.data['preview_pages'] = item.record['preview_pages']!;
+          }
+          if (item.record['page_count'] != null && !parseResult.data.containsKey('page_count')) {
+            parseResult.data['page_count'] = item.record['page_count']!;
           }
 
           // Step 4: Mapping with BNF 49-Column Format

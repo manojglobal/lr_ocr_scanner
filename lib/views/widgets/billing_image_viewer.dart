@@ -123,10 +123,21 @@ class BillingImageViewer extends StatefulWidget {
     return [];
   }
 
+  /// Checks if a given path is a local file on device storage.
+  static bool isLocalFilePath(String path) {
+    if (path.isEmpty) return false;
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return false;
+    if (path.startsWith('/uploads/') || path.startsWith('/snapshots/')) return false;
+    if (RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(path)) return true;
+    if (File(path).existsSync()) return true;
+    return false;
+  }
+
   /// Resolves relative preview URLs against the server URL
   static String? resolveFullUrlStatic(String? path, String? serverUrl) {
     if (path == null || path.isEmpty) return null;
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    if (isLocalFilePath(path)) return null;
     final server = (serverUrl != null && serverUrl.trim().isNotEmpty) ? serverUrl.trim() : 'http://192.168.1.2:8000';
     final prefix = server.endsWith('/') ? server.substring(0, server.length - 1) : server;
     final relPath = path.startsWith('/') ? path : '/$path';
@@ -139,15 +150,24 @@ class BillingImageViewer extends StatefulWidget {
     if (context != null) {
       final pages = getPdfPreviewPagesStatic(item);
       for (final p in pages) {
-        final full = resolveFullUrlStatic(p, serverUrl);
-        if (full != null) {
-          try {
-            precacheImage(NetworkImage(full), context);
-          } catch (_) {}
+        if (isLocalFilePath(p)) {
+          final f = File(p);
+          if (f.existsSync()) {
+            try {
+              precacheImage(FileImage(f), context);
+            } catch (_) {}
+          }
+        } else {
+          final full = resolveFullUrlStatic(p, serverUrl);
+          if (full != null) {
+            try {
+              precacheImage(NetworkImage(full), context);
+            } catch (_) {}
+          }
         }
       }
       final purl = (item.record['preview_url'] ?? '').toString().trim();
-      if (purl.isNotEmpty) {
+      if (purl.isNotEmpty && !isLocalFilePath(purl)) {
         final full = resolveFullUrlStatic(purl, serverUrl);
         if (full != null) {
           try {
@@ -540,10 +560,21 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                         final base64Bytes = _resolveBase64Bytes(item);
                         final pdfPages = _getPdfPreviewPages(item);
                         final curPdfPage = (_pdfCurrentPages[index] ?? 0).clamp(0, (pdfPages.length - 1).clamp(0, 999));
-                        final currentPdfPageUrl = pdfPages.isNotEmpty ? _resolveFullUrl(pdfPages[curPdfPage]) : _resolvePreviewUrl(item);
+                        final curPageStr = pdfPages.isNotEmpty ? pdfPages[curPdfPage] : '';
+                        final localPageFile = curPageStr.isNotEmpty ? File(curPageStr) : null;
+                        final isLocalPage = localPageFile != null && localPageFile.existsSync();
+                        final currentPdfPageUrl = !isLocalPage && curPageStr.isNotEmpty
+                            ? _resolveFullUrl(curPageStr)
+                            : (!isLocalPage ? _resolvePreviewUrl(item) : null);
 
                         Widget contentWidget;
-                        if (isPdf) {
+                        if (isLocalPage) {
+                          contentWidget = Image.file(
+                            localPageFile,
+                            fit: BoxFit.contain,
+                            gaplessPlayback: true,
+                          );
+                        } else if (isPdf) {
                           // Page 0: Render instant 0ms memory preview from base64 if available
                           if (curPdfPage == 0 && base64Bytes != null) {
                             contentWidget = Image.memory(
@@ -682,7 +713,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                 ),
                               ),
                             ),
-                            if (isPdf && pdfPages.length > 1)
+                            if (pdfPages.length > 1)
                               Positioned(
                                 bottom: 12,
                                 child: _buildPdfPageNav(index, curPdfPage, pdfPages.length),

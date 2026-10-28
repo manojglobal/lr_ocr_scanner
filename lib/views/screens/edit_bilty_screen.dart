@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../models/batch_item.dart';
@@ -544,6 +545,17 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                     child: Builder(
                       builder: (context) {
                         final isPdf = widget.item.fileName.toLowerCase().endsWith('.pdf') || widget.item.imagePath.toLowerCase().endsWith('.pdf');
+                        final rawPages = widget.item.record['preview_pages'];
+                        List<String> pagesList = [];
+                        if (rawPages != null) {
+                          try {
+                            final dec = jsonDecode(rawPages);
+                            if (dec is List) pagesList = dec.map((e) => e.toString()).toList();
+                          } catch (_) {}
+                        }
+                        if (pagesList.isNotEmpty && File(pagesList.first).existsSync()) {
+                          return Image.file(File(pagesList.first), fit: BoxFit.cover);
+                        }
                         final bytes = BillingImageViewer.resolveBase64Bytes(widget.item);
                         if (bytes != null) {
                           return Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
@@ -593,19 +605,53 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.item.fileName,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: brandNavy),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Text(
-                        'Review and edit extracted fields below:',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ],
+                  child: Builder(
+                    builder: (context) {
+                      final rawPages = widget.item.record['preview_pages'];
+                      List<String> pagesList = [];
+                      if (rawPages != null) {
+                        try {
+                          final dec = jsonDecode(rawPages);
+                          if (dec is List) pagesList = dec.map((e) => e.toString()).toList();
+                        } catch (_) {}
+                      }
+                      final pageCount = int.tryParse(widget.item.record['page_count'] ?? '') ?? (pagesList.isNotEmpty ? pagesList.length : 1);
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.item.fileName,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: brandNavy),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (pageCount > 1) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0284C7),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '$pageCount Pages',
+                                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const Text(
+                            'Review and edit extracted fields below:',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 OutlinedButton.icon(

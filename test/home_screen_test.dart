@@ -159,7 +159,7 @@ void main() {
     expect(find.text('Duplicate LR'), findsNothing);
   });
 
-  testWidgets('OcrProcessingDialog has unified loading state and does not show separate step checklist items', (tester) async {
+  testWidgets('OcrProcessingDialog matches Web loading UI and shows 5 processing stages', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -173,14 +173,13 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Uploading & Processing LR...'), findsOneWidget);
-    expect(find.text('Reading Consignment 1 of 1 (test_lr.jpg)'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    // Verify separate step checklist rows are NOT present
-    expect(find.text('Image Uploaded'), findsNothing);
-    expect(find.text('Reading LR Document'), findsNothing);
-    expect(find.text('Extracting Data'), findsNothing);
-    expect(find.text('Mapping with Excel Format'), findsNothing);
-    expect(find.text('Validating Data'), findsNothing);
+    expect(find.text('Reading Consignment (test_lr.jpg)...'), findsOneWidget);
+    expect(find.byIcon(Icons.find_in_page_outlined), findsOneWidget);
+    // Verify 5-step checklist matching Web screen3_ocr
+    expect(find.text('Image(s) Uploaded'), findsOneWidget);
+    expect(find.text('Reading LR Document'), findsOneWidget);
+    expect(find.text('Extracting Consignment Details'), findsOneWidget);
+    expect(find.text('Mapping with BNF 49-Column Format'), findsOneWidget);
+    expect(find.text('Validating Data & Preserving Blanks'), findsOneWidget);
   });
 }

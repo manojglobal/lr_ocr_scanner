@@ -11,6 +11,7 @@ import 'login_screen.dart';
 import 'screens/batch_queue_screen.dart';
 import 'screens/edit_bilty_screen.dart';
 import 'screens/excel_preview_screen.dart';
+import 'screens/multi_page_scan_screen.dart';
 import 'widgets/billing_image_viewer.dart';
 import 'widgets/ocr_processing_dialog.dart';
 import 'widgets/permission_dialog.dart';
@@ -522,6 +523,42 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleCameraCapture() async {
+    final hasPerm = await widget.controller.permissionService.requestCameraPermission();
+    if (!hasPerm) {
+      if (mounted) {
+        final isPerm = await widget.controller.permissionService.isCameraPermanentlyDenied();
+        if (isPerm) {
+          PermissionRationaleDialog.show(
+            context: context,
+            title: 'Camera Permission Needed',
+            message: 'Camera access is required to photograph documents directly for text recognition.',
+            icon: Icons.camera_alt,
+            isPermanent: true,
+            onRetryOrSettings: () => widget.controller.permissionService.openSettings(),
+          );
+        }
+      }
+      return;
+    }
+
+    final firstPhoto = await widget.controller.imageService.captureFromCamera();
+    if (firstPhoto == null) {
+      return;
+    }
+
+    if (!mounted) return;
+    final List<String>? capturedPages = await Navigator.of(context).push<List<String>>(
+      MaterialPageRoute(
+        builder: (_) => MultiPageScanScreen(
+          initialPages: [firstPhoto],
+        ),
+      ),
+    );
+
+    if (capturedPages == null || capturedPages.isEmpty) {
+      return;
+    }
+
     final countBefore = widget.controller.items.length;
 
     if (mounted) {
@@ -534,25 +571,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     bool success = false;
     try {
-      success = await widget.controller.addFromCamera();
+      success = await widget.controller.addMultiPageScan(capturedPages);
     } finally {
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
     }
 
-    if (!success && mounted) {
-      final isPerm = await widget.controller.permissionService.isCameraPermanentlyDenied();
-      if (isPerm) {
-        PermissionRationaleDialog.show(
-          context: context,
-          title: 'Camera Permission Needed',
-          message: 'Camera access is required to photograph documents directly for text recognition.',
-          icon: Icons.camera_alt,
-          isPermanent: true,
-          onRetryOrSettings: () => widget.controller.permissionService.openSettings(),
-        );
-      }
+    if (!success) {
       return;
     }
 
