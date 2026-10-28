@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:ocr_to_excel/models/batch_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ocr_to_excel/services/excel_service.dart';
 import 'package:ocr_to_excel/services/format_parser.dart';
+import 'package:ocr_to_excel/services/gemini_backend_service.dart';
 import 'package:ocr_to_excel/services/image_service.dart';
 import 'package:ocr_to_excel/services/ocr_service.dart';
 import 'package:ocr_to_excel/services/permission_service.dart';
@@ -18,6 +20,44 @@ class StubOcrService extends OcrService {
   Future<void> dispose() async {}
 }
 
+class StubExcelService extends ExcelService {
+  @override
+  Future<File> saveBytesToFile(List<int> bytes, {String? customFileName}) async {
+    return File('/dummy/path/${customFileName ?? 'BNF_Bilty_Export.xlsx'}');
+  }
+
+  @override
+  Future<String?> saveFileToDownloads(String sourceFilePath, {String? targetFileName}) async {
+    return '/dummy/downloads/${targetFileName ?? 'BNF_Bilty_Export.xlsx'}';
+  }
+}
+
+class MockGeminiBackendService extends GeminiBackendService {
+  bool exportExcelWithSnapshotCalled = false;
+  List<Map<String, dynamic>> lastDocuments = [];
+
+  @override
+  Future<Map<String, dynamic>> exportExcelWithSnapshot({
+    required List<Map<String, dynamic>> documents,
+    String formatType = 'gr_bnf_49',
+    String? userName,
+    String? userMobile,
+    String? sessionToken,
+  }) async {
+    exportExcelWithSnapshotCalled = true;
+    lastDocuments = documents;
+    return {
+      'success': true,
+      'filename': 'BNF_Bilty_Export_Test.xlsx',
+      'download_url': '/downloads/test.xlsx',
+    };
+  }
+
+  @override
+  Future<List<int>?> downloadExportedFile(String downloadUrl) async {
+    return [0x50, 0x4B, 0x03, 0x04];
+  }
+}
 
 void _makeItemVerified(BatchProcessingController ctrl, String id) {
   for (final key in BatchItem.mandatoryKeys) {
@@ -48,9 +88,9 @@ void main() {
     controller.dispose();
   });
 
-  Widget buildTestableWidget() {
+  Widget buildTestableWidget({BatchProcessingController? ctrl}) {
     return MaterialApp(
-      home: BatchQueueScreen(controller: controller),
+      home: BatchQueueScreen(controller: ctrl ?? controller),
     );
   }
 
@@ -169,5 +209,40 @@ void main() {
     expect(find.text('Are you sure you want to generate the Excel sheet with 1 verified consignment note(s)?'), findsNothing);
     // Verified: ExcelGeneratedScreen was NOT opened
     expect(find.byType(ExcelPreviewScreen), findsOneWidget);
+  });
+
+  testWidgets('BatchQueueScreen Download Excel invokes geminiService.exportExcelWithSnapshot for History persistence', (tester) async {
+    final mockBackend = MockGeminiBackendService();
+    final customCtrl = BatchProcessingController(
+      permissionService: StubPermissionService(),
+      imageService: StubImageService(),
+      ocrService: StubOcrService(),
+      parserService: FormatParserService(),
+      excelService: StubExcelService(),
+      geminiService: mockBackend,
+      useGeminiBackend: true,
+    );
+
+    customCtrl.addImagePath('/docs/test_lr.jpg');
+    final item = customCtrl.items.first;
+    _makeItemVerified(customCtrl, item.id);
+
+    await tester.pumpWidget(buildTestableWidget(ctrl: customCtrl));
+    await tester.pumpAndSettle();
+
+    final downloadBtnFinder = find.byKey(const Key('direct_download_excel_btn'));
+    await tester.tap(downloadBtnFinder);
+    await tester.pumpAndSettle();
+
+    final confirmBtn = find.widgetWithText(FilledButton, 'Download (1 LRs)');
+    expect(confirmBtn, findsOneWidget);
+    await tester.tap(confirmBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(mockBackend.exportExcelWithSnapshotCalled, isTrue);
+    expect(mockBackend.lastDocuments.length, 1);
+    customCtrl.dispose();
   });
 }

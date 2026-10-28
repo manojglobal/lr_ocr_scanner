@@ -142,4 +142,53 @@ void main() {
     // Verify EditBiltyScreen (Step 2) opens with the document as per Web parity
     expect(find.byType(EditBiltyScreen), findsOneWidget);
   });
+
+  testWidgets('BillingImageViewer has Rotate Left and Rotate Right, and removes Excel Format & Excel -Next buttons', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BillingImageViewer(
+          items: [testItem],
+          initialIndex: 0,
+          controller: controller,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Verify "Excel Format", "Excel", and "Next" buttons are removed
+    expect(find.text('Excel Format'), findsNothing);
+    expect(find.text('Excel'), findsNothing);
+    expect(find.text('Next'), findsNothing);
+
+    // 2. Verify "Edit LR" button is present
+    expect(find.text('Edit LR'), findsOneWidget);
+
+    // 3. Verify Rotate Left and Rotate Right buttons exist in toolbar
+    final rotateLeftBtn = find.byTooltip('Rotate Left 90°');
+    final rotateRightBtn = find.byTooltip('Rotate Right 90°');
+    expect(rotateLeftBtn, findsOneWidget);
+    expect(rotateRightBtn, findsOneWidget);
+
+    // 4. Test rotation turns
+    expect(tester.widget<RotatedBox>(find.byType(RotatedBox).first).quarterTurns, 0);
+
+    // Tap Rotate Left (Counter-Clockwise) -> quarterTurns should become 3 (270° / -90°)
+    await tester.tap(rotateLeftBtn);
+    await tester.pumpAndSettle();
+    expect(tester.widget<RotatedBox>(find.byType(RotatedBox).first).quarterTurns, 3);
+
+    // Tap Rotate Right (Clockwise) -> quarterTurns should become 0 (back to normal)
+    await tester.tap(rotateRightBtn);
+    await tester.pumpAndSettle();
+    expect(tester.widget<RotatedBox>(find.byType(RotatedBox).first).quarterTurns, 0);
+
+    // Tap Rotate Right again -> quarterTurns should become 1 (90°)
+    await tester.tap(rotateRightBtn);
+    await tester.pumpAndSettle();
+    expect(tester.widget<RotatedBox>(find.byType(RotatedBox).first).quarterTurns, 1);
+  });
 }

@@ -4,12 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 // In-app viewing only matching Web (no external apps)
 import 'package:path_provider/path_provider.dart';
-import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
-import '../screens/batch_queue_screen.dart';
 import '../screens/edit_bilty_screen.dart';
-import '../screens/excel_preview_screen.dart';
 import '../screens/lr_preview_screen.dart';
 import 'step_indicator_bar.dart';
 
@@ -172,9 +169,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
   final Map<int, int> _pdfCurrentPages = {}; // itemIndex -> pageIndex (0, 1, 2...)
   final TransformationController _transformController = TransformationController();
   final Map<int, File?> _discoveredFiles = {};
-  bool _showExcelFormat = false;
 
-  final List<String> _bnf49Columns = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
 
   @override
   void initState() {
@@ -344,13 +339,22 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
 
   Uint8List? _resolveBase64Bytes(dynamic itemOrPath) => BillingImageViewer.resolveBase64Bytes(itemOrPath);
 
-  void _rotateCurrent() {
+  void _rotateLeftCurrent() {
+    setState(() {
+      final current = _rotations[_currentIndex] ?? 0;
+      _rotations[_currentIndex] = (current - 1 + 4) % 4;
+      _transformController.value = Matrix4.identity();
+    });
+  }
+
+  void _rotateRightCurrent() {
     setState(() {
       final current = _rotations[_currentIndex] ?? 0;
       _rotations[_currentIndex] = (current + 1) % 4;
       _transformController.value = Matrix4.identity();
     });
   }
+
 
   void _resetZoom() {
     setState(() {
@@ -399,8 +403,6 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
 
   @override
   Widget build(BuildContext context) {
-    const brandNavy = Color(0xFF0F172A);
-    const brandGreen = Color(0xFF16A34A);
 
     if (widget.items.isEmpty) {
       return Scaffold(
@@ -490,12 +492,19 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                     visualDensity: VisualDensity.compact,
                     onPressed: () => _zoomBy(0.8),
                   ),
-                  // Rotate Button
+                  // Rotate Left Button
+                  IconButton(
+                    icon: const Icon(Icons.rotate_left, color: Colors.white, size: 20),
+                    tooltip: 'Rotate Left 90°',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _rotateLeftCurrent,
+                  ),
+                  // Rotate Right Button
                   IconButton(
                     icon: const Icon(Icons.rotate_right, color: Colors.white, size: 20),
-                    tooltip: 'Rotate 90°',
+                    tooltip: 'Rotate Right 90°',
                     visualDensity: VisualDensity.compact,
-                    onPressed: _rotateCurrent,
+                    onPressed: _rotateRightCurrent,
                   ),
                   // Reset Zoom Button
                   IconButton(
@@ -514,7 +523,6 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
             Expanded(
               child: Stack(
                 children: [
-                  if (!_showExcelFormat)
                     PageView.builder(
                       controller: _pageController,
                       itemCount: widget.items.length,
@@ -538,55 +546,33 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                         if (isPdf) {
                           // Page 0: Render instant 0ms memory preview from base64 if available
                           if (curPdfPage == 0 && base64Bytes != null) {
-                            contentWidget = Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Image.memory(
-                                    base64Bytes,
-                                    fit: BoxFit.contain,
-                                    gaplessPlayback: true,
-                                  ),
-                                ),
-                                if (pdfPages.length > 1) ...[
-                                  const SizedBox(height: 8),
-                                  _buildPdfPageNav(index, curPdfPage, pdfPages.length),
-                                ],
-                              ],
+                            contentWidget = Image.memory(
+                              base64Bytes,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
                             );
                           } else if (currentPdfPageUrl != null) {
-                            contentWidget = Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Image.network(
-                                    currentPdfPageUrl,
-                                    fit: BoxFit.contain,
-                                    gaplessPlayback: true,
-                                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                                      if (wasSynchronouslyLoaded || frame != null) return child;
-                                      if (base64Bytes != null && curPdfPage == 0) {
-                                        return Image.memory(base64Bytes, fit: BoxFit.contain, gaplessPlayback: true);
-                                      }
-                                      return const Center(
-                                        child: SizedBox(
-                                          width: 28,
-                                          height: 28,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
-                                        ),
-                                      );
-                                    },
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        (base64Bytes != null && curPdfPage == 0)
-                                            ? Image.memory(base64Bytes, fit: BoxFit.contain, gaplessPlayback: true)
-                                            : _buildPdfCard(item, resolvedFile, index),
+                            contentWidget = Image.network(
+                              currentPdfPageUrl,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                                if (wasSynchronouslyLoaded || frame != null) return child;
+                                if (base64Bytes != null && curPdfPage == 0) {
+                                  return Image.memory(base64Bytes, fit: BoxFit.contain, gaplessPlayback: true);
+                                }
+                                return const Center(
+                                  child: SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
                                   ),
-                                ),
-                                if (pdfPages.length > 1) ...[
-                                  const SizedBox(height: 8),
-                                  _buildPdfPageNav(index, curPdfPage, pdfPages.length),
-                                ],
-                              ],
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) =>
+                                  (base64Bytes != null && curPdfPage == 0)
+                                      ? Image.memory(base64Bytes, fit: BoxFit.contain, gaplessPlayback: true)
+                                      : _buildPdfCard(item, resolvedFile, index),
                             );
                           } else if (base64Bytes != null) {
                             contentWidget = Image.memory(
@@ -696,165 +682,17 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                                 ),
                               ),
                             ),
-
+                            if (isPdf && pdfPages.length > 1)
+                              Positioned(
+                                bottom: 12,
+                                child: _buildPdfPageNav(index, curPdfPage, pdfPages.length),
+                              ),
                           ],
                         );
                       },
-                    )
-                  else
-                    // 50-Column Excel Spreadsheet Format Viewport (Matching Web snapshotExcelGridContainer)
-                    Container(
-                      color: Colors.white,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFDCFCE7),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: const Icon(Icons.table_chart, size: 16, color: brandGreen),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Spreadsheet View: $lrNo',
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandNavy),
-                                        ),
-                                        const Text(
-                                          'All 49 BNF logistics columns captured from this document',
-                                          style: TextStyle(fontSize: 10, color: Colors.grey),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFDCFCE7),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: const Color(0xFF86EFAC)),
-                                  ),
-                                  child: const Text(
-                                    '49 BNF Columns',
-                                    style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold, fontSize: 10),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.all(12),
-                              child: Table(
-                                columnWidths: const {
-                                  0: FixedColumnWidth(36),
-                                  1: FlexColumnWidth(1.4),
-                                  2: FlexColumnWidth(2.0),
-                                  3: FixedColumnWidth(74),
-                                },
-                                border: TableBorder.all(color: Colors.grey.shade200, width: 1),
-                                children: [
-                                  TableRow(
-                                    decoration: const BoxDecoration(color: Color(0xFF1E293B)),
-                                    children: const [
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                        child: Text('#', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11), textAlign: TextAlign.center),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                                        child: Text('Column Name', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                                        child: Text('Extracted Value', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                        child: Text('Status', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11), textAlign: TextAlign.center),
-                                      ),
-                                    ],
-                                  ),
-                                  ...List.generate(_bnf49Columns.length, (colIdx) {
-                                    final colName = _bnf49Columns[colIdx];
-                                    final val = _getFieldValue(currentItem, colName);
-                                    final hasVal = val.isNotEmpty;
-
-                                    return TableRow(
-                                      decoration: BoxDecoration(
-                                        color: colIdx % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
-                                      ),
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                                          child: Text('${colIdx + 1}', style: const TextStyle(fontSize: 10, color: Colors.grey), textAlign: TextAlign.center),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                                          child: Text(colName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                                          child: Text(
-                                            hasVal ? val : '—',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontFamily: 'monospace',
-                                              fontWeight: hasVal ? FontWeight.w600 : FontWeight.normal,
-                                              color: hasVal ? const Color(0xFF0F172A) : Colors.grey.shade400,
-                                            ),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                                          child: Center(
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                              decoration: BoxDecoration(
-                                                color: hasVal ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                                                borderRadius: BorderRadius.circular(4),
-                                                border: Border.all(color: hasVal ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0)),
-                                              ),
-                                              child: Text(
-                                                hasVal ? 'Captured' : 'Blank',
-                                                style: TextStyle(
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: hasVal ? brandGreen : Colors.grey.shade500,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
-
                   // Left (Prev) Arrow
-                  if (!_showExcelFormat && _currentIndex > 0)
+                  if (_currentIndex > 0)
                     Positioned(
                       left: 12,
                       top: 0,
@@ -872,7 +710,7 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                     ),
 
                   // Right (Next) Arrow
-                  if (!_showExcelFormat && _currentIndex < widget.items.length - 1)
+                  if (_currentIndex < widget.items.length - 1)
                     Positioned(
                       right: 12,
                       top: 0,
@@ -1022,86 +860,10 @@ class _BillingImageViewerState extends State<BillingImageViewer> {
                     label: const Text('Edit LR', style: TextStyle(color: Colors.white, fontSize: 11)),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.white30),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       visualDensity: VisualDensity.compact,
                     ),
                   ),
-                  const SizedBox(width: 6),
-
-                  // 2. View in Excel Format Toggle
-                  ElevatedButton.icon(
-                    onPressed: () => setState(() => _showExcelFormat = !_showExcelFormat),
-                    icon: Icon(_showExcelFormat ? Icons.image_outlined : Icons.table_chart_outlined, size: 14),
-                    label: Text(
-                      _showExcelFormat ? 'View Image' : 'Excel Format',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _showExcelFormat ? const Color(0xFF0284C7) : brandGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                  const Spacer(),
-
-                  // 3. Preview Excel
-                  if (widget.controller != null) ...[
-                    TextButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ExcelPreviewScreen(controller: widget.controller!),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.table_view, size: 14, color: Color(0xFF38BDF8)),
-                      label: const Text('Excel', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-
-                    // 4. Next (Renamed from Batch Queue)
-                    FilledButton.icon(
-                      onPressed: () {
-                        showDialog<void>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            title: const Text('Confirmation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            content: const Text('Are you sure you want to continue?', style: TextStyle(fontSize: 14)),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                child: const Text('Cancel'),
-                              ),
-                              FilledButton(
-                                onPressed: () {
-                                  Navigator.of(ctx).pop();
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => BatchQueueScreen(controller: widget.controller!),
-                                    ),
-                                  );
-                                },
-                                child: const Text('Continue'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.arrow_forward, size: 14),
-                      label: const Text('Next', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFEA580C),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
