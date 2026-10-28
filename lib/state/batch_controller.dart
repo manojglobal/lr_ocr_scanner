@@ -580,12 +580,8 @@ class BatchProcessingController extends ChangeNotifier {
     String submissionFileName;
     String? imageHash;
 
-    if (permanentPaths.length == 1) {
-      submissionFilePath = permanentPaths.first;
-      submissionFileName = submissionFilePath.split(RegExp(r'[/\\]')).last;
-      imageHash = computeImageHash(submissionFilePath);
-    } else {
-      // Assemble multiple pages into a single PDF document dossier
+    try {
+      // Assemble all captured pages in session into a single PDF document dossier
       Directory? appDir;
       try {
         appDir = await getApplicationDocumentsDirectory();
@@ -605,6 +601,11 @@ class BatchProcessingController extends ChangeNotifier {
         outputPath: pdfPath,
       );
       submissionFilePath = pdfFile.path;
+      submissionFileName = submissionFilePath.split(RegExp(r'[/\\]')).last;
+      imageHash = computeImageHash(submissionFilePath);
+    } catch (e) {
+      debugPrint('[BatchController] PDF assembly notice: $e');
+      submissionFilePath = permanentPaths.first;
       submissionFileName = submissionFilePath.split(RegExp(r'[/\\]')).last;
       imageHash = computeImageHash(submissionFilePath);
     }

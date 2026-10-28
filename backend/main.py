@@ -2464,6 +2464,64 @@ def _build_workbook_for_docs(
     return wb, file_bytes, filename, export_id
 
 
+# --- ROUTE 4B: Assemble Multi-Page PDF from Images (Continuous Camera / Multi-Photo Intake) ---
+@app.post("/api/assemble-pdf")
+async def assemble_pdf_endpoint(files: list[UploadFile] = File(...)):
+    """
+    Combines multiple image files in the provided order into a single multi-page PDF document.
+    Enforces maximum allowed size and creates a unified PDF dossier for single LR extraction.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No image files provided for PDF assembly.")
+
+    try:
+        import sys
+        for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
+            if _m not in sys.modules:
+                sys.modules[_m] = None
+        import fitz
+        doc = fitz.open()
+
+        for f in files:
+            img_bytes = await f.read()
+            if not img_bytes:
+                continue
+            try:
+                img_doc = fitz.open(stream=img_bytes, filetype="image")
+                pdf_bytes = img_doc.convert_to_pdf()
+                img_pdf = fitz.open("pdf", pdf_bytes)
+                doc.insert_pdf(img_pdf)
+            except Exception:
+                try:
+                    pil_img = Image.open(io.BytesIO(img_bytes))
+                    if pil_img.mode in ("RGBA", "P"):
+                        pil_img = pil_img.convert("RGB")
+                    buf = io.BytesIO()
+                    pil_img.save(buf, format="JPEG", quality=92)
+                    img_doc = fitz.open(stream=buf.getvalue(), filetype="jpeg")
+                    pdf_bytes = img_doc.convert_to_pdf()
+                    img_pdf = fitz.open("pdf", pdf_bytes)
+                    doc.insert_pdf(img_pdf)
+                except Exception as e_pil:
+                    print(f"[PDF Assembly Notice] Skipping invalid image: {e_pil}")
+
+        if len(doc) == 0:
+            raise HTTPException(status_code=400, detail="Failed to assemble valid PDF from provided images.")
+
+        out_pdf_bytes = doc.tobytes()
+        now_dt = datetime.now()
+        out_filename = f"LR_Scan_{now_dt.strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        return StreamingResponse(
+            io.BytesIO(out_pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{out_filename}"'}
+        )
+    except Exception as e:
+        print(f"[PDF Assembly Error]: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF assembly failed: {str(e)}")
+
+
 # --- ROUTE 5: Stylized Excel Generator (openpyxl) ---
 @app.post("/generate-excel")
 async def generate_excel(req: ExcelExportRequest):

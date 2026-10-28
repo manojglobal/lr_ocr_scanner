@@ -11,7 +11,7 @@ import 'login_screen.dart';
 import 'screens/batch_queue_screen.dart';
 import 'screens/edit_bilty_screen.dart';
 import 'screens/excel_preview_screen.dart';
-import 'screens/multi_page_scan_screen.dart';
+import 'screens/camera_scan_screen.dart';
 import 'widgets/billing_image_viewer.dart';
 import 'widgets/ocr_processing_dialog.dart';
 import 'widgets/permission_dialog.dart';
@@ -541,17 +541,10 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final firstPhoto = await widget.controller.imageService.captureFromCamera();
-    if (firstPhoto == null) {
-      return;
-    }
-
     if (!mounted) return;
     final List<String>? capturedPages = await Navigator.of(context).push<List<String>>(
       MaterialPageRoute(
-        builder: (_) => MultiPageScanScreen(
-          initialPages: [firstPhoto],
-        ),
+        builder: (_) => const CameraScanScreen(),
       ),
     );
 
@@ -584,7 +577,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // If new item was added, automatically open Screen 4: Edit View
     if (mounted && widget.controller.items.length > countBefore) {
-      final newItem = widget.controller.items[countBefore];
+      final newItem = widget.controller.items.last;
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => EditBiltyScreen(

@@ -14,6 +14,8 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <!-- Mozilla PDF.js for clean in-canvas and raster PDF rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PDF-Lib for Client-Side Multi-Page PDF Assembly -->
+  <script src="https://unpkg.com/pdf-lib@1.17.9/dist/pdf-lib.min.js"></script>
   <script>
     if (window.pdfjsLib) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -264,6 +266,7 @@
           </div>
 
           <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleCameraCapture(event)" />
+          <input type="file" id="multiImageFallbackInput" accept="image/*" multiple class="hidden" onchange="handleFallbackMultiFiles(event)" />
 
           <div class="flex flex-wrap items-center justify-center gap-2.5 pt-1">
             <button onclick="triggerFileInput()" class="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center space-x-2">
@@ -809,9 +812,9 @@
             <span>Reset filter</span>
           </button>
 
-          <!-- Filter Count Badge (Default: 'Total: 0 LR') -->
+          <!-- Filter Count Badge (Default: 'Total: 0 Verified LR') -->
           <span id="filterStatsBadge" class="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap">
-            Total: 0 LR
+            Total: 0 Verified LR
           </span>
         </div>
       </div>
@@ -1067,48 +1070,154 @@
       </div>
     </section>
     <!-- ==================================================================== -->
-    <!-- CAMERA CAPTURE VIEWFINDER MODAL -->
+    <!-- CAMERA CAPTURE VIEWFINDER MODAL (CONTINUOUS MULTI-PAGE SCANNER) -->
     <!-- ==================================================================== -->
-    <div id="cameraModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-      <div class="bg-slate-900 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-700 flex flex-col">
+    <div id="cameraModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden flex items-center justify-center p-2 sm:p-4">
+      <div class="bg-slate-900 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-700 flex flex-col max-h-[96vh]">
         <!-- Camera Header -->
-        <div class="p-4 bg-slate-950 flex items-center justify-between border-b border-slate-800">
-          <div class="flex items-center space-x-2">
-            <i data-lucide="camera" class="w-5 h-5 text-sky-400"></i>
-            <h3 class="text-sm font-bold text-white">Capture Consignment Receipt (LR)</h3>
+        <div class="p-3.5 bg-slate-950 flex items-center justify-between border-b border-slate-800 shrink-0">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-7 h-7 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center">
+              <i data-lucide="camera" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h3 class="text-sm font-bold text-white">Multi-Page LR Scanner</h3>
+                <span id="camPageCountBadge" class="text-[10px] font-bold text-sky-400 bg-sky-950 px-2 py-0.5 rounded-full border border-sky-800">0 Pages Captured</span>
+              </div>
+            </div>
           </div>
-          <button onclick="closeWebcam()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <button type="button" onclick="closeWebcamWithConfirm()" class="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer" title="Close Camera">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
 
+        <!-- Single LR Guidance Notice -->
+        <div class="bg-sky-950/70 px-3.5 py-1.5 border-b border-sky-900/60 flex items-center justify-between text-[11px] text-sky-300 shrink-0">
+          <span class="flex items-center space-x-1.5">
+            <i data-lucide="layers" class="w-3.5 h-3.5 text-sky-400 shrink-0"></i>
+            <span>All photos in this session will combine into 1 multi-page LR document</span>
+          </span>
+          <span id="camSessionStatus" class="font-medium text-slate-400 text-[10px]">Live stream active</span>
+        </div>
+
         <!-- Video Feed Viewport with Document Guideline Overlay -->
-        <div class="relative bg-black flex items-center justify-center min-h-[320px] max-h-[460px] overflow-hidden">
+        <div id="webcamContainer" class="relative bg-black flex-1 flex items-center justify-center min-h-[260px] max-h-[400px] overflow-hidden">
           <video id="webcamVideo" autoplay playsinline muted class="w-full h-full object-contain"></video>
           <canvas id="webcamCanvas" class="hidden"></canvas>
 
+          <!-- Visual Flash Overlay on Capture -->
+          <div id="camFlashOverlay" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-150 z-20"></div>
+
           <!-- Document Guideline Overlay -->
-          <div class="absolute inset-6 border-2 border-dashed border-sky-400/70 rounded-xl pointer-events-none flex flex-col justify-between p-3">
-            <div class="flex justify-between text-[11px] font-mono font-bold text-sky-400 bg-black/50 px-2.5 py-0.5 rounded w-fit">
+          <div class="absolute inset-4 sm:inset-6 border-2 border-dashed border-sky-400/60 rounded-xl pointer-events-none flex flex-col justify-between p-2.5 z-10">
+            <div class="flex justify-between items-center text-[10px] font-mono font-bold text-sky-300 bg-black/60 px-2 py-0.5 rounded w-fit backdrop-blur-xs">
               <span>Align Consignment Note within border</span>
+            </div>
+            <div id="camLiveTip" class="text-center text-[10px] text-sky-200/90 bg-black/50 px-2 py-0.5 rounded mx-auto">
+              Tap "Add Page" to snap page • Keep adding pages
+            </div>
+          </div>
+
+          <!-- Thumbnail Overlay of Latest Page in Top-Right Corner -->
+          <div id="camLatestThumbBadge" class="hidden absolute top-3 right-3 z-20 bg-slate-900/90 border border-sky-500/50 rounded-lg p-1 shadow-lg flex items-center space-x-1.5 cursor-pointer" onclick="zoomMultiPage(multiPagePages.length - 1)" title="Click to preview latest page">
+            <img id="camLatestThumbImg" src="" alt="Thumbnail" class="w-9 h-11 object-cover rounded" />
+            <div class="pr-1 text-left">
+              <span id="camLatestThumbText" class="block text-[10px] font-bold text-sky-300">Page 1</span>
+              <span class="block text-[8px] text-slate-400">Captured</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Captured Pages Strip (Review, Reorder, Delete) -->
+        <div id="camPagesStripContainer" class="bg-slate-950/95 border-t border-slate-800 px-3 py-2 shrink-0">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center space-x-1.5 text-[11px] font-semibold text-slate-400">
+              <i data-lucide="files" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span>Captured Pages (<span id="stripCountText">0</span>)</span>
+            </div>
+            <span class="text-[10px] text-slate-500">Reorder with arrows or delete unwanted pages</span>
+          </div>
+          <div id="camPagesStrip" class="flex items-center space-x-2 overflow-x-auto pb-1 max-h-[105px] min-h-[75px] scrollbar-thin">
+            <!-- Dynamically populated cards or empty state -->
+            <div id="camStripEmpty" class="w-full text-center py-4 text-xs text-slate-500 italic">
+              No pages captured yet. Tap "Add Page" below to capture your first photo.
             </div>
           </div>
         </div>
 
         <!-- Camera Controls Footer -->
-        <div class="p-4 bg-slate-950 flex items-center justify-between border-t border-slate-800">
-          <button onclick="switchWebcamCamera()" id="switchCamBtn" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            <span>Flip Camera</span>
-          </button>
+        <div class="p-3 sm:p-3.5 bg-slate-950 flex items-center justify-between border-t border-slate-800 shrink-0 gap-2">
+          <!-- Left: Secondary Controls (Flip Camera & Add File) -->
+          <div class="flex items-center space-x-1.5">
+            <button type="button" onclick="switchWebcamCamera()" id="switchCamBtn" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl flex items-center space-x-1 transition cursor-pointer" title="Flip Camera Front/Back">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              <span class="hidden sm:inline">Flip</span>
+            </button>
+            <input type="file" id="multiPageFileInput" accept="image/*" multiple class="hidden" onchange="handleMultiPageFileAdd(event)" />
+            <button type="button" onclick="document.getElementById('multiPageFileInput').click()" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl flex items-center space-x-1 transition cursor-pointer" title="Add Image from Device">
+              <i data-lucide="image-plus" class="w-3.5 h-3.5 text-sky-400"></i>
+              <span class="hidden sm:inline">+ File</span>
+            </button>
+          </div>
 
-          <!-- Big Capture Shutter Button -->
-          <button onclick="snapWebcamPhoto()" class="px-6 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 text-sm font-black rounded-full shadow-lg shadow-sky-500/25 flex items-center space-x-2 transition">
+          <!-- Center: Primary Continuous Add Page Button -->
+          <button type="button" id="btnAddPageCam" onclick="captureMultiPagePhoto()" class="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 text-xs sm:text-sm font-black rounded-full shadow-lg shadow-sky-500/25 flex items-center space-x-2 transition cursor-pointer">
             <div class="w-3.5 h-3.5 rounded-full bg-slate-950"></div>
-            <span>Snap Document</span>
+            <span>Add Page</span>
           </button>
 
-          <div class="w-24 sm:w-28 shrink-0 invisible pointer-events-none" aria-hidden="true"></div>
+          <!-- Right: OK / Done (Finish & Scan) Button -->
+          <button type="button" id="btnFinishMultiPage" onclick="finishMultiPageScan()" disabled class="px-3.5 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            <span id="finishMultiPageBtnText">OK / Done (0)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FULLSCREEN ZOOM PREVIEW MODAL FOR CAPTURED PAGE -->
+    <div id="camPageZoomModal" class="hidden fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-5">
+      <div class="max-w-2xl w-full flex flex-col items-center space-y-3">
+        <div class="w-full flex items-center justify-between text-white px-2">
+          <span id="camZoomPageTitle" class="text-sm font-bold text-sky-400">Page Preview</span>
+          <button type="button" onclick="closeCamPageZoom()" class="p-1 rounded-lg hover:bg-white/10 text-white cursor-pointer">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+        <div class="max-h-[75vh] w-full flex items-center justify-center bg-black/50 rounded-xl overflow-hidden border border-slate-700">
+          <img id="camZoomImg" src="" alt="Full Page" class="max-h-[75vh] max-w-full object-contain" />
+        </div>
+      </div>
+    </div>
+
+    <!-- REMOVE PAGE CONFIRMATION MODAL (Matching Clear LR Data Dialog) -->
+    <div id="removePageConfirmModal" onclick="if(event.target === this) cancelRemovePageModal()" class="hidden fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+        <!-- Header with Red Warning Icon -->
+        <div class="flex items-center space-x-3 text-red-600">
+          <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center border border-red-200 shrink-0">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Remove Page</h3>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-red-500 font-semibold">Warning</span>
+          </div>
+        </div>
+
+        <!-- Message -->
+        <p id="removePageModalMessage" class="text-xs text-slate-700 leading-relaxed font-medium">
+          Are you sure you want to remove Page 1 from this scan session?
+        </p>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center justify-end space-x-2 pt-2">
+          <button type="button" onclick="cancelRemovePageModal()" class="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer">
+            Cancel
+          </button>
+          <button type="button" id="btnConfirmRemovePage" onclick="proceedRemovePageModal()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer">
+            Remove
+          </button>
         </div>
       </div>
     </div>
@@ -3275,7 +3384,10 @@
       });
     }
 
-    // --- CAMERA CAPTURE LOGIC (Webcam Live Feed & Mobile Camera) ---
+    // --- CONTINUOUS MULTI-PAGE SCANNING & WEBCAM LOGIC ---
+    let multiPagePages = [];
+    let isSubmittingMultiPage = false;
+
     async function openWebcam() {
       if (!currentUser) {
         showUploadLrValidationModal('Please complete OTP validation first.');
@@ -3283,11 +3395,14 @@
         return;
       }
 
+      multiPagePages = [];
+      isSubmittingMultiPage = false;
+      renderMultiPageThumbnails();
+
       const modal = document.getElementById('cameraModal');
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Webcam requires a secure context (HTTPS or localhost). Opening standard device camera/file picker instead.');
-        triggerNativeCameraFallback();
+        showCameraUnavailableFallbackModal('Webcam requires a secure context (HTTPS or localhost) or is not supported in this browser.');
         return;
       }
 
@@ -3297,12 +3412,11 @@
           modal.style.display = 'flex';
         }
         await startWebcamStream();
-        if (window.lucide) lucide.createIcons();
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
       } catch (err) {
         console.warn('getUserMedia direct error:', err);
-        alert('Could not start live webcam: ' + (err.message || 'Camera permission denied or camera in use.') + '\nOpening standard device camera/file picker instead.');
         closeWebcam();
-        triggerNativeCameraFallback();
+        showCameraUnavailableFallbackModal(err.message || 'Camera permission denied or camera in use.');
       }
     }
 
@@ -3381,6 +3495,358 @@
         modal.classList.add('hidden');
         modal.style.display = 'none';
       }
+      closeCamPageZoom();
+      cancelRemovePageModal();
+    }
+
+    function closeWebcamWithConfirm() {
+      if (multiPagePages.length > 0) {
+        if (!confirm(`Discard ${multiPagePages.length} captured page(s) and exit scanner?`)) {
+          return;
+        }
+      }
+      multiPagePages = [];
+      closeWebcam();
+    }
+
+    // Continuous capture: snaps current frame, keeps video feed active, appends to page strip
+    function captureMultiPagePhoto() {
+      const video = document.getElementById('webcamVideo');
+      const canvas = document.getElementById('webcamCanvas');
+      if (!video || !canvas) return;
+
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // Trigger visual shutter flash feedback
+      const flash = document.getElementById('camFlashOverlay');
+      if (flash) {
+        flash.style.opacity = '0.85';
+        setTimeout(() => { flash.style.opacity = '0'; }, 120);
+      }
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        if (blob.size > MAX_FILE_SIZE_BYTES) {
+          const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
+          showFileSizeValidationModal('Captured photo', sizeMb);
+          return;
+        }
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        const newPage = {
+          id: 'page_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          blob: blob,
+          dataUrl: dataUrl,
+          timestamp: Date.now()
+        };
+
+        multiPagePages.push(newPage);
+        renderMultiPageThumbnails();
+
+        // Scroll strip to reveal latest thumbnail
+        const strip = document.getElementById('camPagesStrip');
+        if (strip) {
+          setTimeout(() => { strip.scrollLeft = strip.scrollWidth; }, 60);
+        }
+      }, 'image/jpeg', 0.92);
+    }
+
+    function moveMultiPage(fromIdx, toIdx) {
+      if (toIdx < 0 || toIdx >= multiPagePages.length || fromIdx === toIdx) return;
+      const page = multiPagePages.splice(fromIdx, 1)[0];
+      multiPagePages.splice(toIdx, 0, page);
+      renderMultiPageThumbnails();
+    }
+
+    let pendingDeletePageIndex = -1;
+
+    function deleteMultiPage(idx) {
+      if (idx < 0 || idx >= multiPagePages.length) return;
+      pendingDeletePageIndex = idx;
+      const pageNum = idx + 1;
+      const modal = document.getElementById('removePageConfirmModal');
+      const msg = document.getElementById('removePageModalMessage');
+      if (msg) {
+        msg.innerText = `Are you sure you want to remove Page ${pageNum} from this scan session?`;
+      }
+      if (modal) {
+        modal.classList.remove('hidden');
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
+      }
+    }
+
+    function cancelRemovePageModal() {
+      pendingDeletePageIndex = -1;
+      const modal = document.getElementById('removePageConfirmModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function proceedRemovePageModal() {
+      if (pendingDeletePageIndex >= 0 && pendingDeletePageIndex < multiPagePages.length) {
+        multiPagePages.splice(pendingDeletePageIndex, 1);
+        renderMultiPageThumbnails();
+      }
+      pendingDeletePageIndex = -1;
+      const modal = document.getElementById('removePageConfirmModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function zoomMultiPage(idx) {
+      if (idx < 0 || idx >= multiPagePages.length) return;
+      const modal = document.getElementById('camPageZoomModal');
+      const img = document.getElementById('camZoomImg');
+      const title = document.getElementById('camZoomPageTitle');
+      if (modal && img) {
+        img.src = multiPagePages[idx].dataUrl;
+        if (title) title.innerText = `Page ${idx + 1} of ${multiPagePages.length}`;
+        modal.classList.remove('hidden');
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
+      }
+    }
+
+    function closeCamPageZoom() {
+      const modal = document.getElementById('camPageZoomModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    async function handleMultiPageFileAdd(event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      for (const f of Array.from(files)) {
+        if (f.size > MAX_FILE_SIZE_BYTES) {
+          const sizeMb = (f.size / (1024 * 1024)).toFixed(2);
+          showFileSizeValidationModal(f.name, sizeMb);
+          continue;
+        }
+        const dataUrl = await readFileAsDataURL(f);
+        multiPagePages.push({
+          id: 'page_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          blob: f,
+          dataUrl: dataUrl,
+          timestamp: Date.now()
+        });
+      }
+
+      event.target.value = '';
+      renderMultiPageThumbnails();
+    }
+
+    function renderMultiPageThumbnails() {
+      const count = multiPagePages.length;
+
+      // 1. Update count badge & count text
+      const badge = document.getElementById('camPageCountBadge');
+      if (badge) {
+        badge.innerText = `${count} ${count === 1 ? 'Page' : 'Pages'} Captured`;
+        badge.className = count > 0
+          ? 'text-[10px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-700'
+          : 'text-[10px] font-bold text-sky-400 bg-sky-950 px-2 py-0.5 rounded-full border border-sky-800';
+      }
+
+      const stripCountText = document.getElementById('stripCountText');
+      if (stripCountText) stripCountText.innerText = count.toString();
+
+      // 2. Update Done button
+      const finishBtn = document.getElementById('btnFinishMultiPage');
+      const finishTxt = document.getElementById('finishMultiPageBtnText');
+      if (finishBtn) finishBtn.disabled = (count === 0);
+      if (finishTxt) finishTxt.innerText = `OK / Done (${count})`;
+
+      // 3. Update corner thumbnail badge
+      const cornerBadge = document.getElementById('camLatestThumbBadge');
+      const cornerImg = document.getElementById('camLatestThumbImg');
+      const cornerTxt = document.getElementById('camLatestThumbText');
+      if (cornerBadge && cornerImg && cornerTxt) {
+        if (count > 0) {
+          const latest = multiPagePages[count - 1];
+          cornerImg.src = latest.dataUrl;
+          cornerTxt.innerText = `Page ${count}`;
+          cornerBadge.classList.remove('hidden');
+        } else {
+          cornerBadge.classList.add('hidden');
+        }
+      }
+
+      // 4. Update horizontal thumbnail review strip
+      const strip = document.getElementById('camPagesStrip');
+      if (!strip) return;
+
+      if (count === 0) {
+        strip.innerHTML = `
+          <div id="camStripEmpty" class="w-full text-center py-4 text-xs text-slate-500 italic">
+            No pages captured yet. Tap "Add Page" below to capture your first photo.
+          </div>
+        `;
+        return;
+      }
+
+      strip.innerHTML = multiPagePages.map((page, idx) => `
+        <div class="relative shrink-0 bg-slate-900 border border-slate-700 rounded-lg p-1 w-20 flex flex-col items-center group shadow-sm">
+          <div class="relative w-full h-16 rounded overflow-hidden bg-black cursor-pointer" onclick="zoomMultiPage(${idx})" title="Click to view full image">
+            <img src="${page.dataUrl}" alt="Page ${idx + 1}" class="w-full h-full object-cover" />
+            <span class="absolute bottom-0 inset-x-0 bg-black/80 text-[9px] font-bold text-white text-center py-0.5">P${idx + 1}</span>
+          </div>
+          <div class="flex items-center justify-between w-full mt-1 px-0.5">
+            <button type="button" onclick="moveMultiPage(${idx}, ${idx - 1})" ${idx === 0 ? 'disabled' : ''} class="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer" title="Move Left">
+              <i data-lucide="chevron-left" class="w-3 h-3"></i>
+            </button>
+            <button type="button" onclick="deleteMultiPage(${idx})" class="p-0.5 text-rose-400 hover:text-rose-300 cursor-pointer" title="Delete Page">
+              <i data-lucide="trash-2" class="w-3 h-3"></i>
+            </button>
+            <button type="button" onclick="moveMultiPage(${idx}, ${idx + 1})" ${idx === count - 1 ? 'disabled' : ''} class="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer" title="Move Right">
+              <i data-lucide="chevron-right" class="w-3 h-3"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+    }
+
+    // Assembles multiple captured images in order into a single valid multi-page PDF blob
+    async function assembleImagesToPdfBlob(pages) {
+      if (!pages || pages.length === 0) return null;
+
+      // 1. Try client-side PDFLib if loaded
+      if (window.PDFLib && window.PDFLib.PDFDocument) {
+        try {
+          const pdfDoc = await window.PDFLib.PDFDocument.create();
+          for (const p of pages) {
+            const arrayBuf = await p.blob.arrayBuffer();
+            let embeddedImg;
+            if (p.blob.type === 'image/png' || (p.dataUrl && p.dataUrl.startsWith('data:image/png'))) {
+              embeddedImg = await pdfDoc.embedPng(arrayBuf);
+            } else {
+              embeddedImg = await pdfDoc.embedJpg(arrayBuf);
+            }
+            const pdfPage = pdfDoc.addPage([embeddedImg.width, embeddedImg.height]);
+            pdfPage.drawImage(embeddedImg, {
+              x: 0,
+              y: 0,
+              width: embeddedImg.width,
+              height: embeddedImg.height,
+            });
+          }
+          const pdfBytes = await pdfDoc.save();
+          return new Blob([pdfBytes], { type: 'application/pdf' });
+        } catch (clientErr) {
+          console.warn('[PDF Assembly] Client-side PDFLib notice, using backend assembly:', clientErr);
+        }
+      }
+
+      // 2. Server-side PyMuPDF assembly fallback (/api/assemble-pdf)
+      const formData = new FormData();
+      pages.forEach((p, idx) => {
+        formData.append('files', p.blob, `page_${idx + 1}.jpg`);
+      });
+
+      const resp = await fetch('/api/assemble-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        throw new Error('Server PDF assembly failed: ' + resp.statusText);
+      }
+
+      return await resp.blob();
+    }
+
+    // Automatically combines pages into one multi-page PDF and initiates single LR OCR pipeline
+    async function finishMultiPageScan() {
+      if (multiPagePages.length === 0) return;
+      if (isSubmittingMultiPage) return;
+
+      isSubmittingMultiPage = true;
+      const finishBtn = document.getElementById('btnFinishMultiPage');
+      const finishTxt = document.getElementById('finishMultiPageBtnText');
+      if (finishBtn) finishBtn.disabled = true;
+      if (finishTxt) finishTxt.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin inline mr-1"></i>Assembling PDF...`;
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+
+      try {
+        const pagesToAssemble = [...multiPagePages];
+        const pdfBlob = await assembleImagesToPdfBlob(pagesToAssemble);
+        if (!pdfBlob) {
+          throw new Error('Could not generate multi-page PDF from captured photos.');
+        }
+
+        const timestampStr = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        const pdfFilename = `LR_Scan_${timestampStr}.pdf`;
+        const assembledPdfFile = new File([pdfBlob], pdfFilename, { type: 'application/pdf' });
+
+        // Close camera feed and modal
+        closeWebcam();
+        multiPagePages = [];
+
+        // Upload as ONE document dossier for single LR extraction
+        await handleSelectedFiles([assembledPdfFile]);
+
+      } catch (err) {
+        console.error('[MultiPageScan] Submission error:', err);
+        alert('Failed to process multi-page LR: ' + (err.message || err));
+        if (finishBtn) finishBtn.disabled = false;
+        if (finishTxt) finishTxt.innerText = `OK / Done (${multiPagePages.length})`;
+      } finally {
+        isSubmittingMultiPage = false;
+      }
+    }
+
+    // Camera Fallback & Multiple Photo Selection from Device
+    function showCameraUnavailableFallbackModal(reason) {
+      showAppInfoModal({
+        title: 'Camera Access Unavailable',
+        subtitle: 'Camera Notice',
+        message: `${reason}\n\nYou can select multiple photo pages directly from your device to combine and scan as one multi-page LR.`,
+        iconType: 'warning',
+        primaryBtnText: 'Select Photos',
+        onPrimary: () => {
+          const input = document.getElementById('multiImageFallbackInput');
+          if (input) input.click();
+        }
+      });
+    }
+
+    async function handleFallbackMultiFiles(event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      multiPagePages = [];
+      for (const f of Array.from(files)) {
+        if (f.size > MAX_FILE_SIZE_BYTES) {
+          const sizeMb = (f.size / (1024 * 1024)).toFixed(2);
+          showFileSizeValidationModal(f.name, sizeMb);
+          continue;
+        }
+        const dataUrl = await readFileAsDataURL(f);
+        multiPagePages.push({
+          id: 'page_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          blob: f,
+          dataUrl: dataUrl,
+          timestamp: Date.now()
+        });
+      }
+      event.target.value = '';
+
+      if (multiPagePages.length === 0) return;
+
+      // Open review panel so user can review/reorder pages before single submission
+      const modal = document.getElementById('cameraModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      }
+      const tip = document.getElementById('camLiveTip');
+      if (tip) tip.innerText = 'Device Photos Loaded • Review, reorder, or add more pages';
+      renderMultiPageThumbnails();
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
     }
 
     function triggerNativeCameraFallback() {
@@ -3401,34 +3867,6 @@
         handleSelectedFiles([camFile]);
       }
       event.target.value = '';
-    }
-
-    function snapWebcamPhoto() {
-      const video = document.getElementById('webcamVideo');
-      const canvas = document.getElementById('webcamCanvas');
-      if (!video || !canvas) return;
-
-      const w = video.videoWidth || 1280;
-      const h = video.videoHeight || 720;
-      canvas.width = w;
-      canvas.height = h;
-
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, w, h);
-
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        if (blob.size > MAX_FILE_SIZE_BYTES) {
-          const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
-          showFileSizeValidationModal('Captured snapshot', sizeMb);
-          closeWebcam();
-          return;
-        }
-        const filename = `Captured_LR_${Date.now()}.jpg`;
-        const capturedFile = new File([blob], filename, { type: 'image/jpeg' });
-        closeWebcam();
-        handleSelectedFiles([capturedFile]);
-      }, 'image/jpeg', 0.95);
     }
 
     // Notification helper functions for OCR Fallback (Points 2 & 3)
@@ -6265,21 +6703,21 @@
     function updateBatchBadge() {
       const badge = document.getElementById('queueCountBadge');
       const badgeText = document.getElementById('queueBadgeText');
+      const verifiedCount = verifiedBatch.filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified).length;
       if (badge && badgeText) {
-        if (verifiedBatch.length > 0) {
+        if (verifiedCount > 0) {
           badge.classList.remove('hidden');
           badge.classList.add('inline-flex');
-          badgeText.innerText = `${verifiedBatch.length} in Batch`;
+          badgeText.innerText = `${verifiedCount} Verified`;
         } else {
           badge.classList.add('hidden');
         }
       }
 
       const pBtn = document.getElementById('previewExcelBtnText');
-      if (pBtn) pBtn.innerText = `Preview Excel (${verifiedBatch.length} LRs)`;
-      const vCount = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified).length;
+      if (pBtn) pBtn.innerText = `Preview Excel (${verifiedCount} LRs)`;
       const dBtn = document.getElementById('directDownloadExcelBtnText');
-      if (dBtn) dBtn.innerText = `Download Excel (${vCount} LRs)`;
+      if (dBtn) dBtn.innerText = `Download Excel (${verifiedCount} LRs)`;
       if (typeof updateExportButtonsVerificationState === 'function') {
         updateExportButtonsVerificationState();
       }
@@ -6319,6 +6757,9 @@
       if (!dl) return;
       const customers = new Set();
       verifiedBatch.forEach(item => {
+        if (!item || isDummyLRItem(item)) return;
+        const statusObj = getLrMandatoryStatus(item);
+        if (!statusObj.isVerified) return;
         const d = item.data || {};
         const c = d['Customer Name *'] || d['Customer Name'] || d['cngr *'] || d['cngr'];
         if (c && typeof c === 'string' && c.trim()) customers.add(c.trim());
@@ -6408,22 +6849,7 @@
         dBtn.title = 'Download Verified LRs (.xlsx)';
       }
 
-      const totalCount = verifiedBatch.length;
-      if (totalCount === 0) {
-        if (s8Btn) {
-          s8Btn.disabled = true;
-          s8Btn.classList.add('opacity-50', 'cursor-not-allowed');
-          s8Btn.title = 'No LR data to generate';
-        }
-        if (btn) {
-          btn.disabled = true;
-          btn.classList.add('opacity-50', 'cursor-not-allowed');
-          btn.title = 'No LR data to generate';
-        }
-        return;
-      }
-
-      const verifiedCount = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified).length;
+      const verifiedCount = verifiedBatch.filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified).length;
       if (verifiedCount === 0) {
         const tooltip = 'No verified LRs available for download. Fill all mandatory (*) fields first.';
         if (s8Btn) {
@@ -6482,11 +6908,21 @@
       const tbody = document.getElementById('batchTableBody');
       if (!tbody) return;
 
-      if (verifiedBatch.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 3}" class="py-8 text-center text-slate-400 text-sm">No verified bilties in current batch. Click "Add More LR" to upload.</td></tr>`;
+      // Filter verified-only items for display in the LR List
+      const verifiedOnlyBatch = [];
+      verifiedBatch.forEach((item, origIdx) => {
+        if (!item || isDummyLRItem(item)) return;
+        const statusObj = getLrMandatoryStatus(item);
+        if (statusObj.isVerified) {
+          verifiedOnlyBatch.push({ item, origIdx });
+        }
+      });
+
+      if (verifiedOnlyBatch.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 3}" class="py-8 text-center text-slate-400 text-sm">No verified bilties in current batch. Click "Add More LR" to upload and verify records.</td></tr>`;
         const badge = document.getElementById('filterStatsBadge');
         if (badge) {
-          badge.innerText = 'Total: 0 LR';
+          badge.innerText = 'Total: 0 Verified LR';
           badge.className = 'text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap';
         }
         updateExportButtonsVerificationState();
@@ -6508,7 +6944,7 @@
       const hasActiveFilters = Boolean(q || custVal || vehVal || fromD || toD);
 
       const filteredList = [];
-      verifiedBatch.forEach((item, origIdx) => {
+      verifiedOnlyBatch.forEach(({ item, origIdx }) => {
         const d = item.data || {};
 
         // 1. Text Search Filter across all 49 export columns and metadata
@@ -6564,18 +7000,18 @@
       // Update Filter Badge
       const badge = document.getElementById('filterStatsBadge');
       if (badge) {
-        const totalCount = verifiedBatch.length;
+        const totalCount = verifiedOnlyBatch.length;
         if (hasActiveFilters) {
-          badge.innerText = `Showing ${filteredList.length} of ${totalCount} LRs`;
+          badge.innerText = `Showing ${filteredList.length} of ${totalCount} Verified LRs`;
           badge.className = 'text-[11px] font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 whitespace-nowrap';
         } else {
-          badge.innerText = `Total: ${totalCount} ${totalCount === 1 ? 'LR' : 'LRs'}`;
+          badge.innerText = `Total: ${totalCount} Verified ${totalCount === 1 ? 'LR' : 'LRs'}`;
           badge.className = 'text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 whitespace-nowrap';
         }
       }
 
       if (filteredList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 3}" class="py-8 text-center text-slate-400 text-sm">No matching LR records found for the selected filters. <button onclick="resetBatchFilters()" class="text-sky-600 underline font-semibold ml-1 cursor-pointer">Reset Filters</button></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${BNF_49_COLUMNS.length + 3}" class="py-8 text-center text-slate-400 text-sm">No matching verified LR records found for the selected filters. <button onclick="resetBatchFilters()" class="text-sky-600 underline font-semibold ml-1 cursor-pointer">Reset Filters</button></td></tr>`;
         updateExportButtonsVerificationState();
         return;
       }
@@ -6584,10 +7020,7 @@
         const d = item.data || {};
         const isFallback = item.ocrEngine === 'ml_fallback';
 
-        const statusObj = getLrMandatoryStatus(item);
-        const statusBadge = statusObj.isVerified
-          ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="All mandatory (*) fields are filled"><i data-lucide="check-circle-2" class="w-3 h-3 mr-1 text-emerald-600 inline"></i>Verified</span>`
-          : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 cursor-help" title="Missing mandatory fields: ${statusObj.missingFields.join(', ')}"><i data-lucide="alert-circle" class="w-3 h-3 mr-1 text-amber-600 inline"></i>Unverified</span>`;
+        const statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="All mandatory (*) fields are filled"><i data-lucide="check-circle-2" class="w-3 h-3 mr-1 text-emerald-600 inline"></i>Verified</span>`;
 
         const dataCells = BNF_49_COLUMNS.map(colKey => {
           let val = getBnfFieldValue(d, colKey);
@@ -6616,7 +7049,7 @@
                 <button onclick="viewBatchItem(${origIdx})" class="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition cursor-pointer" title="View / Edit LR">
                   <i data-lucide="edit-3" class="w-4 h-4"></i>
                 </button>
-                <button onclick="deleteBatchItem(${origIdx}, '${(item.id || '').replace(/'/g, "\\'")}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer" title="Delete">
+                <button onclick="deleteBatchItem(${origIdx}, '${(item.id || '').replace(/'/g, "\'")}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer" title="Delete">
                   <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
               </div>
@@ -7076,7 +7509,8 @@
       const countEl = document.getElementById('excelPreviewRecordCount');
       if (!modal) return;
 
-      const count = verifiedBatch.length;
+      const verifiedOnly = verifiedBatch.filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified);
+      const count = verifiedOnly.length;
       if (countEl) countEl.innerText = `${count} ${count === 1 ? 'record' : 'records'}`;
 
       // Default column widths: standard ~130px, names/descriptions ~170px
@@ -7137,12 +7571,12 @@
             <tr>
               <td class="w-10 min-w-[40px] max-w-[40px] sticky left-0 z-10 bg-[#f8fafc] border-r border-b border-[#e5e7eb] text-center font-mono text-[10px] text-slate-400 py-6">2</td>
               <td colspan="${BNF_49_COLUMNS.length}" class="py-12 text-center text-slate-400 text-sm font-sans border-b border-[#e5e7eb]">
-                No LR records in the current batch. Click "Add More LR" to upload and verify records.
+                No verified LR records in the current batch. Click "Add More LR" to upload and verify records.
               </td>
             </tr>
           `;
         } else {
-          tbody.innerHTML = verifiedBatch.map((item, rowIdx) => {
+          tbody.innerHTML = verifiedOnly.map((item, rowIdx) => {
             const rowNumber = rowIdx + 2; // Row 1 is headers, data starts at Row 2
             const d = item.data || {};
             const isFallback = item.ocrEngine === 'ml_fallback';

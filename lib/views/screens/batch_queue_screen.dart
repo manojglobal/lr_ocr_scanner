@@ -18,6 +18,7 @@ import '../widgets/ocr_processing_dialog.dart';
 
 import '../widgets/step_indicator_bar.dart';
 
+import 'camera_scan_screen.dart';
 import 'edit_bilty_screen.dart';
 
 import 'excel_preview_screen.dart';
@@ -270,19 +271,33 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                 onTap: () async {
                   Navigator.of(ctx).pop();
 
-                  showDialog<void>(
-                    context: context,
+                  final hasPerm = await widget.controller.permissionService.requestCameraPermission();
+                  if (!hasPerm) return;
 
-                    barrierDismissible: false,
-
-                    builder: (_) =>
-                        OcrProcessingDialog(controller: widget.controller),
+                  if (!mounted) return;
+                  final List<String>? capturedPages = await Navigator.of(context).push<List<String>>(
+                    MaterialPageRoute(
+                      builder: (_) => const CameraScanScreen(),
+                    ),
                   );
 
-                  await widget.controller.addFromCamera();
+                  if (capturedPages == null || capturedPages.isEmpty) return;
 
-                  if (mounted && Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
+                  if (mounted) {
+                    showDialog<void>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) =>
+                          OcrProcessingDialog(controller: widget.controller),
+                    );
+                  }
+
+                  try {
+                    await widget.controller.addMultiPageScan(capturedPages);
+                  } finally {
+                    if (mounted && Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
                   }
                 },
               ),
