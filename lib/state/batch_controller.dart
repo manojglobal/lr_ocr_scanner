@@ -77,6 +77,7 @@ class BatchProcessingController extends ChangeNotifier {
   String? _fallbackNoticeMessage;
   bool _duplicateNoticePending = false;
   String? _duplicateNoticeMessage;
+  List<Map<String, dynamic>> _previousUploadsCache = [];
 
   int _currentOcrStep = 1;
   String _currentProcessingFileName = '';
@@ -86,6 +87,7 @@ class BatchProcessingController extends ChangeNotifier {
   // Getters
   List<BatchItem> get items => List.unmodifiable(_items);
   List<BatchItem> get deletedItems => List.unmodifiable(_deletedItems);
+  List<Map<String, dynamic>> get previousUploadsCache => List.unmodifiable(_previousUploadsCache);
   bool get isProcessing => _isProcessing;
   bool get useGeminiBackend => _useGeminiBackend;
   bool get fallbackNotificationPending => _fallbackNotificationPending;
@@ -113,6 +115,10 @@ class BatchProcessingController extends ChangeNotifier {
     _duplicateNoticePending = false;
     _duplicateNoticeMessage = null;
     notifyListeners();
+  }
+
+  void setPreviousUploadsCache(List<Map<String, dynamic>> list) {
+    _previousUploadsCache = List<Map<String, dynamic>>.from(list);
   }
 
   /// Computes a SHA-256 hash string for an image file.
@@ -171,11 +177,12 @@ class BatchProcessingController extends ChangeNotifier {
   }
 
   /// Checks whether a given LR number, image hash, or core details already exists
-  /// in the active batch items.
+  /// in the active batch items or previously uploaded LRs.
   bool isDuplicate({
     String? lrNo,
     String? imagePath,
     String? imageHash,
+    String? fileName,
     Map<String, String>? record,
     String? excludeItemId,
   }) {
@@ -185,11 +192,15 @@ class BatchProcessingController extends ChangeNotifier {
     // 2. Resolve candidate image hash
     final candidateHash = imageHash ?? (imagePath != null ? computeImageHash(imagePath) : '');
 
-    // 3. Extract core composite fields
+    // 3. Resolve candidate file name
+    final candidateFileName = (fileName ?? (imagePath != null ? imagePath.split(RegExp(r'[/\\]')).last : '')).toLowerCase();
+
+    // 4. Extract core composite fields
     final candidateCust = (record?['Customer Name *'] ?? record?['cngr *'] ?? '').trim().toLowerCase();
     final candidateCnge = (record?['cnge *'] ?? '').trim().toLowerCase();
     final candidateVeh = (record?['Vehicle No *'] ?? '').trim().replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
 
+    // A. Check active batch items
     for (final item in _items) {
       if (item.isDeleted) continue;
       if (excludeItemId != null && item.id == excludeItemId) continue;
@@ -210,7 +221,19 @@ class BatchProcessingController extends ChangeNotifier {
         }
       }
 
-      // Tier 3: Core composite details (fallback if LR No is missing)
+      // Tier 3: Check identical file name or path
+      if (candidateFileName.isNotEmpty && !candidateFileName.startsWith('image_picker') && !candidateFileName.startsWith('scaled_')) {
+        final existingFn = item.fileName.toLowerCase();
+        final existingSaved = (item.record['saved_filename'] ?? '').toLowerCase();
+        if (existingFn == candidateFileName || (existingSaved.isNotEmpty && existingSaved == candidateFileName)) {
+          return true;
+        }
+      }
+      if (imagePath != null && imagePath.isNotEmpty && item.imagePath == imagePath) {
+        return true;
+      }
+
+      // Tier 4: Core composite details (fallback if LR No is missing)
       if (candidateLr.isEmpty && candidateCust.isNotEmpty && candidateCnge.isNotEmpty) {
         final itemCust = (item.record['Customer Name *'] ?? item.record['cngr *'] ?? '').trim().toLowerCase();
         final itemCnge = (item.record['cnge *'] ?? '').trim().toLowerCase();
@@ -221,6 +244,41 @@ class BatchProcessingController extends ChangeNotifier {
         bool vehMatch = candidateVeh.isNotEmpty && itemVeh.isNotEmpty && candidateVeh == itemVeh;
 
         if (custMatch && cngeMatch && (vehMatch || candidateVeh.isEmpty)) {
+          return true;
+        }
+      }
+    }
+
+    // B. Check previous uploads cache (so duplicate documents are caught on FIRST upload attempt)
+    for (final prev in _previousUploadsCache) {
+      if (excludeItemId != null && prev['id'] == excludeItemId) continue;
+
+      // Tier 1: Check LR number
+      if (candidateLr.isNotEmpty) {
+        final prevLr = normalizeLrNo((prev['lrNo'] ?? prev['lr_no'] ?? prev['grno'] ?? (prev['record'] is Map ? (prev['record']['LR No *'] ?? prev['record']['grno'] ?? '') : '')).toString());
+        if (prevLr.isNotEmpty && prevLr == candidateLr) {
+          return true;
+        }
+      }
+
+      // Tier 2: Check file name / saved filename / basename
+      if (candidateFileName.isNotEmpty && !candidateFileName.startsWith('image_picker') && !candidateFileName.startsWith('scaled_')) {
+        final prevFn = (prev['fileName'] ?? prev['filename'] ?? '').toString().toLowerCase();
+        final prevSaved = (prev['saved_filename'] ?? (prev['record'] is Map ? prev['record']['saved_filename'] : '') ?? '').toString().toLowerCase();
+        final prevPath = (prev['imagePath'] ?? prev['file_path'] ?? '').toString();
+        final prevBase = prevPath.isNotEmpty ? prevPath.split(RegExp(r'[/\\]')).last.toLowerCase() : '';
+        if (prevFn.isNotEmpty && (prevFn == candidateFileName || (prevSaved.isNotEmpty && prevSaved == candidateFileName))) {
+          return true;
+        }
+        if (prevBase.isNotEmpty && !prevBase.startsWith('image_picker') && !prevBase.startsWith('scaled_') && prevBase == candidateFileName) {
+          return true;
+        }
+      }
+
+      // Tier 3: Check image path
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final prevPath = (prev['imagePath'] ?? prev['file_path'] ?? '').toString();
+        if (prevPath.isNotEmpty && prevPath == imagePath) {
           return true;
         }
       }
@@ -245,6 +303,13 @@ class BatchProcessingController extends ChangeNotifier {
       final mob = prefs.getString('bnf_user_mobile');
       final name = prefs.getString('bnf_user_name');
       final token = prefs.getString('bnf_session_token');
+      final recentRaw = prefs.getString('bnf_recent_uploaded_lrs');
+      if (recentRaw != null && recentRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(recentRaw) as List<dynamic>;
+          _previousUploadsCache = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        } catch (_) {}
+      }
       if (mob != null && mob.trim().isNotEmpty) {
         _activeUserMobile = mob.trim();
         _activeUserName = name ?? _activeUserName;
@@ -285,6 +350,8 @@ class BatchProcessingController extends ChangeNotifier {
         // 2. Cache uploaded LRs from cloud into local SharedPreferences for instant HomeScreen parity
         final prefs = await SharedPreferences.getInstance();
         if (cloudData['uploaded_lrs'] is List && (cloudData['uploaded_lrs'] as List).isNotEmpty) {
+          final cloudUploads = (cloudData['uploaded_lrs'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          _previousUploadsCache = cloudUploads;
           await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cloudData['uploaded_lrs']));
         }
 
@@ -306,6 +373,7 @@ class BatchProcessingController extends ChangeNotifier {
         sessionToken: _activeSessionToken,
       );
       if (uploads.isNotEmpty) {
+        _previousUploadsCache = List<Map<String, dynamic>>.from(uploads);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(uploads));
       }
@@ -602,11 +670,11 @@ class BatchProcessingController extends ChangeNotifier {
 
   bool _addItemFromPath(String path) {
     final imageHash = computeImageHash(path);
-    if (isDuplicate(imagePath: path, imageHash: imageHash)) {
+    final fileName = path.split(RegExp(r'[/\\]')).last;
+    if (isDuplicate(imagePath: path, imageHash: imageHash, fileName: fileName)) {
       triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
       return false;
     }
-    final fileName = path.split(RegExp(r'[/\\]')).last;
     final file = File(path);
     if (file.existsSync() && file.lengthSync() > 10 * 1024 * 1024) {
       final sizeMb = (file.lengthSync() / (1024 * 1024)).toStringAsFixed(2);
@@ -733,6 +801,7 @@ class BatchProcessingController extends ChangeNotifier {
           if (isDuplicate(
             record: parseResult.data,
             imageHash: item.imageHash,
+            fileName: item.fileName,
             excludeItemId: item.id,
           )) {
             debugPrint('Duplicate LR detected post-OCR for item ${item.id}. Rejecting.');

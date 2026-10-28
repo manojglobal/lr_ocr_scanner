@@ -68,6 +68,8 @@ class _OcrToExcelAppState extends State<OcrToExcelApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF1565C0), // Deep Royal Blue
           brightness: Brightness.light,
@@ -75,22 +77,18 @@ class _OcrToExcelAppState extends State<OcrToExcelApp> {
         appBarTheme: const AppBarTheme(
           centerTitle: false,
           elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF0F172A),
         ),
         cardTheme: CardThemeData(
           elevation: 1,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
       ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1565C0),
-          brightness: Brightness.dark,
-        ),
-      ),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
       home: LoginScreen(controller: _controller),
     );
   }

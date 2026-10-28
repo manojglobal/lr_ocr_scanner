@@ -86,30 +86,63 @@ class LrPreviewScreen extends StatelessWidget {
           'LR Preview',
           style: TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.image_outlined, color: brandBlue),
-            tooltip: 'View LR Image',
-            onPressed: () {
-              final idx = controller.items.indexWhere((i) => i.id == item.id);
-              BillingImageViewer.show(
-                context,
-                items: controller.items.isNotEmpty ? controller.items : [item],
-                initialIndex: idx >= 0 ? idx : 0,
-                controller: controller,
-              );
-            },
+        actions: const [],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            child: Row(
+              children: [
+                Tooltip(
+                  message: 'View LR Image',
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: brandBlue,
+                      backgroundColor: const Color(0xFFF0F9FF),
+                      side: const BorderSide(color: Color(0xFFBAE6FD)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      minimumSize: const Size(0, 30),
+                    ),
+                    icon: const Icon(Icons.image_outlined, size: 14),
+                    label: const Text('View LR Image', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      final idx = controller.items.indexWhere((i) => i.id == item.id);
+                      BillingImageViewer.show(
+                        context,
+                        items: controller.items.isNotEmpty ? controller.items : [item],
+                        initialIndex: idx >= 0 ? idx : 0,
+                        controller: controller,
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Share Voucher',
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: brandBlue,
+                      backgroundColor: const Color(0xFFF0F9FF),
+                      side: const BorderSide(color: Color(0xFFBAE6FD)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      minimumSize: const Size(0, 30),
+                    ),
+                    icon: const Icon(Icons.share_outlined, size: 14),
+                    label: const Text('Share Voucher', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Voucher ready for export and sharing.')),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.share_outlined, color: brandBlue),
-            tooltip: 'Share Voucher',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Voucher ready for export and sharing.')),
-              );
-            },
-          ),
-        ],
+        ),
       ),
       body: SafeArea(
         child: Column(

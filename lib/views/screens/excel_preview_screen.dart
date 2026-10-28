@@ -465,112 +465,53 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        titleSpacing: 8,
+        titleSpacing: 14,
         title: Text(_activeSheetIndex == 1 ? 'History' : 'Excel Preview', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        actions: [
-          // History Button in Top Navbar
-          OutlinedButton.icon(
-            key: const Key('navbar_history_btn'),
-            onPressed: () {
-              setState(() {
-                _activeSheetIndex = 1;
-              });
-            },
-            icon: Icon(
-              Icons.history_outlined,
-              size: 15,
-              color: _activeSheetIndex == 1 ? Colors.white : const Color(0xFF0284C7),
-            ),
-            label: Text(
-              'History',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: _activeSheetIndex == 1 ? Colors.white : const Color(0xFF334155),
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              backgroundColor: _activeSheetIndex == 1 ? const Color(0xFF0284C7) : const Color(0xFFF1F5F9),
-              side: BorderSide(
-                color: _activeSheetIndex == 1 ? const Color(0xFF0284C7) : const Color(0xFFCBD5E1),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-              minimumSize: const Size(0, 30),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
-          const SizedBox(width: 6),
-
-          // User Profile Section [Ruchita Patel • +91 XXXXXXXX]
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.check_circle_outline, size: 13, color: Color(0xFF16A34A)),
-                const SizedBox(width: 4),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 80),
-                  child: Text(
-                    _userName,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF334155)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
+        actions: const [],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Sheet Tabs Switcher (Old History tab removed from here to eliminate duplication)
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-            ),
-            child: Row(
-              children: [
-                FilledButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _activeSheetIndex = 0;
-                    });
-                  },
-                  icon: const Icon(Icons.table_view_outlined, size: 15),
-                  label: const Text(
-                    'Sheet 1: BNF Import Format (49 Columns)',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          // Sheet Tabs Switcher (Only visible in Excel Preview section, removed from History section)
+          if (_activeSheetIndex == 0)
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  FilledButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _activeSheetIndex = 0;
+                      });
+                    },
+                    icon: const Icon(Icons.table_view_outlined, size: 15),
+                    label: const Text(
+                      'Sheet 1: BNF Import Format (49 Columns)',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0284C7),
+                      foregroundColor: Colors.white,
+                      elevation: 1,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _activeSheetIndex == 0 ? const Color(0xFF0284C7) : const Color(0xFFF1F5F9),
-                    foregroundColor: _activeSheetIndex == 0 ? Colors.white : const Color(0xFF475569),
-                    elevation: _activeSheetIndex == 0 ? 1 : 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  const Spacer(),
+                  Chip(
+                    label: Text('${items.length} LRs', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    backgroundColor: const Color(0xFFE0F2FE),
+                    side: BorderSide.none,
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
                   ),
-                ),
-                const Spacer(),
-                Chip(
-                  label: Text('${items.length} LRs', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                  backgroundColor: const Color(0xFFE0F2FE),
-                  side: BorderSide.none,
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
           Expanded(
             child: _activeSheetIndex == 0

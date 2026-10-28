@@ -19,6 +19,7 @@ class EditBiltyScreen extends StatefulWidget {
   final BatchItem item;
   final BatchProcessingController controller;
   final int initialTab;
+  final String? initialTargetField;
   final VoidCallback? onVerified;
 
   const EditBiltyScreen({
@@ -26,6 +27,7 @@ class EditBiltyScreen extends StatefulWidget {
     required this.item,
     required this.controller,
     this.initialTab = 0,
+    this.initialTargetField,
     this.onVerified,
   });
 
@@ -36,6 +38,8 @@ class EditBiltyScreen extends StatefulWidget {
 class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final Map<String, TextEditingController> _fieldControllers = {};
+  final Map<String, FocusNode> _fieldFocusNodes = {};
+  final Map<String, GlobalKey> _fieldGlobalKeys = {};
   late BatchItem _currentItem;
 
   // 4 Tabs matching Web Version
@@ -93,8 +97,16 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         if (val.isEmpty || val == '0') val = '0.00';
       }
       _fieldControllers[key] = TextEditingController(text: val);
+      _fieldFocusNodes[key] = FocusNode();
+      _fieldGlobalKeys[key] = GlobalKey();
       _fieldControllers[key]!.addListener(() {
         if (mounted) setState(() {});
+      });
+    }
+
+    if (widget.initialTargetField != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToAndFocusField(widget.initialTargetField!);
       });
     }
 
@@ -114,7 +126,29 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     for (final c in _fieldControllers.values) {
       c.dispose();
     }
+    for (final f in _fieldFocusNodes.values) {
+      f.dispose();
+    }
     super.dispose();
+  }
+
+  void _scrollToAndFocusField(String key) {
+    final tabIndex = _getTabIndexForKey(key);
+    if (_tabController.index != tabIndex) {
+      _tabController.animateTo(tabIndex);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final gKey = _fieldGlobalKeys[key];
+      if (gKey?.currentContext != null) {
+        Scrollable.ensureVisible(
+          gKey!.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          alignment: 0.2,
+        );
+      }
+      _fieldFocusNodes[key]?.requestFocus();
+    });
   }
 
   void _openImageViewer() {
@@ -204,6 +238,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     return 4;
   }
 
+  // ignore: unused_element
   List<Map<String, String>> _getMissingMandatoryDetails() {
     final missing = <Map<String, String>>[];
     for (final key in BatchItem.mandatoryKeys) {
@@ -221,6 +256,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     return missing;
   }
 
+  // ignore: unused_element
   void _showMandatoryIncompleteModal(List<Map<String, String>> missing) {
     showDialog<void>(
       context: context,
@@ -255,32 +291,45 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                   itemCount: missing.length,
                   itemBuilder: (context, idx) {
                     final item = missing[idx];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${idx + 1}. ',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
-                          ),
-                          Expanded(
-                            child: RichText(
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: item['label'],
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                                  ),
-                                  TextSpan(
-                                    text: ' (${item['tab']})',
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                  ),
-                                ],
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        final tabIndex = int.tryParse(item['tabIndex'] ?? '0') ?? 0;
+                        final k = item['key'];
+                        _tabController.animateTo(tabIndex);
+                        if (k != null) {
+                          _scrollToAndFocusField(k);
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${idx + 1}. ',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                            ),
+                            Expanded(
+                              child: RichText(
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: item['label'],
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                    ),
+                                    TextSpan(
+                                      text: ' (${item['tab']})',
+                                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                            const Icon(Icons.chevron_right, size: 16, color: Color(0xFF64748B)),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -294,7 +343,11 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
             onPressed: () {
               Navigator.of(ctx).pop();
               final firstTab = int.tryParse(missing.first['tabIndex'] ?? '0') ?? 0;
+              final firstKey = missing.first['key'];
               _tabController.animateTo(firstTab);
+              if (firstKey != null) {
+                _scrollToAndFocusField(firstKey);
+              }
             },
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF0284C7),
@@ -321,14 +374,14 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     );
   }
 
-  void _handleNextAction() {
+  Future<void> _handleNextAction() async {
     final updatedItem = _collectUpdatedItem();
     widget.controller.updateItem(updatedItem);
     if (_tabController.index < 3) {
       _tabController.animateTo(_tabController.index + 1);
     } else {
       // Advance to Screen 4b: Customization & Driver Details (Master Data) matching Web workflow
-      Navigator.of(context).push(
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
         MaterialPageRoute(
           builder: (_) => CustomizationDriverScreen(
             item: updatedItem,
@@ -336,9 +389,29 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
           ),
         ),
       );
+      if (result != null && mounted) {
+        final tabIndex = result['tabIndex'] as int? ?? 0;
+        final targetKey = result['targetKey'] as String?;
+        final label = result['label'] as String? ?? '';
+        _tabController.animateTo(tabIndex);
+        if (targetKey != null) {
+          _scrollToAndFocusField(targetKey);
+        }
+        if (label.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Please enter mandatory field: $label'),
+              backgroundColor: const Color(0xFFDC2626),
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
     }
   }
 
+  // ignore: unused_element
   void _proceedToDriverDetails() {
     _collectUpdatedItem();
     _tabController.animateTo(3);
@@ -379,67 +452,59 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.image_outlined, color: brandBlue),
-            tooltip: 'View LR Image',
-            onPressed: _openImageViewer,
-          ),
-          IconButton(
-            icon: const Icon(Icons.local_shipping_outlined, color: brandBlue),
-            tooltip: 'Driver Details',
-            onPressed: _proceedToDriverDetails,
-          ),
-          IconButton(
-            icon: const Icon(Icons.list_alt, color: brandNavy),
-            tooltip: 'LR List',
-            onPressed: () {
-              final updatedItem = _collectUpdatedItem();
-              widget.controller.updateItem(updatedItem);
-              final missing = _getMissingMandatoryDetails();
-              if (missing.isNotEmpty) {
-                _showMandatoryIncompleteModal(missing);
-              } else {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => BatchQueueScreen(controller: widget.controller),
-                  ),
-                );
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.history_outlined, color: brandNavy),
-            tooltip: 'History',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 1),
-                ),
-              );
-            },
-          ),
-        ],
+        actions: const [],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Container(
-            color: Colors.white,
-            child: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              labelColor: brandBlue,
-              unselectedLabelColor: const Color(0xFF64748B),
-              indicatorColor: brandBlue,
-              indicatorWeight: 3,
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-              tabs: const [
-                Tab(text: 'Basic Details'),
-                Tab(text: 'Consignor / Consignee'),
-                Tab(text: 'Cargo Details'),
-                Tab(text: 'Other Details'),
-              ],
-            ),
+          preferredSize: const Size.fromHeight(88),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Operation / Action buttons placed directly below page title
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 1),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.history_outlined, size: 14, color: brandNavy),
+                      label: const Text('History', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: brandNavy)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        minimumSize: const Size(0, 30),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                color: Colors.white,
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  labelColor: brandBlue,
+                  unselectedLabelColor: const Color(0xFF64748B),
+                  indicatorColor: brandBlue,
+                  indicatorWeight: 3,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                  tabs: const [
+                    Tab(text: 'Basic Details'),
+                    Tab(text: 'Consignor / Consignee'),
+                    Tab(text: 'Cargo Details'),
+                    Tab(text: 'Other Details'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -688,47 +753,64 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                       // Optional fields must NEVER appear red or trigger validation errors.
                       final isRed = isMandatory && isValEmpty;
 
-                      return TextField(
-                        controller: ctrl,
-                        decoration: InputDecoration(
-                          labelText: _getFieldLabel(key),
-                          labelStyle: TextStyle(
-                            fontSize: 13,
-                            color: isRed
-                                ? const Color(0xFFDC2626)
-                                : (isMandatory ? const Color(0xFF0284C7) : Colors.blueGrey),
-                            fontWeight: (isRed || isMandatory) ? FontWeight.bold : FontWeight.normal,
+                      return Container(
+                        key: _fieldGlobalKeys[key],
+                        child: TextField(
+                          controller: ctrl,
+                          focusNode: _fieldFocusNodes[key],
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF0F172A),
+                            fontStyle: FontStyle.normal,
                           ),
-                          prefixIcon: isKeyDoc
-                              ? Icon(Icons.vpn_key_outlined, size: 18, color: isRed ? const Color(0xFFDC2626) : const Color(0xFF0284C7))
-                              : null,
-                          suffixIcon: isDate
-                              ? const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey)
-                              : isSearch
-                                  ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
-                                  : null,
-                          filled: true,
-                          fillColor: isRed ? const Color(0xFFFEF2F2) : const Color(0xFFF8FAFC),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(
-                              color: isRed ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
-                              width: isRed ? 1.4 : 1.0,
+                          decoration: InputDecoration(
+                            labelText: _getFieldLabel(key),
+                            hintText: _getFieldPlaceholder(key),
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.normal,
                             ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(
-                              color: isRed ? const Color(0xFFEF4444) : const Color(0xFFE2E8F0),
-                              width: isRed ? 1.4 : 1.0,
+                            labelStyle: TextStyle(
+                              fontSize: 13,
+                              color: isRed
+                                  ? const Color(0xFFDC2626)
+                                  : (isMandatory ? const Color(0xFF0284C7) : Colors.blueGrey),
+                              fontWeight: (isRed || isMandatory) ? FontWeight.bold : FontWeight.normal,
                             ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(
-                              color: isRed ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
-                              width: 1.6,
+                            prefixIcon: isKeyDoc
+                                ? Icon(Icons.vpn_key_outlined, size: 18, color: isRed ? const Color(0xFFDC2626) : const Color(0xFF0284C7))
+                                : null,
+                            suffixIcon: isDate
+                                ? const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey)
+                                : isSearch
+                                    ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
+                                    : null,
+                            filled: true,
+                            fillColor: isRed ? const Color(0xFFFEF2F2) : const Color(0xFFF8FAFC),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: isRed ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                width: isRed ? 1.4 : 1.0,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: isRed ? const Color(0xFFEF4444) : const Color(0xFFE2E8F0),
+                                width: isRed ? 1.4 : 1.0,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: isRed ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                width: 1.6,
+                              ),
                             ),
                           ),
                         ),
@@ -743,6 +825,78 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         const SizedBox(height: 12),
       ],
     );
+  }
+
+  String _getFieldPlaceholder(String key) {
+    switch (key) {
+      case 'grno (*)':
+      case 'LR No *':
+        return 'Enter LR / Consignment No. (e.g. BNF-2024-001)';
+      case 'grdt *':
+        return 'DD/MM/YYYY';
+      case 'Customer Name *':
+        return 'Enter Customer Name (e.g. Patanjali)';
+      case 'orgrefcode':
+        return 'Origin Station / Branch code';
+      case 'destrefcode':
+        return 'Destination Station / Branch code';
+      case 'Vehicle No *':
+        return 'Enter Vehicle No. (e.g. MH12AB1234)';
+      case 'Vehicle Type *':
+        return 'Vehicle Category / Type (e.g. MARKET)';
+      case 'cngr *':
+        return 'Enter Consignor (Sender) Name';
+      case 'cnge *':
+        return 'Enter Consignee (Receiver) Name';
+      case 'cngrgstno *':
+        return '15-digit Consignor GSTIN';
+      case 'cngegstno *':
+        return '15-digit Consignee GSTIN';
+      case 'Depatment Name':
+        return 'Enter Department';
+      case 'goods':
+        return 'Description of goods';
+      case 'bookedpckgs':
+        return 'Number of packages (e.g. 10)';
+      case 'packing':
+        return 'Packing type (e.g. Cartons, Bags)';
+      case 'bookedaweight':
+        return 'Actual weight in KG (e.g. 150.00)';
+      case 'bookedcweight':
+        return 'Charged weight in KG (e.g. 150.00)';
+      case 'pmark':
+        return 'Seal No or Private Mark';
+      case 'valgoods':
+        return 'Declared goods value (₹)';
+      case 'productcode':
+        return 'Product code';
+      case 'ewaybillno':
+        return '12-digit E-Way Bill No.';
+      case 'Valid Upto':
+        return 'DD/MM/YYYY';
+      case 'invoiceno':
+        return 'Invoice number';
+      case 'invoiedt':
+        return 'DD/MM/YYYY';
+      case 'grtype':
+        return 'Paid, To Pay, or TBB';
+      case 'oamount':
+        return '0.00';
+      case 'Driver Name *':
+        return 'Driver Full Name';
+      case 'Mobile no   *':
+        return '10-digit mobile number';
+      case 'Liscense No *':
+        return 'e.g. KA23 20000044025';
+      case 'Valid Up to *':
+        return 'DD/MM/YYYY';
+      case 'Loading Start date *':
+        return 'DD/MM/YYYY';
+      case 'freight  *':
+        return '0.00';
+      default:
+        return 'Enter $key';
+    }
   }
 
   String _getFieldLabel(String key) {

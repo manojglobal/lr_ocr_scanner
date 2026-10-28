@@ -120,7 +120,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
-  testWidgets('ExcelPreviewScreen: Navbar History button switches to Sheet 2 and old History tab is removed', (tester) async {
+  testWidgets('ExcelPreviewScreen: History button removed from Excel Preview header per UI cleanup', (tester) async {
     controller.addImagePath('/docs/test_lr.jpg');
     final item = controller.items.first;
     controller.updateRecordField(item.id, 'LR No *', 'LR-12345');
@@ -139,21 +139,11 @@ void main() {
     // Old duplicate History tab is removed from the bottom/preview toolbar (no Tab widget)
     expect(find.byType(Tab), findsNothing);
 
-    // Top Navbar History button exists
-    final navHistoryBtn = find.byKey(const Key('navbar_history_btn'));
-    expect(navHistoryBtn, findsOneWidget);
+    // History button is removed from Excel Preview header per Item 5 UI cleanup
+    expect(find.byKey(const Key('navbar_history_btn')), findsNothing);
 
-    // Tap Navbar History button -> switches to Sheet 2
-    await tester.tap(navHistoryBtn);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Generated Excel Exports History'), findsOneWidget);
-
-    // Tap Sheet 1 button -> switches back to Sheet 1
-    await tester.tap(sheet1BtnFinder);
-    await tester.pumpAndSettle();
-
-    expect(sheet1BtnFinder, findsOneWidget);
+    // Drain cloud sync debounce timer
+    await tester.pump(const Duration(milliseconds: 500));
   });
 
   testWidgets('BatchQueueScreen renders direct Download Excel button and opens confirmation dialog', (tester) async {

@@ -33,6 +33,12 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   late final TextEditingController _licenseNoController;
   late final TextEditingController _licenseValidController;
 
+  FocusNode? _customerFocusNode;
+  final FocusNode _driverNameFocusNode = FocusNode();
+  final FocusNode _driverMobileFocusNode = FocusNode();
+  final FocusNode _licenseNoFocusNode = FocusNode();
+  final FocusNode _licenseValidFocusNode = FocusNode();
+
   bool _hasValidated = false;
 
   final GlobalKey _customerKey = GlobalKey();
@@ -63,15 +69,15 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     final rec = widget.item.record;
     final master = MasterDataService.instance;
 
-    _customerOptions = master.getCustomers();
-    _counterOptions = master.getCounters();
+    _customerOptions = List<String>.from(master.getCustomers());
+    _counterOptions = List<String>.from(master.getCounters());
 
     // 1. Customer: Pre-populate from OCR or leave empty (never invent fake sample data)
     final cust = (rec['Customer Name *'] ?? rec['customer'] ?? rec['cngr *'] ?? rec['cngr'] ?? '').trim();
     _customerController = TextEditingController(text: cust);
 
     // 2. Department: Populate options from ManiFest.xlsx for this customer
-    _departmentOptions = master.getDepartmentsForCustomer(cust);
+    _departmentOptions = List<String>.from(master.getDepartmentsForCustomer(cust));
     final dept = (rec['Depatment Name'] ?? rec['department'] ?? '').trim();
     if (dept.isNotEmpty) {
       if (!_departmentOptions.contains(dept)) {
@@ -218,6 +224,10 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     _licenseNoController.dispose();
     _licenseValidController.removeListener(_onFieldChanged);
     _licenseValidController.dispose();
+    _driverNameFocusNode.dispose();
+    _driverMobileFocusNode.dispose();
+    _licenseNoFocusNode.dispose();
+    _licenseValidFocusNode.dispose();
     super.dispose();
   }
 
@@ -248,7 +258,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Required Details Missing',
+              'Required Details Missing Across Pages',
               style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
             ),
           ],
@@ -271,22 +281,30 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                   itemBuilder: (context, idx) {
                     final item = emptyMandatory[idx];
                     final tabStr = item['tabLabel'] != null ? ' (${item['tabLabel']})' : '';
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${idx + 1}. ',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
-                          ),
-                          Expanded(
-                            child: Text(
-                              '${item['label']}$tabStr',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        _navigateToMissingField(item);
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${idx + 1}. ',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
                             ),
-                          ),
-                        ],
+                            Expanded(
+                              child: Text(
+                                '${item['label']}$tabStr',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF94A3B8)),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -294,7 +312,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Please complete all mandatory (*) fields to verify and save this record.',
+                'Tap any field above or choose an action below to complete mandatory details.',
                 style: TextStyle(fontSize: 12, color: Color(0xFF475569)),
               ),
             ],
@@ -307,7 +325,15 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () {
                     Navigator.of(ctx).pop();
-                    Navigator.of(context).pop();
+                    final firstStep2 = emptyMandatory.firstWhere(
+                      (m) => m['screen'] == 'step2',
+                      orElse: () => {},
+                    );
+                    if (firstStep2.isNotEmpty) {
+                      _navigateToMissingField(firstStep2);
+                    } else {
+                      Navigator.of(context).pop();
+                    }
                   },
                   icon: const Icon(Icons.arrow_back, size: 15),
                   label: const Text(
@@ -326,14 +352,18 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
+                  key: const Key('modal_fix_first_field_btn'),
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _navigateToMissingField(emptyMandatory.first);
+                  },
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0284C7),
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   child: const Text(
-                    'OK, Complete Fields',
+                    'Fix Incomplete Field',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                     maxLines: 1,
                   ),
@@ -344,6 +374,64 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
         ],
       ),
     );
+  }
+
+  void _navigateToMissingField(Map<String, String> item) {
+    if (item['screen'] == 'step2') {
+      final tabIndex = int.tryParse(item['tabIndex'] ?? '0') ?? 0;
+      Navigator.of(context).pop({
+        'targetKey': item['key'],
+        'tabIndex': tabIndex,
+        'label': item['label'],
+      });
+    } else {
+      _scrollToAndFocusCustomField(item['key'] ?? '');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please complete mandatory field: ${item['label']}'),
+            backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _scrollToAndFocusCustomField(String key) {
+    GlobalKey? targetKey;
+    FocusNode? targetFocus;
+    if (key == 'Customer Name *') {
+      targetKey = _customerKey;
+      targetFocus = _customerFocusNode;
+    } else if (key == 'Counter') {
+      targetKey = _counterKey;
+    } else if (key == 'Vehicle Category') {
+      targetKey = _categoryKey;
+    } else if (key == 'Driver Name *') {
+      targetKey = _driverNameKey;
+      targetFocus = _driverNameFocusNode;
+    } else if (key == 'Mobile no   *') {
+      targetKey = _driverMobileKey;
+      targetFocus = _driverMobileFocusNode;
+    } else if (key == 'Liscense No *') {
+      targetKey = _licenseNoKey;
+      targetFocus = _licenseNoFocusNode;
+    } else if (key == 'Valid Up to *') {
+      targetKey = _licenseValidKey;
+      targetFocus = _licenseValidFocusNode;
+    }
+
+    if (targetKey?.currentContext != null) {
+      Scrollable.ensureVisible(
+        targetKey!.currentContext!,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+        alignment: 0.2,
+      );
+    }
+    targetFocus?.requestFocus();
   }
 
   void _saveAndVerify() {
@@ -371,25 +459,26 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     // Collect all missing mandatory fields matching Web
     final emptyMandatory = <Map<String, String>>[];
 
-    void checkStep2(String key, String label, String tabLabel) {
+    void checkStep2(String key, String label, String tabLabel, int tabIndex) {
       final val = candidate.resolveField(key).trim();
       if (val.isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
         emptyMandatory.add({
           'key': key,
           'label': label,
           'tabLabel': tabLabel,
+          'tabIndex': tabIndex.toString(),
           'screen': 'step2',
         });
       }
     }
 
-    checkStep2('grno (*)', 'LR / Consignment No. *', 'Basic Details');
-    checkStep2('grdt *', 'LR Date *', 'Basic Details');
-    checkStep2('Vehicle No *', 'Vehicle No. *', 'Basic Details');
-    checkStep2('cngr *', 'Consignor Name *', 'Consignor / Consignee');
-    checkStep2('cngrgstno *', 'Consignor GSTIN *', 'Consignor / Consignee');
-    checkStep2('cnge *', 'Consignee Name *', 'Consignor / Consignee');
-    checkStep2('cngegstno *', 'Consignee GSTIN *', 'Consignor / Consignee');
+    checkStep2('grno (*)', 'LR / Consignment No. *', 'Basic Details', 0);
+    checkStep2('grdt *', 'LR Date *', 'Basic Details', 0);
+    checkStep2('Vehicle No *', 'Vehicle No. *', 'Basic Details', 0);
+    checkStep2('cngr *', 'Consignor Name *', 'Consignor / Consignee', 1);
+    checkStep2('cngrgstno *', 'Consignor GSTIN *', 'Consignor / Consignee', 1);
+    checkStep2('cnge *', 'Consignee Name *', 'Consignor / Consignee', 1);
+    checkStep2('cngegstno *', 'Consignee GSTIN *', 'Consignor / Consignee', 1);
 
     void checkCustom(String val, String key, String label) {
       if (val.trim().isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
@@ -397,6 +486,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
           'key': key,
           'label': label,
           'tabLabel': 'Master Data',
+          'tabIndex': '4',
           'screen': 'custom',
         });
       }
@@ -413,38 +503,9 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     if (emptyMandatory.isNotEmpty) {
       setState(() => _hasValidated = true);
 
-      // Scroll to first invalid field if present on this screen
-      final firstCustom = emptyMandatory.firstWhere(
-        (m) => m['screen'] == 'custom',
-        orElse: () => {},
-      );
-      if (firstCustom.isNotEmpty) {
-        GlobalKey? targetKey;
-        final k = firstCustom['key'];
-        if (k == 'Customer Name *') {
-          targetKey = _customerKey;
-        } else if (k == 'Counter') {
-          targetKey = _counterKey;
-        } else if (k == 'Vehicle Category') {
-          targetKey = _categoryKey;
-        } else if (k == 'Driver Name *') {
-          targetKey = _driverNameKey;
-        } else if (k == 'Mobile no   *') {
-          targetKey = _driverMobileKey;
-        } else if (k == 'Liscense No *') {
-          targetKey = _licenseNoKey;
-        } else if (k == 'Valid Up to *') {
-          targetKey = _licenseValidKey;
-        }
-
-        if (targetKey?.currentContext != null) {
-          Scrollable.ensureVisible(
-            targetKey!.currentContext!,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeInOut,
-            alignment: 0.2,
-          );
-        }
+      final firstMissing = emptyMandatory.first;
+      if (firstMissing['screen'] == 'custom') {
+        _scrollToAndFocusCustomField(firstMissing['key'] ?? '');
       }
 
       _showMandatoryIncompleteModal(emptyMandatory);
@@ -500,34 +561,39 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
           style: TextStyle(color: brandNavy, fontSize: 16, fontWeight: FontWeight.bold),
         ),
         centerTitle: false,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: brandBlue,
-                backgroundColor: const Color(0xFFF1F5F9),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+        actions: const [],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: brandBlue,
+                    backgroundColor: const Color(0xFFF0F9FF),
+                    side: const BorderSide(color: Color(0xFFBAE6FD)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: const Size(0, 30),
+                  ),
+                  icon: const Icon(Icons.image_outlined, size: 14),
+                  label: const Text('View LR Image', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    final idx = widget.controller.items.indexWhere((i) => i.id == widget.item.id);
+                    BillingImageViewer.show(
+                      context,
+                      items: widget.controller.items.isNotEmpty ? widget.controller.items : [widget.item],
+                      initialIndex: idx >= 0 ? idx : 0,
+                      controller: widget.controller,
+                    );
+                  },
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                visualDensity: VisualDensity.compact,
-              ),
-              icon: const Icon(Icons.image_outlined, size: 16),
-              label: const Text('View LR Image', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              onPressed: () {
-                final idx = widget.controller.items.indexWhere((i) => i.id == widget.item.id);
-                BillingImageViewer.show(
-                  context,
-                  items: widget.controller.items.isNotEmpty ? widget.controller.items : [widget.item],
-                  initialIndex: idx >= 0 ? idx : 0,
-                  controller: widget.controller,
-                );
-              },
+              ],
             ),
           ),
-        ],
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -569,11 +635,24 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                                 }
                               });
                               final isCustErr = _hasValidated && _customerController.text.trim().isEmpty;
+                              _customerFocusNode = fieldFocusNode;
                               return TextField(
                                 controller: fieldTextEditingController,
                                 focusNode: fieldFocusNode,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF0F172A),
+                                  fontStyle: FontStyle.normal,
+                                ),
                                 decoration: InputDecoration(
                                   hintText: 'Select or enter customer from ManiFest',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.normal,
+                                  ),
                                   prefixIcon: Icon(Icons.search, size: 20, color: isCustErr ? const Color(0xFFEF4444) : Colors.blueGrey),
                                   filled: true,
                                   fillColor: isCustErr ? const Color(0xFFFEF2F2) : Colors.white,
@@ -736,8 +815,21 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                               final isDrvErr = _hasValidated && _driverNameController.text.trim().isEmpty;
                               return TextField(
                                 controller: _driverNameController,
+                                focusNode: _driverNameFocusNode,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF0F172A),
+                                  fontStyle: FontStyle.normal,
+                                ),
                                 decoration: InputDecoration(
                                   hintText: 'Driver Full Name',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.normal,
+                                  ),
                                   filled: true,
                                   fillColor: isDrvErr ? const Color(0xFFFEF2F2) : Colors.white,
                                   border: OutlineInputBorder(
@@ -776,12 +868,25 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                               final isMobErr = _hasValidated && _driverMobileController.text.trim().isEmpty;
                               return TextField(
                                 controller: _driverMobileController,
+                                focusNode: _driverMobileFocusNode,
                                 keyboardType: TextInputType.phone,
                                 maxLength: 10,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF0F172A),
+                                  fontStyle: FontStyle.normal,
+                                ),
                                 decoration: InputDecoration(
                                   prefixText: '+91 ',
                                   counterText: '',
                                   hintText: '10-digit mobile number',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.normal,
+                                  ),
                                   filled: true,
                                   fillColor: isMobErr ? const Color(0xFFFEF2F2) : Colors.white,
                                   border: OutlineInputBorder(
@@ -820,8 +925,21 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                               final isLicErr = _hasValidated && _licenseNoController.text.trim().isEmpty;
                               return TextField(
                                 controller: _licenseNoController,
+                                focusNode: _licenseNoFocusNode,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF0F172A),
+                                  fontStyle: FontStyle.normal,
+                                ),
                                 decoration: InputDecoration(
                                   hintText: 'e.g. KA23 20000044025',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.normal,
+                                  ),
                                   filled: true,
                                   fillColor: isLicErr ? const Color(0xFFFEF2F2) : Colors.white,
                                   border: OutlineInputBorder(
@@ -860,8 +978,21 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                               final isValErr = _hasValidated && _licenseValidController.text.trim().isEmpty;
                               return TextField(
                                 controller: _licenseValidController,
+                                focusNode: _licenseValidFocusNode,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF0F172A),
+                                  fontStyle: FontStyle.normal,
+                                ),
                                 decoration: InputDecoration(
                                   hintText: 'DD/MM/YYYY',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.normal,
+                                  ),
                                   suffixIcon: const Icon(Icons.calendar_today, size: 18, color: Colors.blueGrey),
                                   filled: true,
                                   fillColor: isValErr ? const Color(0xFFFEF2F2) : Colors.white,

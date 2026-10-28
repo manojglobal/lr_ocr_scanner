@@ -63,46 +63,62 @@ class VerifiedScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: brandNavy),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.image_outlined, color: brandBlue),
-            tooltip: 'View LR Image',
-            onPressed: () {
-              final idx = controller.items.indexWhere((i) => i.id == item.id);
-              BillingImageViewer.show(
-                context,
-                items: controller.items.isNotEmpty ? controller.items : [item],
-                initialIndex: idx >= 0 ? idx : 0,
-                controller: controller,
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.receipt_long_outlined, color: brandNavy),
-            tooltip: 'Preview Voucher',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => LrPreviewScreen(
-                    item: item,
-                    controller: controller,
+        actions: const [],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: brandBlue,
+                    backgroundColor: const Color(0xFFF0F9FF),
+                    side: const BorderSide(color: Color(0xFFBAE6FD)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: const Size(0, 30),
                   ),
+                  icon: const Icon(Icons.image_outlined, size: 14),
+                  label: const Text('View LR Image', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    final idx = controller.items.indexWhere((i) => i.id == item.id);
+                    BillingImageViewer.show(
+                      context,
+                      items: controller.items.isNotEmpty ? controller.items : [item],
+                      initialIndex: idx >= 0 ? idx : 0,
+                      controller: controller,
+                    );
+                  },
                 ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_note, color: brandNavy),
-            tooltip: 'Edit Again',
-            onPressed: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => EditBiltyScreen(item: item, controller: controller),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: brandNavy,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: const Size(0, 30),
+                  ),
+                  icon: const Icon(Icons.receipt_long_outlined, size: 14),
+                  label: const Text('Preview Voucher', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => LrPreviewScreen(
+                          item: item,
+                          controller: controller,
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ],
+            ),
           ),
-        ],
+        ),
       ),
       body: SafeArea(
         child: Column(

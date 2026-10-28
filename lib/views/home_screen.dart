@@ -230,26 +230,154 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  bool _isItemVerified(Map<String, dynamic> itmData) {
+    if (itmData['item'] is BatchItem) {
+      return (itmData['item'] as BatchItem).isVerified;
+    }
+    if (itmData['isVerified'] == true) return true;
+    final status = (itmData['status'] ?? '').toString().toLowerCase();
+    if (status == 'completed' || status == 'verified') {
+      final rawRec = itmData['record'] ?? itmData['data'];
+      if (rawRec is Map && rawRec.isNotEmpty) {
+        final recMap = rawRec.map((k, v) => MapEntry(k.toString(), v.toString()));
+        return BatchItem(id: 'temp', imagePath: '', fileName: '', createdAt: DateTime.now(), record: recMap).isVerified;
+      }
+      return true;
+    }
+    final rawRec = itmData['record'] ?? itmData['data'];
+    if (rawRec is Map && rawRec.isNotEmpty) {
+      final recMap = rawRec.map((k, v) => MapEntry(k.toString(), v.toString()));
+      return BatchItem(id: 'temp', imagePath: '', fileName: '', createdAt: DateTime.now(), record: recMap).isVerified;
+    }
+    return false;
+  }
+
+  bool _isSameLrUpload(Map<String, dynamic> a, Map<String, dynamic> b) {
+    // 1. Direct ID match
+    final idA = (a['id'] ?? '').toString().trim();
+    final idB = (b['id'] ?? '').toString().trim();
+    if (idA.isNotEmpty && idB.isNotEmpty && idA == idB) return true;
+
+    // 2. Saved filename match (e.g. from server / snapshots)
+    final savedA = (a['saved_filename'] ?? (a['record'] is Map ? a['record']['saved_filename'] : null) ?? '').toString().trim().toLowerCase();
+    final savedB = (b['saved_filename'] ?? (b['record'] is Map ? b['record']['saved_filename'] : null) ?? '').toString().trim().toLowerCase();
+    if (savedA.isNotEmpty && savedB.isNotEmpty && savedA == savedB) return true;
+
+    // 3. File name match
+    final fnA = (a['fileName'] ?? a['filename'] ?? '').toString().trim().toLowerCase();
+    final fnB = (b['fileName'] ?? b['filename'] ?? '').toString().trim().toLowerCase();
+    if (fnA.isNotEmpty && fnB.isNotEmpty && fnA == fnB) return true;
+
+    // 4. File stem match (handles prefixes e.g. 1730000_doc.jpg vs doc.jpg)
+    if (fnA.isNotEmpty && fnB.isNotEmpty) {
+      final stemA = fnA.split('.').first;
+      final stemB = fnB.split('.').first;
+      if (stemA.isNotEmpty && stemB.isNotEmpty && (stemA.endsWith(stemB) || stemB.endsWith(stemA))) {
+        return true;
+      }
+    }
+
+    // 5. Image path match
+    final pathA = (a['imagePath'] ?? a['file_path'] ?? '').toString().trim();
+    final pathB = (b['imagePath'] ?? b['file_path'] ?? '').toString().trim();
+    if (pathA.isNotEmpty && pathB.isNotEmpty && pathA == pathB) return true;
+
+    final baseA = pathA.isNotEmpty ? pathA.split(RegExp(r'[/\\]')).last.toLowerCase() : fnA;
+    final baseB = pathB.isNotEmpty ? pathB.split(RegExp(r'[/\\]')).last.toLowerCase() : fnB;
+    if (baseA.isNotEmpty && baseB.isNotEmpty && (baseA == baseB || baseA == fnB || fnA == baseB)) {
+      return true;
+    }
+
+    // 6. Preview URL match
+    final urlA = (a['preview_url'] ?? '').toString().trim().toLowerCase();
+    final urlB = (b['preview_url'] ?? '').toString().trim().toLowerCase();
+    if (urlA.isNotEmpty && urlB.isNotEmpty && urlA == urlB) return true;
+
+    // 7. LR No match
+    final lrA = (a['lrNo'] ?? (a['record'] is Map ? (a['record']['LR No *'] ?? a['record']['grno'] ?? a['record']['BNF LR No'] ?? '') : '')).toString().trim().toLowerCase();
+    final lrB = (b['lrNo'] ?? (b['record'] is Map ? (b['record']['LR No *'] ?? b['record']['grno'] ?? b['record']['BNF LR No'] ?? '') : '')).toString().trim().toLowerCase();
+    if (lrA.isNotEmpty && lrB.isNotEmpty && lrA == lrB) return true;
+
+    return false;
+  }
+
+  List<Map<String, dynamic>> _deduplicateUploadList(List<Map<String, dynamic>> rawList) {
+    final result = <Map<String, dynamic>>[];
+    for (final item in rawList) {
+      final fn = (item['fileName'] ?? item['filename'] ?? '').toString().toLowerCase();
+      final id = (item['id'] ?? '').toString().toLowerCase();
+      final lr = (item['lrNo'] ?? '').toString().toLowerCase();
+      if (fn.contains('dummy') || id.contains('dummy') || lr.contains('dummy') ||
+          fn.contains('nloiad273') || id.contains('nloiad273') || lr.contains('nloiad273')) {
+        continue;
+      }
+      final existingIdx = result.indexWhere((existing) => _isSameLrUpload(existing, item));
+      if (existingIdx < 0) {
+        result.add(Map<String, dynamic>.from(item));
+      } else {
+        final existing = result[existingIdx];
+
+        // 1. Maintain or adopt active item reference
+        if (existing['item'] == null && item['item'] != null) {
+          existing['item'] = item['item'];
+        }
+
+        // 2. Unify stable ID
+        if ((existing['id'] ?? '').toString().isEmpty && (item['id'] ?? '').toString().isNotEmpty) {
+          existing['id'] = item['id'];
+        }
+
+        // 3. Status & verified state preservation
+        final existingVerified = existing['isVerified'] == true || existing['status'] == 'completed';
+        final itemVerified = item['isVerified'] == true || item['status'] == 'completed';
+        if (itemVerified || existingVerified) {
+          existing['status'] = 'completed';
+          existing['isVerified'] = true;
+        }
+
+        // 4. Merge record data so verified fields are preserved
+        final existingRec = existing['record'] is Map
+            ? Map<String, dynamic>.from(existing['record'] as Map)
+            : <String, dynamic>{};
+        final itemRec = item['record'] is Map
+            ? Map<String, dynamic>.from(item['record'] as Map)
+            : (item['data'] is Map ? Map<String, dynamic>.from(item['data'] as Map) : <String, dynamic>{});
+        existingRec.addAll(itemRec);
+        if (existingRec.isNotEmpty) {
+          existing['record'] = existingRec;
+        }
+
+        // 5. Update preview & LR identifiers
+        if ((existing['preview_path'] ?? '').toString().isEmpty && (item['preview_path'] ?? '').toString().isNotEmpty) {
+          existing['preview_path'] = item['preview_path'];
+        }
+        if ((existing['preview_image'] ?? '').toString().isEmpty && (item['preview_image'] ?? '').toString().isNotEmpty) {
+          existing['preview_image'] = item['preview_image'];
+        }
+        if ((existing['preview_url'] ?? '').toString().isEmpty && (item['preview_url'] ?? '').toString().isNotEmpty) {
+          existing['preview_url'] = item['preview_url'];
+        }
+        if ((existing['lrNo'] ?? '').toString().isEmpty && (item['lrNo'] ?? '').toString().isNotEmpty) {
+          existing['lrNo'] = item['lrNo'];
+        }
+      }
+    }
+    return result;
+  }
+
   Future<void> _loadRecentUploads() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('bnf_recent_uploaded_lrs');
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw) as List<dynamic>;
-        final filtered = decoded
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .where((e) {
-              final fn = (e['fileName'] ?? '').toString().toLowerCase();
-              final id = (e['id'] ?? '').toString().toLowerCase();
-              final lr = (e['lrNo'] ?? '').toString().toLowerCase();
-              return !fn.contains('dummy') && !id.contains('dummy') && !lr.contains('dummy') &&
-                     !fn.contains('nloiad273') && !id.contains('nloiad273') && !lr.contains('nloiad273');
-            })
-            .toList();
-        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(filtered));
+        final rawMaps = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final deduped = _deduplicateUploadList(rawMaps);
+        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(deduped));
+        widget.controller.setPreviousUploadsCache(deduped);
         if (mounted) {
           setState(() {
-            _persistedRecentLrs = filtered;
+            _persistedRecentLrs = deduped;
           });
         }
       }
@@ -276,20 +404,20 @@ class _HomeScreenState extends State<HomeScreen> {
           'lrNo': srv['lr_no'] ?? srv['lrNo'] ?? '',
           'isPdf': _toBoolean(srv['isPdf']) || fn.toLowerCase().endsWith('.pdf'),
           'createdAt': srv['createdAt'] ?? DateTime.now().toIso8601String(),
-          'status': 'completed',
+          'status': srv['status'] ?? 'completed',
+          'isVerified': srv['isVerified'] == true || (srv['status'] ?? '') == 'completed',
           'preview_url': srv['preview_url'] ?? '',
           'preview_path': '',
           'preview_image': srv['preview_image'] ?? '',
+          'record': srv['data'] ?? srv['record'] ?? {},
         });
       }
-      for (final p in _persistedRecentLrs) {
-        if (!list.any((x) => x['id'] == p['id'] || (x['fileName'] != null && x['fileName'] == p['fileName']))) {
-          list.add(p);
-        }
-      }
+      final combined = [...list, ..._persistedRecentLrs];
+      final deduped = _deduplicateUploadList(combined).take(25).toList();
+      widget.controller.setPreviousUploadsCache(deduped);
       if (mounted) {
         setState(() {
-          _persistedRecentLrs = list.take(25).toList();
+          _persistedRecentLrs = deduped;
         });
       }
     } catch (_) {}
@@ -341,18 +469,16 @@ class _HomeScreenState extends State<HomeScreen> {
           'isPdf': item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf'),
           'createdAt': item.createdAt.toIso8601String(),
           'status': item.status.name,
+          'isVerified': item.isVerified,
           'preview_url': item.record['preview_url'] ?? '',
           'preview_path': previewPath,
           'record': item.record,
         });
       }
-      for (final prev in _persistedRecentLrs) {
-        if (!list.any((x) => x['imagePath'] == prev['imagePath'])) {
-          list.add(prev);
-        }
-      }
-      final toSave = list.take(20).toList();
+      final combined = [...list, ..._persistedRecentLrs];
+      final toSave = _deduplicateUploadList(combined).take(20).toList();
       await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(toSave));
+      widget.controller.setPreviousUploadsCache(toSave);
       if (mounted) {
         setState(() {
           _persistedRecentLrs = toSave;
@@ -780,7 +906,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         final items = widget.controller.items;
         final isProcessing = widget.controller.isProcessing;
-        final List<Map<String, dynamic>> displayRecent = [];
+        final List<Map<String, dynamic>> rawDisplayList = [];
         // 1. Current active batch items
         for (final i in items) {
           final fn = i.fileName.toLowerCase();
@@ -788,7 +914,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final lr = (i.record['LR No *'] ?? i.record['grno'] ?? i.record['BNF LR No'] ?? '').toLowerCase();
           if (!fn.contains('dummy') && !id.contains('dummy') &&
               !fn.contains('nloiad273') && !id.contains('nloiad273') && !lr.contains('nloiad273')) {
-            displayRecent.add({
+            rawDisplayList.add({
               'id': i.id,
               'fileName': i.fileName,
               'imagePath': i.imagePath,
@@ -796,33 +922,103 @@ class _HomeScreenState extends State<HomeScreen> {
               'isPdf': i.fileName.toLowerCase().endsWith('.pdf') || i.imagePath.toLowerCase().endsWith('.pdf'),
               'createdAt': i.createdAt.toIso8601String(),
               'status': i.status.name,
+              'isVerified': i.isVerified,
               'preview_image': i.record['preview_image'] ?? '',
               'preview_url': i.record['preview_url'] ?? '',
               'preview_path': i.record['preview_path'] ?? '',
               'item': i,
+              'record': i.record,
             });
           }
         }
         // 2. Merged with persisted & server previous uploads
-        for (final e in _persistedRecentLrs) {
-          final fn = (e['fileName'] ?? '').toString();
-          final id = (e['id'] ?? '').toString();
-          final lr = (e['lrNo'] ?? '').toString().toLowerCase();
-          if (!fn.toLowerCase().contains('dummy') && !id.toLowerCase().contains('dummy') &&
-              !fn.toLowerCase().contains('nloiad273') && !id.toLowerCase().contains('nloiad273') && !lr.contains('nloiad273')) {
-            final exists = displayRecent.any((x) => x['id'] == id || (fn.isNotEmpty && x['fileName'] == fn));
-            if (!exists) {
-              displayRecent.add(e);
-            }
-          }
-        }
+        rawDisplayList.addAll(_persistedRecentLrs);
+        final displayRecent = _deduplicateUploadList(rawDisplayList);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF1F5F9),
+          drawer: Drawer(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                UserAccountsDrawerHeader(
+                  decoration: const BoxDecoration(color: brandNavy),
+                  accountName: Text(
+                    'User: $_userName',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  accountEmail: Text(
+                    _userMobile.isNotEmpty ? _userMobile : 'Logistics User',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  currentAccountPicture: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: const Center(
+                      child: Text('BNF', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w900, fontSize: 20)),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.home_outlined, color: brandNavy),
+                  title: const Text('Home', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.history_outlined, color: brandBlue),
+                  title: const Text('LR History', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 1),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.format_list_bulleted, color: Color(0xFF059669)),
+                  title: const Text('LR List', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BatchQueueScreen(controller: widget.controller),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  key: const Key('drawer_logout_btn'),
+                  leading: const Icon(Icons.logout, color: Colors.red),
+                  title: const Text(
+                    'Logout',
+                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _logout();
+                  },
+                ),
+              ],
+            ),
+          ),
           appBar: AppBar(
             backgroundColor: Colors.white,
             elevation: 1,
-            titleSpacing: 8,
+            titleSpacing: 0,
+            leading: Builder(
+              builder: (ctx) => IconButton(
+                key: const Key('hamburger_menu_btn'),
+                icon: const Icon(Icons.menu, color: brandNavy),
+                tooltip: 'Navigation Menu',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -844,105 +1040,55 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            actions: [
-              // Server Status button
-              IconButton(
-                icon: Icon(
-                  widget.controller.useGeminiBackend ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                  color: widget.controller.useGeminiBackend ? Colors.green : Colors.grey,
-                  size: 18,
-                ),
-                tooltip: 'Server Settings',
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                onPressed: () => _showServerConfigDialog(context),
-              ),
-              const SizedBox(width: 4),
-
-              // History Button in Top Navbar
-              OutlinedButton.icon(
-                key: const Key('navbar_history_btn'),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 1),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.history_outlined, size: 15, color: brandBlue),
-                label: const Text(
-                  'History',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                ),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF1F5F9),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  minimumSize: const Size(0, 30),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-              const SizedBox(width: 6),
-
-              // User Info & Profile Section [Ruchita Patel • +91 XXXXXXXX Logout]
-              PopupMenuButton<String>(
-                tooltip: 'User Profile',
-                onSelected: (val) {
-                  if (val == 'logout') _logout();
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.check_circle_outline, size: 13, color: Color(0xFF16A34A)),
-                      const SizedBox(width: 4),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 80),
-                        child: Text(
-                          _userName,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF334155)),
-                        ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(42),
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                child: Row(
+                  children: [
+                    // Server Status button
+                    IconButton(
+                      icon: Icon(
+                        widget.controller.useGeminiBackend ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                        color: widget.controller.useGeminiBackend ? Colors.green : Colors.grey,
+                        size: 18,
                       ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.arrow_drop_down, size: 14, color: Colors.blueGrey),
-                    ],
-                  ),
+                      tooltip: 'Server Settings',
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      onPressed: () => _showServerConfigDialog(context),
+                    ),
+                    const SizedBox(width: 4),
+
+                    // History Button directly below page title
+                    OutlinedButton.icon(
+                      key: const Key('navbar_history_btn'),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ExcelPreviewScreen(controller: widget.controller, initialTab: 1),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.history_outlined, size: 15, color: brandBlue),
+                      label: const Text(
+                        'History',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        minimumSize: const Size(0, 30),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
                 ),
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(
-                    enabled: false,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
-                        if (_userMobile.isNotEmpty)
-                          Text('+91 $_userMobile', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout, size: 16, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Logout', style: TextStyle(color: Colors.red, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
               ),
-              const SizedBox(width: 8),
-            ],
+            ),
           ),
           body: Column(
             children: [
@@ -1016,7 +1162,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 4),
                               const Text(
-                                'Supported formats: JPG, PNG, PDF • Max size: 10 MB',
+                                'Supported formats: JPG, PNG, PDF',
                                 style: TextStyle(fontSize: 11, color: Colors.blueGrey),
                                 textAlign: TextAlign.center,
                               ),
@@ -1119,9 +1265,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               final lrNo = itmData['lrNo']?.toString() ?? '';
                               final imagePath = itmData['imagePath']?.toString() ?? '';
                               final itemObj = itmData['item'] is BatchItem ? (itmData['item'] as BatchItem) : null;
-                              final rawRec = itmData['record'];
-                              final recMap = (rawRec is Map) ? rawRec.map((k, v) => MapEntry(k.toString(), v.toString())) : <String, String>{};
-                              final isVerified = itemObj != null ? itemObj.isVerified : (BatchItem(id: 'temp', imagePath: '', fileName: '', createdAt: DateTime.now(), record: recMap).isVerified);
+                              final isVerified = _isItemVerified(itmData);
                               final dt = DateTime.tryParse(itmData['createdAt']?.toString() ?? '') ?? DateTime.now();
                               final previewImg = (itmData['preview_image'] ?? itmData['record']?['preview_image'])?.toString() ?? '';
                               final previewPath = (itmData['preview_path'] ?? itmData['record']?['preview_path'])?.toString() ?? '';
@@ -1187,14 +1331,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                       recordMap['file_url'] = itmData['file_url'].toString();
                                     }
 
+                                    final stableId = (itmData['id'] ?? '').toString().trim().isNotEmpty
+                                        ? itmData['id'].toString().trim()
+                                        : 'prev_${dt.millisecondsSinceEpoch}';
+                                    itmData['id'] = stableId;
+
                                     targetItem = BatchItem(
-                                      id: itmData['id']?.toString() ?? 'prev_${dt.millisecondsSinceEpoch}',
+                                      id: stableId,
                                       imagePath: cleanPath,
                                       fileName: fileName,
                                       status: isVerified ? BatchItemStatus.completed : BatchItemStatus.pending,
                                       createdAt: dt,
                                       record: recordMap,
                                     );
+                                    itmData['item'] = targetItem;
                                   }
 
                                   // Web Parity (openPreviousUploadPreview): Match existing item to avoid duplicate LR records
@@ -1221,14 +1371,28 @@ class _HomeScreenState extends State<HomeScreen> {
                                     }
                                     final enrichedItem = existing.copyWith(
                                       record: mergedRecord,
+                                      status: (isVerified || existing.isVerified) ? BatchItemStatus.completed : existing.status,
                                       imagePath: (existing.imagePath.isEmpty || !File(existing.imagePath).existsSync()) && targetItem.imagePath.isNotEmpty && File(targetItem.imagePath).existsSync()
                                           ? targetItem.imagePath
                                           : existing.imagePath,
                                     );
                                     widget.controller.updateItem(enrichedItem);
                                     targetItem = enrichedItem;
+                                    itmData['item'] = enrichedItem;
                                   } else {
                                     widget.controller.addItemDirectly(targetItem);
+                                    itmData['item'] = targetItem;
+                                  }
+
+                                  // Synchronize in-place with _persistedRecentLrs
+                                  final pIdx = _persistedRecentLrs.indexWhere((p) => _isSameLrUpload(p, itmData));
+                                  if (pIdx != -1) {
+                                    _persistedRecentLrs[pIdx]['item'] = targetItem;
+                                    _persistedRecentLrs[pIdx]['id'] = targetItem.id;
+                                    if (isVerified) {
+                                      _persistedRecentLrs[pIdx]['status'] = 'completed';
+                                      _persistedRecentLrs[pIdx]['isVerified'] = true;
+                                    }
                                   }
 
                                   if (context.mounted) {
@@ -1316,13 +1480,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     GestureDetector(
                                                       onTap: () => _deleteRecentUploadItem(idx, itmData),
                                                       child: Container(
-                                                        padding: const EdgeInsets.all(2.5),
+                                                        padding: const EdgeInsets.all(4.0),
                                                         decoration: BoxDecoration(
                                                           color: Colors.white.withAlpha(240),
                                                           shape: BoxShape.circle,
                                                           border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
                                                         ),
-                                                        child: const Icon(Icons.close, size: 10, color: Color(0xFF64748B)),
+                                                        child: const Icon(Icons.close, size: 15, color: Color(0xFF64748B)),
                                                       ),
                                                     ),
                                                   ],
@@ -1385,71 +1549,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-              ),
-
-              // Bottom Intake & Export Bar
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(20),
-                      blurRadius: 6,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: isProcessing ? null : _handleCameraCapture,
-                        icon: const Icon(Icons.camera_alt, size: 18),
-                        label: const Text('Camera'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: isProcessing ? null : _handleGalleryUpload,
-                        icon: const Icon(Icons.photo_library, size: 18),
-                        label: const Text('Gallery'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: items.isEmpty
-                              ? null
-                              : () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => BatchQueueScreen(controller: widget.controller),
-                                    ),
-                                  );
-                                },
-                          icon: const Icon(Icons.table_view, size: 18),
-                          label: Text(
-                            items.isEmpty ? 'Queue (0)' : 'Review & Export (${items.length})',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: brandBlue,
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),

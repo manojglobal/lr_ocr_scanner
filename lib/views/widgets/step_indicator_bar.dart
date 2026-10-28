@@ -92,96 +92,118 @@ class StepIndicatorBar extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      padding: const EdgeInsets.only(top: 6, bottom: 4, left: 6, right: 6),
       child: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(steps.length * 2 - 1, (index) {
-              if (index.isOdd) {
-                final priorStep = (index ~/ 2) + 1;
-                final isPassed = priorStep < activeStep;
-                return Container(
-                  width: 24,
-                  height: 2,
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  color: isPassed ? brandGreen : const Color(0xFFE2E8F0),
-                );
-              }
+        left: true,
+        right: true,
+        bottom: true,
+        minimum: const EdgeInsets.only(bottom: 6),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = constraints.maxWidth < 360;
+            final isMedium = constraints.maxWidth < 420;
+            final circleSize = isSmall ? 18.0 : (isMedium ? 20.0 : 22.0);
+            final fontSize = isSmall ? 9.5 : (isMedium ? 10.5 : 11.5);
+            final dividerWidth = isSmall ? 8.0 : (isMedium ? 14.0 : 18.0);
+            final hPadding = isSmall ? 1.0 : 3.0;
 
-              final stepIndex = index ~/ 2;
-              final stepData = steps[stepIndex];
-              final int stepNum = stepData['step'] as int;
-              final String stepName = stepData['name'] as String;
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth - 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(steps.length * 2 - 1, (index) {
+                    if (index.isOdd) {
+                      final priorStep = (index ~/ 2) + 1;
+                      final isPassed = priorStep < activeStep;
+                      return Container(
+                        width: dividerWidth,
+                        height: 2,
+                        margin: EdgeInsets.symmetric(horizontal: hPadding),
+                        color: isPassed ? brandGreen : const Color(0xFFE2E8F0),
+                      );
+                    }
 
-              final bool isCompleted = stepNum < activeStep;
-              final bool isActive = stepNum == activeStep;
+                    final stepIndex = index ~/ 2;
+                    final stepData = steps[stepIndex];
+                    final int stepNum = stepData['step'] as int;
+                    final String stepName = stepData['name'] as String;
 
-              Color circleBg;
-              Color circleText;
-              Border? circleBorder;
+                    final bool isCompleted = stepNum < activeStep;
+                    final bool isActive = stepNum == activeStep;
 
-              if (isActive) {
-                circleBg = brandBlue;
-                circleText = Colors.white;
-                circleBorder = Border.all(color: const Color(0xFFBAE6FD), width: 2);
-              } else if (isCompleted) {
-                circleBg = brandGreen;
-                circleText = Colors.white;
-              } else {
-                circleBg = const Color(0xFFF1F5F9);
-                circleText = const Color(0xFF64748B);
-              }
+                    Color circleBg;
+                    Color circleText;
+                    Border? circleBorder;
 
-              return InkWell(
-                onTap: controller != null ? () => _handleStepTap(context, stepNum) : null,
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: circleBg,
-                          shape: BoxShape.circle,
-                          border: circleBorder,
-                        ),
-                        child: Center(
-                          child: isCompleted
-                              ? const Icon(Icons.check, size: 14, color: Colors.white)
-                              : Text(
-                                  '$stepNum',
-                                  style: TextStyle(
-                                    color: circleText,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                    if (isActive) {
+                      circleBg = brandBlue;
+                      circleText = Colors.white;
+                      circleBorder = Border.all(color: const Color(0xFFBAE6FD), width: 2);
+                    } else if (isCompleted) {
+                      circleBg = brandGreen;
+                      circleText = Colors.white;
+                    } else {
+                      circleBg = const Color(0xFFF1F5F9);
+                      circleText = const Color(0xFF64748B);
+                    }
+
+                    return InkWell(
+                      onTap: controller != null ? () => _handleStepTap(context, stepNum) : null,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: circleSize,
+                              height: circleSize,
+                              decoration: BoxDecoration(
+                                color: circleBg,
+                                shape: BoxShape.circle,
+                                border: circleBorder,
+                              ),
+                              child: Center(
+                                child: isCompleted
+                                    ? Icon(Icons.check, size: circleSize * 0.58, color: Colors.white)
+                                    : Text(
+                                        '$stepNum',
+                                        style: TextStyle(
+                                          color: circleText,
+                                          fontSize: circleSize * 0.46,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                stepName,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: fontSize,
+                                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                                  color: isActive
+                                      ? brandBlue
+                                      : (isCompleted ? const Color(0xFF334155) : const Color(0xFF94A3B8)),
                                 ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        stepName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                          color: isActive
-                              ? brandBlue
-                              : (isCompleted ? const Color(0xFF334155) : const Color(0xFF94A3B8)),
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  }),
                 ),
-              );
-            }),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

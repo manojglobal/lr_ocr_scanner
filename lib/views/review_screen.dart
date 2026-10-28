@@ -31,49 +31,90 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Review & Export Data'),
-            actions: [
-              if (items.isNotEmpty)
-                IconButton(
-                  icon: const Icon(Icons.photo_library_outlined),
-                  tooltip: 'LR Image (${items.length})',
-                  onPressed: () => BillingImageViewer.show(context, items: items),
-                ),
-              PopupMenuButton<DocumentSchema>(
-                icon: const Icon(Icons.tune),
-                tooltip: 'Select Document Schema',
-                initialValue: schema,
-                onSelected: (selected) {
-                  controller.setSchema(selected);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Switched schema to ${selected.name}'),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
-                itemBuilder: (ctx) => DocumentSchema.availableSchemas.map((s) {
-                  return PopupMenuItem(
-                    value: s,
-                    child: Row(
-                      children: [
-                        Icon(
-                          s.id == schema.id
-                              ? Icons.radio_button_checked
-                              : Icons.radio_button_off,
-                          size: 18,
-                          color: s.id == schema.id
-                              ? theme.colorScheme.primary
-                              : null,
+            backgroundColor: Colors.white,
+            elevation: 1,
+            titleSpacing: 14,
+            title: const Text('Review & Export Data', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            actions: const [],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(40),
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Row(
+                  children: [
+                    if (items.isNotEmpty) ...[
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0284C7),
+                          backgroundColor: const Color(0xFFF0F9FF),
+                          side: const BorderSide(color: Color(0xFFBAE6FD)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          minimumSize: const Size(0, 30),
                         ),
-                        const SizedBox(width: 8),
-                        Text(s.name),
-                      ],
+                        icon: const Icon(Icons.photo_library_outlined, size: 14),
+                        label: Text('LR Image (${items.length})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        onPressed: () => BillingImageViewer.show(context, items: items),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    const Spacer(),
+                    PopupMenuButton<DocumentSchema>(
+                      tooltip: 'Select Document Schema',
+                      initialValue: schema,
+                      onSelected: (selected) {
+                        controller.setSchema(selected);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Switched schema to ${selected.name}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.tune, size: 14, color: Color(0xFF334155)),
+                            const SizedBox(width: 6),
+                            Text(schema.name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.arrow_drop_down, size: 14, color: Colors.blueGrey),
+                          ],
+                        ),
+                      ),
+                      itemBuilder: (ctx) => DocumentSchema.availableSchemas.map((s) {
+                        return PopupMenuItem(
+                          value: s,
+                          child: Row(
+                            children: [
+                              Icon(
+                                s.id == schema.id
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                size: 18,
+                                color: s.id == schema.id
+                                    ? theme.colorScheme.primary
+                                    : null,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(s.name),
+                            ],
+                          ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                }).toList(),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
           body: Column(
             children: [

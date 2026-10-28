@@ -88,11 +88,11 @@ void main() {
     expect(find.text('Capture Image'), findsOneWidget);
     expect(find.text('Select Image'), findsOneWidget);
 
-    // Export button should be present but disabled
-    final exportButtonFinder = find.widgetWithText(FilledButton, 'Queue (0)');
-    expect(exportButtonFinder, findsOneWidget);
-    final button = tester.widget<FilledButton>(exportButtonFinder);
-    expect(button.onPressed, isNull);
+    // Duplicate Camera, Gallery, and bottom Queue (0) controls above footer are removed
+    expect(find.widgetWithText(FilledButton, 'Queue (0)'), findsNothing);
+    // Queue button directly below page title is removed from HomeScreen
+    expect(find.byKey(const Key('navbar_queue_btn')), findsNothing);
+    expect(find.text('Queue (0)'), findsNothing);
   });
 
   testWidgets('Screen 2 Parity: Consignment Queue and Current Batch banner are removed from HomeScreen', (tester) async {
@@ -106,14 +106,14 @@ void main() {
     expect(find.byType(ImageQueueCard), findsNothing);
     expect(find.textContaining('Current Batch:'), findsNothing);
 
-    // Bottom action bar reflects queue count and is enabled
-    final queueBtnFinder = find.widgetWithText(FilledButton, 'Review & Export (1)');
-    expect(queueBtnFinder, findsOneWidget);
-    final button = tester.widget<FilledButton>(queueBtnFinder);
-    expect(button.onPressed, isNotNull);
+    // Duplicate bottom action bar is removed
+    expect(find.widgetWithText(FilledButton, 'Review & Export (1)'), findsNothing);
+    // Queue button is removed from HomeScreen
+    expect(find.byKey(const Key('navbar_queue_btn')), findsNothing);
+    expect(find.text('Queue (1)'), findsNothing);
   });
 
-  testWidgets('Navbar contains History button immediately left of user profile without circular profile icon, and opens History view', (tester) async {
+  testWidgets('Navbar contains History button, profile badge is removed from header, and opens History view', (tester) async {
     await tester.pumpWidget(buildTestableWidget());
     await tester.pump();
 
@@ -125,8 +125,8 @@ void main() {
     expect(historyBtnFinder, findsOneWidget);
     expect(find.text('History'), findsOneWidget);
 
-    // Verify user profile badge exists
-    expect(find.text('Test User'), findsOneWidget);
+    // Verify user profile badge is removed from subheader per UI cleanup
+    expect(find.text('Test User'), findsNothing);
 
     // Tap History button and verify it opens ExcelPreviewScreen
     await tester.tap(historyBtnFinder);
