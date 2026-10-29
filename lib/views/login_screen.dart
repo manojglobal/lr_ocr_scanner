@@ -337,10 +337,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildErrorMessage() {
     if (_errorMessage == null) return const SizedBox.shrink();
-    final isConnectionErr = _errorMessage!.toLowerCase().contains('connect') ||
-        _errorMessage!.toLowerCase().contains('socket') ||
-        _errorMessage!.toLowerCase().contains('failed host') ||
-        _errorMessage!.toLowerCase().contains('timed out');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(10),
@@ -366,30 +363,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 4),
           Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 11)),
-          if (isConnectionErr) ...[
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: _showServerConfigDialog,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade100,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.settings_ethernet, size: 13, color: Colors.red),
-                    SizedBox(width: 4),
-                    Text(
-                      'Configure Server IP (Tap here)',
-                      style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+
         ],
       ),
     );
@@ -428,28 +402,26 @@ class _LoginScreenState extends State<LoginScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(40),
-                                  borderRadius: BorderRadius.circular(6),
+                              GestureDetector(
+                                onLongPress: _showServerConfigDialog,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(40),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.shield, size: 12, color: Colors.cyanAccent),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Secure Logistics Portal',
+                                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.shield, size: 12, color: Colors.cyanAccent),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Secure Logistics Portal',
-                                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.settings_ethernet, color: Colors.white70, size: 22),
-                                tooltip: 'Server IP Settings',
-                                onPressed: _showServerConfigDialog,
                               ),
                             ],
                           ),
@@ -639,42 +611,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
 
-                          const SizedBox(height: 16),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
 
-                          // Server connection status pill
-                          Center(
-                            child: InkWell(
-                              onTap: _showServerConfigDialog,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade300),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.dns_outlined, size: 14, color: Colors.blueGrey),
-                                    const SizedBox(width: 6),
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 220),
-                                      child: Text(
-                                        'Server: ${widget.controller.geminiService.serverUrl}',
-                                        style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w500),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    const Icon(Icons.edit, size: 12, color: Colors.blueGrey),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),

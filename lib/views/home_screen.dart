@@ -1188,14 +1188,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     _userMobile.isNotEmpty ? _userMobile : 'Logistics User',
                     style: const TextStyle(color: Colors.white70, fontSize: 13),
                   ),
-                  currentAccountPicture: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: const Center(
-                      child: Text('BNF', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w900, fontSize: 20)),
+                  currentAccountPicture: GestureDetector(
+                    onLongPress: () {
+                      Navigator.of(context).pop();
+                      _showServerConfigDialog(context);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: const Center(
+                        child: Text('BNF', style: TextStyle(color: brandNavy, fontWeight: FontWeight.w900, fontSize: 20)),
+                      ),
                     ),
                   ),
                 ),
@@ -1284,20 +1290,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 child: Row(
                   children: [
-                    // Server Status button
-                    IconButton(
-                      icon: Icon(
-                        widget.controller.useGeminiBackend ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                        color: widget.controller.useGeminiBackend ? Colors.green : Colors.grey,
-                        size: 18,
-                      ),
-                      tooltip: 'Server Settings',
-                      padding: const EdgeInsets.all(4),
-                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                      onPressed: () => _showServerConfigDialog(context),
-                    ),
-                    const SizedBox(width: 4),
-
                     // History Button directly below page title
                     OutlinedButton.icon(
                       key: const Key('navbar_history_btn'),
@@ -1365,7 +1357,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Upload Consignment Notes (LRs)',
+                        'Upload LR',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandNavy),
                       ),
                       const SizedBox(height: 16),

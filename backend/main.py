@@ -2015,8 +2015,8 @@ async def extract_handwriting(
                 except Exception as e_prev:
                     print(f"[Upload Vault Error] Failed to save page {p_idx+1} preview: {e_prev}")
             if preview_pages_urls:
-                t_idx = target_page_idx if target_page_idx < len(preview_pages_urls) else 0
-                preview_saved_url = preview_pages_urls[t_idx]
+                # Page 1 is always the primary preview image
+                preview_saved_url = preview_pages_urls[0]
                 print(f"[Upload Vault] Successfully saved {len(preview_pages_urls)} PDF 300 DPI preview image(s) (primary: {preview_saved_url})")
         elif preview_saved_url:
             preview_pages_urls = [preview_saved_url]

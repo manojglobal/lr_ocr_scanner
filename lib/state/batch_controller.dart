@@ -1010,7 +1010,10 @@ class BatchProcessingController extends ChangeNotifier {
             }
           }
 
-          // Retain multi-page scan metadata
+          // Retain multi-page scan metadata and preserve original local device photos
+          if (item.record['preview_pages'] != null) {
+            parseResult.data['local_preview_pages'] = item.record['preview_pages']!;
+          }
           if (item.record['preview_pages'] != null && !parseResult.data.containsKey('preview_pages')) {
             parseResult.data['preview_pages'] = item.record['preview_pages']!;
           }
