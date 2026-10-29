@@ -6,6 +6,7 @@ import base64
 import hashlib
 import uuid
 import shutil
+import threading
 from typing import Any
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
@@ -15,6 +16,7 @@ EXPORT_DIR = os.path.join(BASE_DIR, "export")
 UPLOAD_LR_DIR = os.path.join(EXPORT_DIR, "upload_LR")
 SNAPSHOTS_EXCEL_DIR = os.path.join(EXPORT_DIR, "snapshots_excel")
 AUDIT_LOG_FILE = os.path.join(EXPORT_DIR, "export_audit_log.json")
+_audit_lock = threading.RLock()
 
 os.makedirs(UPLOAD_LR_DIR, exist_ok=True)
 os.makedirs(SNAPSHOTS_EXCEL_DIR, exist_ok=True)
@@ -455,10 +457,9 @@ def purge_exports_older_than(days: int = 30) -> list[str]:
 
         if len(kept_logs) != len(logs):
             try:
-                with open(AUDIT_LOG_FILE, "w", encoding="utf-8") as f:
-                    json.dump(kept_logs, f, indent=2)
-            except Exception:
-                pass
+                safe_atomic_write(AUDIT_LOG_FILE, json.dumps(kept_logs, indent=2).encode("utf-8"))
+            except Exception as p_err:
+                print(f"[Audit Snapshot] Failed to save purged audit log: {p_err}")
 
     # Sweep any loose .xlsx files in exports older than 30 days
     if os.path.isdir(EXPORTS_DIR):
@@ -478,32 +479,32 @@ def purge_exports_older_than(days: int = 30) -> list[str]:
 
 def record_export_audit(audit_entry: dict):
     """Appends export audit record to audit log JSON with 30-day auto-purge enforcement."""
-    purge_exports_older_than(days=30)
-    logs = []
-    if os.path.exists(AUDIT_LOG_FILE):
-        try:
-            with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        except Exception:
-            logs = []
-    
-    # Ensure mandatory fields
-    if "filename" in audit_entry and "download_url" not in audit_entry:
-        audit_entry["download_url"] = f"/api/download-export/{audit_entry['filename']}"
-    if "iso_timestamp" not in audit_entry:
-        audit_entry["iso_timestamp"] = datetime.now().astimezone().isoformat()
-    if "lr_count" not in audit_entry and "total_lrs" in audit_entry:
-        audit_entry["lr_count"] = audit_entry["total_lrs"]
-    if "user" not in audit_entry:
-        audit_entry["user"] = audit_entry.get("exported_by") or audit_entry.get("user_name") or "Logistics User"
+    with _audit_lock:
+        purge_exports_older_than(days=30)
+        logs = []
+        if os.path.exists(AUDIT_LOG_FILE):
+            try:
+                with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
+                    logs = json.load(f)
+            except Exception:
+                logs = []
+        
+        # Ensure mandatory fields
+        if "filename" in audit_entry and "download_url" not in audit_entry:
+            audit_entry["download_url"] = f"/api/download-export/{audit_entry['filename']}"
+        if "iso_timestamp" not in audit_entry:
+            audit_entry["iso_timestamp"] = datetime.now().astimezone().isoformat()
+        if "lr_count" not in audit_entry and "total_lrs" in audit_entry:
+            audit_entry["lr_count"] = audit_entry["total_lrs"]
+        if "user" not in audit_entry:
+            audit_entry["user"] = audit_entry.get("exported_by") or audit_entry.get("user_name") or "Logistics User"
 
-    logs.insert(0, audit_entry)
-    # Keep last 500 exports
-    if len(logs) > 500:
-        logs = logs[:500]
+        logs.insert(0, audit_entry)
+        # Keep last 500 exports
+        if len(logs) > 500:
+            logs = logs[:500]
 
-    with open(AUDIT_LOG_FILE, "w", encoding="utf-8") as f:
-        json.dump(logs, f, indent=2)
+        safe_atomic_write(AUDIT_LOG_FILE, json.dumps(logs, indent=2).encode("utf-8"))
 
 
 def delete_export_audit(target: str) -> bool:
@@ -511,48 +512,52 @@ def delete_export_audit(target: str) -> bool:
     Deletes an export record and its physical files from the backend.
     Removes matching entries from AUDIT_LOG_FILE and deletes corresponding .xlsx files.
     """
-    clean_target = os.path.basename(str(target or "")).strip()
-    if not clean_target:
-        return False
+    with _audit_lock:
+        clean_target = os.path.basename(str(target or "")).strip()
+        if not clean_target:
+            return False
 
-    deleted_any = False
-    # 1. Search and delete physical files from export directories
-    search_dirs = [SNAPSHOTS_EXCEL_DIR, SNAPSHOTS_DIR, EXPORTS_DIR]
-    for d in search_dirs:
-        if not os.path.isdir(d):
-            continue
-        for fn in os.listdir(d):
-            if not fn.lower().endswith(".xlsx"):
+        deleted_any = False
+        # 1. Search and delete physical files from export directories
+        search_dirs = [SNAPSHOTS_EXCEL_DIR, SNAPSHOTS_DIR, EXPORTS_DIR]
+        for d in search_dirs:
+            if not os.path.isdir(d):
                 continue
-            if (clean_target in fn) or (fn.lower() == clean_target.lower()):
-                fp = os.path.join(d, fn)
-                try:
-                    if os.path.isfile(fp):
-                        os.remove(fp)
-                        deleted_any = True
-                except Exception as ex:
-                    print(f"[Audit Snapshot] Failed to remove file {fp}: {ex}")
-
-    # 2. Synchronize AUDIT_LOG_FILE
-    if os.path.exists(AUDIT_LOG_FILE):
-        try:
-            with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-            remaining_logs = []
-            for item in logs:
-                eid = str(item.get("export_id") or "").strip()
-                fn = str(item.get("filename") or "").strip()
-                afn = str(item.get("audit_export_filename") or item.get("audit_filename") or "").strip()
-                if clean_target and (clean_target == eid or clean_target in fn or clean_target in afn or clean_target.lower() == fn.lower() or clean_target.lower() == afn.lower()):
-                    deleted_any = True
+            for fn in os.listdir(d):
+                if not fn.lower().endswith(".xlsx"):
                     continue
-                remaining_logs.append(item)
-            if len(remaining_logs) != len(logs):
-                safe_atomic_write(AUDIT_LOG_FILE, json.dumps(remaining_logs, indent=2).encode("utf-8"))
-        except Exception as ex:
-            print(f"[Audit Snapshot] Failed to update audit log on delete: {ex}")
+                fn_low = fn.lower()
+                tgt_low = clean_target.lower()
+                matches = (fn_low == tgt_low) or (len(clean_target) >= 8 and clean_target in fn)
+                if matches:
+                    fp = os.path.join(d, fn)
+                    try:
+                        if os.path.isfile(fp):
+                            os.remove(fp)
+                            deleted_any = True
+                    except Exception as ex:
+                        print(f"[Audit Snapshot] Failed to remove file {fp}: {ex}")
 
-    return deleted_any
+        # 2. Synchronize AUDIT_LOG_FILE
+        if os.path.exists(AUDIT_LOG_FILE):
+            try:
+                with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
+                    logs = json.load(f)
+                remaining_logs = []
+                for item in logs:
+                    eid = str(item.get("export_id") or "").strip()
+                    fn = str(item.get("filename") or "").strip()
+                    afn = str(item.get("audit_export_filename") or item.get("audit_filename") or "").strip()
+                    if clean_target and (clean_target == eid or clean_target in fn or clean_target in afn or clean_target.lower() == fn.lower() or clean_target.lower() == afn.lower()):
+                        deleted_any = True
+                        continue
+                    remaining_logs.append(item)
+                if len(remaining_logs) != len(logs):
+                    safe_atomic_write(AUDIT_LOG_FILE, json.dumps(remaining_logs, indent=2).encode("utf-8"))
+            except Exception as ex:
+                print(f"[Audit Snapshot] Failed to update audit log on delete: {ex}")
+
+        return deleted_any
 
 
 def get_user_audit_history(user_mobile: str | None = None, limit: int = 100) -> list:
@@ -561,98 +566,99 @@ def get_user_audit_history(user_mobile: str | None = None, limit: int = 100) -> 
     enforcing 30-day auto-purge and populating exact 49-column documents for UI display.
     Excludes any records whose Excel files were deleted from the backend.
     """
-    purge_exports_older_than(days=30)
-    if not os.path.exists(AUDIT_LOG_FILE):
-        return []
-    try:
-        with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
-            logs = json.load(f)
+    with _audit_lock:
+        purge_exports_older_than(days=30)
+        if not os.path.exists(AUDIT_LOG_FILE):
+            return []
+        try:
+            with open(AUDIT_LOG_FILE, "r", encoding="utf-8") as f:
+                logs = json.load(f)
 
-        target_mobile = _clean_mobile(user_mobile) if user_mobile else ""
-        user_logs = []
-        available_files = []
-        if os.path.isdir(SNAPSHOTS_EXCEL_DIR):
-            available_files.extend([f for f in os.listdir(SNAPSHOTS_EXCEL_DIR) if f.lower().endswith(".xlsx")])
-        if os.path.isdir(SNAPSHOTS_DIR):
-            available_files.extend([f for f in os.listdir(SNAPSHOTS_DIR) if f.lower().endswith(".xlsx")])
-        if os.path.isdir(EXPORTS_DIR):
-            available_files.extend([f for f in os.listdir(EXPORTS_DIR) if f.lower().endswith(".xlsx")])
+            target_mobile = _clean_mobile(user_mobile) if user_mobile else ""
+            user_logs = []
+            available_files = []
+            if os.path.isdir(SNAPSHOTS_EXCEL_DIR):
+                available_files.extend([f for f in os.listdir(SNAPSHOTS_EXCEL_DIR) if f.lower().endswith(".xlsx")])
+            if os.path.isdir(SNAPSHOTS_DIR):
+                available_files.extend([f for f in os.listdir(SNAPSHOTS_DIR) if f.lower().endswith(".xlsx")])
+            if os.path.isdir(EXPORTS_DIR):
+                available_files.extend([f for f in os.listdir(EXPORTS_DIR) if f.lower().endswith(".xlsx")])
 
-        available_lower = set(f.lower() for f in available_files)
-        surviving_logs = []
-        has_pruned_entries = False
+            available_lower = set(f.lower() for f in available_files)
+            surviving_logs = []
+            has_pruned_entries = False
 
-        for item in logs:
-            export_id = str(item.get("export_id") or "").strip()
-            fn = str(item.get("filename") or "").strip()
-            audit_file = str(item.get("audit_export_filename") or item.get("audit_filename") or "").strip()
+            for item in logs:
+                export_id = str(item.get("export_id") or "").strip()
+                fn = str(item.get("filename") or "").strip()
+                audit_file = str(item.get("audit_export_filename") or item.get("audit_filename") or "").strip()
 
-            # Physical File Existence Check:
-            # If an Excel file is deleted from the backend, it must NOT appear in History!
-            file_exists_on_disk = False
-            if audit_file and audit_file.lower() in available_lower:
-                file_exists_on_disk = True
-            elif fn and fn.lower() in available_lower:
-                file_exists_on_disk = True
-            elif export_id and any(export_id.lower() in af for af in available_lower):
-                file_exists_on_disk = True
-            elif audit_file and resolve_snapshot_path(audit_file):
-                file_exists_on_disk = True
-            elif fn and resolve_file_path(fn):
-                file_exists_on_disk = True
+                # Physical File Existence Check:
+                # If an Excel file is deleted from the backend, it must NOT appear in History!
+                file_exists_on_disk = False
+                if audit_file and audit_file.lower() in available_lower:
+                    file_exists_on_disk = True
+                elif fn and fn.lower() in available_lower:
+                    file_exists_on_disk = True
+                elif export_id and any(export_id.lower() in af for af in available_lower):
+                    file_exists_on_disk = True
+                elif audit_file and resolve_snapshot_path(audit_file):
+                    file_exists_on_disk = True
+                elif fn and resolve_file_path(fn):
+                    file_exists_on_disk = True
 
-            if not file_exists_on_disk:
-                # File was deleted from the backend disk -> prune from history
-                has_pruned_entries = True
-                continue
+                if not file_exists_on_disk:
+                    # File was deleted from the backend disk -> prune from history
+                    has_pruned_entries = True
+                    continue
 
-            surviving_logs.append(item)
+                surviving_logs.append(item)
 
-            item_mob = _clean_mobile(item.get("mobile") or item.get("user_mobile"))
-            # Strict User Isolation: if user_mobile is provided, strictly filter
-            if target_mobile and item_mob != target_mobile:
-                continue
+                item_mob = _clean_mobile(item.get("mobile") or item.get("user_mobile"))
+                # Strict User Isolation: if user_mobile is provided, strictly filter
+                if target_mobile and item_mob != target_mobile:
+                    continue
 
-            if not item.get("filename"):
-                matched = None
-                for af in available_files:
-                    if export_id and export_id in af and "AUDIT" not in af:
-                        matched = af
-                        break
-                    elif item.get("total_lrs") and f"_{item['total_lrs']}LRs" in af and "AUDIT" not in af:
-                        matched = af
-                        break
-                item["filename"] = matched or f"USER_EXPORT_BNF_{export_id or 'file'}.xlsx"
+                if not item.get("filename"):
+                    matched = None
+                    for af in available_files:
+                        if export_id and export_id in af and "AUDIT" not in af:
+                            matched = af
+                            break
+                        elif item.get("total_lrs") and f"_{item['total_lrs']}LRs" in af and "AUDIT" not in af:
+                            matched = af
+                            break
+                    item["filename"] = matched or f"USER_EXPORT_BNF_{export_id or 'file'}.xlsx"
 
-            if not item.get("download_url") and item.get("filename"):
-                item["download_url"] = f"/api/download-export/{item['filename']}"
+                if not item.get("download_url") and item.get("filename"):
+                    item["download_url"] = f"/api/download-export/{item['filename']}"
 
-            if not item.get("audit_download_url") and audit_file:
-                item["audit_download_url"] = f"/api/download-audit-export/{audit_file}"
+                if not item.get("audit_download_url") and audit_file:
+                    item["audit_download_url"] = f"/api/download-audit-export/{audit_file}"
 
-            if not item.get("user"):
-                item["user"] = item.get("exported_by") or item.get("user_name") or "Logistics User"
+                if not item.get("user"):
+                    item["user"] = item.get("exported_by") or item.get("user_name") or "Logistics User"
 
-            if not item.get("lr_count"):
-                item["lr_count"] = item.get("total_lrs", 1)
+                if not item.get("lr_count"):
+                    item["lr_count"] = item.get("total_lrs", 1)
 
-            # Ensure documents list with 49-column data is populated for UI table
-            if not item.get("documents"):
-                extracted = _extract_docs_from_xlsx(item.get("filename"))
-                item["documents"] = extracted if extracted else []
+                # Ensure documents list with 49-column data is populated for UI table
+                if not item.get("documents"):
+                    extracted = _extract_docs_from_xlsx(item.get("filename"))
+                    item["documents"] = extracted if extracted else []
 
-            user_logs.append(item)
+                user_logs.append(item)
 
-        # Automatically synchronize AUDIT_LOG_FILE if orphaned/deleted entries were purged
-        if has_pruned_entries and len(surviving_logs) != len(logs):
-            try:
-                safe_atomic_write(AUDIT_LOG_FILE, json.dumps(surviving_logs, indent=2).encode("utf-8"))
-            except Exception as e_prune:
-                print(f"[Audit Snapshot] Notice during history pruning: {e_prune}")
+            # Automatically synchronize AUDIT_LOG_FILE if orphaned/deleted entries were purged
+            if has_pruned_entries and len(surviving_logs) != len(logs):
+                try:
+                    safe_atomic_write(AUDIT_LOG_FILE, json.dumps(surviving_logs, indent=2).encode("utf-8"))
+                except Exception as e_prune:
+                    print(f"[Audit Snapshot] Notice during history pruning: {e_prune}")
 
-        return user_logs[:limit]
-    except Exception:
-        return []
+            return user_logs[:limit]
+        except Exception:
+            return []
 
 
 def get_audit_history(limit: int = 100, user_mobile: str | None = None) -> list:

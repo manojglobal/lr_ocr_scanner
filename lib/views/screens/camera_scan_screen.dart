@@ -69,6 +69,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
     }
 
     if (state == AppLifecycleState.inactive) {
+      _controller = null;
       cameraController.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initCameraController(cameraController.description);
@@ -186,7 +187,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
   }
 
   Future<void> _capturePhoto() async {
-    if (_isCapturing) return;
+    if (_isCapturing || _isInitializing) return;
     setState(() => _isCapturing = true);
 
     try {
@@ -265,8 +266,15 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
     return discard ?? false;
   }
 
-  void _finishAndSubmit() {
-    if (_capturedPages.isEmpty) return;
+  Future<void> _finishAndSubmit() async {
+    if (_isCapturing) {
+      int waited = 0;
+      while (_isCapturing && waited < 30) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waited++;
+      }
+    }
+    if (!mounted || _capturedPages.isEmpty) return;
     Navigator.of(context).pop(_capturedPages);
   }
 
@@ -445,10 +453,12 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
                       const SizedBox(width: 12),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            _finishAndSubmit();
-                          },
+                          onPressed: _isCapturing
+                              ? null
+                              : () {
+                                  Navigator.of(ctx).pop();
+                                  _finishAndSubmit();
+                                },
                           style: FilledButton.styleFrom(
                             backgroundColor: brandGreen,
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -635,7 +645,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
                       GestureDetector(
                         key: const Key('camera_shutter_btn'),
                         behavior: HitTestBehavior.opaque,
-                        onTap: _isCapturing ? null : _capturePhoto,
+                        onTap: (_isCapturing || _isInitializing) ? null : _capturePhoto,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [

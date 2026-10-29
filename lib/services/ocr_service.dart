@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
@@ -12,6 +13,8 @@ class OcrService {
   TextRecognizer? _devanagariRecognizer;
   final ImagePreprocessor _preprocessor;
   bool _isDisposed = false;
+  int _activeInferences = 0;
+  Completer<void>? _inferenceCompleter;
 
   OcrService({
     TextRecognizer? recognizer,
@@ -29,9 +32,14 @@ class OcrService {
     if (_isDisposed) {
       throw StateError('OcrService has already been disposed.');
     }
+    _activeInferences++;
 
     final file = File(imagePath);
     if (!await file.exists()) {
+      _activeInferences--;
+      if (_activeInferences <= 0 && _inferenceCompleter != null && !_inferenceCompleter!.isCompleted) {
+        _inferenceCompleter!.complete();
+      }
       throw FileSystemException('Image file does not exist', imagePath);
     }
 
@@ -47,6 +55,10 @@ class OcrService {
       final inputImage = InputImage.fromFilePath(targetPath);
       return await _latinRecognizer.processImage(inputImage);
     } finally {
+      _activeInferences--;
+      if (_activeInferences <= 0 && _inferenceCompleter != null && !_inferenceCompleter!.isCompleted) {
+        _inferenceCompleter!.complete();
+      }
       if (targetPath != imagePath) {
         try {
           final tempFile = File(targetPath);
@@ -72,7 +84,22 @@ class OcrService {
     bool includeDevanagari = false,
   }) async {
     if (_isDisposed) throw StateError('OcrService has already been disposed.');
+    _activeInferences++;
 
+    try {
+      return await _recognizeWordsDualPassInternal(imagePath, includeDevanagari: includeDevanagari);
+    } finally {
+      _activeInferences--;
+      if (_activeInferences <= 0 && _inferenceCompleter != null && !_inferenceCompleter!.isCompleted) {
+        _inferenceCompleter!.complete();
+      }
+    }
+  }
+
+  Future<List<OcrWord>> _recognizeWordsDualPassInternal(
+    String imagePath, {
+    bool includeDevanagari = false,
+  }) async {
     // 1. Pass 1: Natural (un-binarized, full-resolution)
     final pathPass1 = await _preprocessor.preprocessForOcr(imagePath, aggressive: false);
     RecognizedText textPass1;
@@ -278,6 +305,13 @@ class OcrService {
   Future<void> dispose() async {
     if (!_isDisposed) {
       _isDisposed = true;
+      if (_activeInferences > 0) {
+        _inferenceCompleter = Completer<void>();
+        await _inferenceCompleter!.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {},
+        );
+      }
       await _latinRecognizer.close();
       await _devanagariRecognizer?.close();
     }

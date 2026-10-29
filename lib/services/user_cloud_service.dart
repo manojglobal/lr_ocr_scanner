@@ -44,7 +44,7 @@ class UserCloudService {
       final uri = Uri.parse('$server/api/user-cloud-storage').replace(queryParameters: queryParams);
 
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(_prefSessionToken) ?? '';
+      final token = prefs.getString('bnf_user_token') ?? prefs.getString(_prefSessionToken) ?? '';
       final headers = <String, String>{
         'Accept': 'application/json',
       };
@@ -81,7 +81,7 @@ class UserCloudService {
       final uri = Uri.parse('$server/api/user-cloud-storage/save-batch');
 
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(_prefSessionToken) ?? '';
+      final token = prefs.getString('bnf_user_token') ?? prefs.getString(_prefSessionToken) ?? '';
       final resolvedName = userName ?? prefs.getString(_prefUserName) ?? 'Logistics User';
       final resolvedId = userId ?? prefs.getString(_prefUserId);
 
@@ -127,7 +127,7 @@ class UserCloudService {
       final uri = Uri.parse('$server/api/user-cloud-storage/delete-lr');
 
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(_prefSessionToken) ?? '';
+      final token = prefs.getString('bnf_user_token') ?? prefs.getString(_prefSessionToken) ?? '';
       final resolvedId = userId ?? prefs.getString(_prefUserId);
 
       final headers = <String, String>{
@@ -151,6 +151,50 @@ class UserCloudService {
       }
     } catch (e) {
       debugPrint('[UserCloudService] deleteCloudLr error: $e');
+    }
+    return false;
+  }
+
+  /// Dismisses LRs from previously uploaded history in cloud JSON DB.
+  /// Does NOT delete or alter items in active_batch (LR List).
+  Future<bool> deleteCloudUploadHistory(
+    String mobile,
+    List<String> lrIdentifiers, {
+    String? userId,
+    String? baseUrl,
+  }) async {
+    final cleanMobile = mobile.replaceAll(RegExp(r'\D'), '');
+    if (cleanMobile.isEmpty || lrIdentifiers.isEmpty) return false;
+
+    try {
+      final server = await _resolveServerUrl(baseUrl);
+      final uri = Uri.parse('$server/api/user-cloud-storage/delete-upload-history');
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('bnf_user_token') ?? prefs.getString(_prefSessionToken) ?? '';
+      final resolvedId = userId ?? prefs.getString(_prefUserId);
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      if (token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+
+      final payload = jsonEncode({
+        'user_mobile': cleanMobile,
+        'user_id': resolvedId,
+        'lr_identifiers': lrIdentifiers,
+      });
+
+      final resp = await http.post(uri, headers: headers, body: payload).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        final jsonBody = jsonDecode(resp.body);
+        return jsonBody['success'] == true;
+      }
+    } catch (e) {
+      debugPrint('[UserCloudService] deleteCloudUploadHistory error: $e');
     }
     return false;
   }

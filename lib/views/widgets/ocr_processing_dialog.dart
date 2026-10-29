@@ -96,11 +96,13 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
       titleText = 'Reading Consignment ($file)...';
     }
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: Container(
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Container(
         constraints: const BoxConstraints(maxWidth: 420),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -241,7 +243,8 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildStepRow({

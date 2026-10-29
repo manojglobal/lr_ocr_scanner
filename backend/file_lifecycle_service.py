@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import uuid
 import shutil
 import hashlib
 import threading
@@ -24,7 +25,7 @@ os.makedirs(UPLOAD_LR_DIR, exist_ok=True)
 os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
 os.makedirs(METADATA_DIR, exist_ok=True)
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 def get_current_timestamp() -> str:
@@ -63,13 +64,20 @@ def _load_registry() -> dict[str, dict[str, Any]]:
 
 def _save_registry(registry: dict[str, dict[str, Any]]) -> None:
     """Persists file registry to disk (must be called with _lock held)."""
+    temp_file = f"{REGISTRY_FILE}.tmp_{uuid.uuid4().hex}"
     try:
-        temp_file = REGISTRY_FILE + ".tmp"
         with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(registry, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(temp_file, REGISTRY_FILE)
     except Exception as e:
         print(f"[FileLifecycleService] Error saving registry: {e}")
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
 
 
 def is_exiftool_available() -> bool:
@@ -212,17 +220,18 @@ def record_file_creation(
             "current_data": data_to_store
         }
 
-        # Attempt ExifTool tag stamping if available and file exists
-        if os.path.isfile(file_path):
-            apply_exiftool_metadata(file_path, {
-                "CreateDate": now_ts.replace("-", ":")[:19],
-                "Artist": user_name,
-                "UserComment": json.dumps({"file_id": fid, "created_at": now_ts})
-            })
-
         registry[fid] = entry
         _save_registry(registry)
-        return entry
+
+    # Attempt ExifTool tag stamping outside lock to avoid blocking concurrent requests
+    if os.path.isfile(file_path):
+        apply_exiftool_metadata(file_path, {
+            "CreateDate": now_ts.replace("-", ":")[:19],
+            "Artist": user_name,
+            "UserComment": json.dumps({"file_id": fid, "created_at": now_ts})
+        })
+
+    return entry
 
 
 def record_file_edit(

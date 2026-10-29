@@ -111,7 +111,7 @@ class GeminiBackendService {
 
     try {
       final streamedResponse = await request.send().timeout(const Duration(seconds: 180));
-      final responseBody = await streamedResponse.stream.bytesToString();
+      final responseBody = await streamedResponse.stream.bytesToString().timeout(const Duration(seconds: 60));
 
       if (streamedResponse.statusCode != 200) {
         String detailMsg = responseBody;

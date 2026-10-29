@@ -1,3 +1,5 @@
+import asyncio
+import threading
 import base64
 import io
 import json
@@ -23,6 +25,13 @@ import auth_service
 import audit_snapshot
 import file_lifecycle_service
 import user_cloud_service
+
+# Top-level patch for pymupdf layout & onnxruntime to avoid runtime import collisions
+import sys
+for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
+    if _m not in sys.modules:
+        sys.modules[_m] = None
+
 
 # Configuration
 def _load_env_file():
@@ -1252,6 +1261,7 @@ class GeminiOCRResponse(BaseModel):
 
 
 class ParsedDocument(BaseModel):
+    filename: str | None = None
     document_title: str
     data: dict[str, str]
     key_value_pairs: list[KeyValuePair]
@@ -1637,15 +1647,18 @@ async def extract_handwriting(
             gemini_parts.append({"mime_type": mime_type, "data": image_bytes})
         gemini_parts.append(active_prompt)
 
-        response = model.generate_content(
-            gemini_parts,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=GeminiOCRResponse,
-                temperature=0.0,
-            ),
-            safety_settings=SAFETY_SETTINGS,
-        )
+        def _sync_gemini_call():
+            return model.generate_content(
+                gemini_parts,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=GeminiOCRResponse,
+                    temperature=0.0,
+                ),
+                safety_settings=SAFETY_SETTINGS,
+            )
+
+        response = await asyncio.to_thread(_sync_gemini_call)
         print("[Step 5/5] Response received from Gemini. Parsing JSON into key-value pairs...")
         raw_text = response.text.strip()
         if raw_text.startswith("```json"):
@@ -2046,6 +2059,7 @@ async def extract_handwriting(
         rel_saved_path = os.path.relpath(snapshot_lr_path, BASE_DIR).replace("\\", "/")
 
         parsed_output = ParsedDocument(
+            filename=file.filename,
             document_title=raw_result.get("document_title", "Handwritten Document"),
             data=data_dict,
             key_value_pairs=kv_pairs,
@@ -2630,54 +2644,72 @@ KNOWN_BRAND_GSTS: dict[str, str] = {
     "shreeciment": "27AADFG7889B1Z2"
 }
 
+_MANIFEST_CACHE_LOCK = threading.RLock()
+_CACHED_MANIFEST_PARTIES = None
+_CACHED_MANIFEST_DATA = None
+_CACHED_COUNTERS_DATA = None
+
 def _load_manifest_parties() -> tuple[list[dict[str, str]], dict[str, str]]:
-    parties: list[dict[str, str]] = []
-    gst_map: dict[str, str] = dict(KNOWN_BRAND_GSTS)
-    if os.path.isfile(MANIFEST_FILE_PATH):
-        try:
-            wb = openpyxl.load_workbook(MANIFEST_FILE_PATH, data_only=True)
-            ws = wb.active
-            header_row = [str(c).strip().lower() if c is not None else "" for c in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), [])]
-            cust_idx = 3
-            dept_idx = 2
-            state_idx = 4
-            gst_idx = 6
-            for idx, h in enumerate(header_row):
-                if "customer" in h: cust_idx = idx
-                elif "department" in h: dept_idx = idx
-                elif "state" in h: state_idx = idx
-                elif "gst" in h: gst_idx = idx
+    global _CACHED_MANIFEST_PARTIES
+    with _MANIFEST_CACHE_LOCK:
+        if _CACHED_MANIFEST_PARTIES is not None:
+            return _CACHED_MANIFEST_PARTIES
 
-            def _is_standard_gst(g: str) -> bool:
-                return len(g) == 15 and bool(re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9A-Z]{3}$', g.upper()))
+        parties: list[dict[str, str]] = []
+        gst_map: dict[str, str] = dict(KNOWN_BRAND_GSTS)
+        if os.path.isfile(MANIFEST_FILE_PATH):
+            wb = None
+            try:
+                wb = openpyxl.load_workbook(MANIFEST_FILE_PATH, data_only=True)
+                ws = wb.active
+                header_row = [str(c).strip().lower() if c is not None else "" for c in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), [])]
+                cust_idx = 3
+                dept_idx = 2
+                state_idx = 4
+                gst_idx = 6
+                for idx, h in enumerate(header_row):
+                    if "customer" in h: cust_idx = idx
+                    elif "department" in h: dept_idx = idx
+                    elif "state" in h: state_idx = idx
+                    elif "gst" in h: gst_idx = idx
 
-            def _set_gst(k: str, g: str):
-                if not k or not g:
-                    return
-                if k not in gst_map:
-                    gst_map[k] = g
-                elif _is_standard_gst(g) and not _is_standard_gst(gst_map[k]):
-                    gst_map[k] = g
+                def _is_standard_gst(g: str) -> bool:
+                    return len(g) == 15 and bool(re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9A-Z]{3}$', g.upper()))
 
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row: continue
-                cust = str(row[cust_idx]).strip() if len(row) > cust_idx and row[cust_idx] is not None else ""
-                dept = str(row[dept_idx]).strip() if len(row) > dept_idx and row[dept_idx] is not None else ""
-                state = str(row[state_idx]).strip() if len(row) > state_idx and row[state_idx] is not None else ""
-                gst = str(row[gst_idx]).strip() if len(row) > gst_idx and row[gst_idx] is not None else ""
-                if gst in ("None", "none", "null", ""): gst = ""
-                if cust and cust not in ("None", "none", ""):
-                    parties.append({"customer": cust, "department": dept, "state": state, "gst": gst})
-                    if gst:
-                        _set_gst(_clean_party_key(cust), gst)
-                        if dept:
-                            _set_gst(_clean_party_key(dept), gst)
-                            _set_gst(_clean_party_key(f"{cust} {dept}"), gst)
-                            _set_gst(_clean_party_key(f"{cust} {state}"), gst)
-        except Exception as ex:
-            print(f"[MasterData] Error loading parties from ManiFest.xlsx: {ex}")
+                def _set_gst(k: str, g: str):
+                    if not k or not g:
+                        return
+                    if k not in gst_map:
+                        gst_map[k] = g
+                    elif _is_standard_gst(g) and not _is_standard_gst(gst_map[k]):
+                        gst_map[k] = g
 
-    return parties, gst_map
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row: continue
+                    cust = str(row[cust_idx]).strip() if len(row) > cust_idx and row[cust_idx] is not None else ""
+                    dept = str(row[dept_idx]).strip() if len(row) > dept_idx and row[dept_idx] is not None else ""
+                    state = str(row[state_idx]).strip() if len(row) > state_idx and row[state_idx] is not None else ""
+                    gst = str(row[gst_idx]).strip() if len(row) > gst_idx and row[gst_idx] is not None else ""
+                    if gst in ("None", "none", "null", ""): gst = ""
+                    if cust and cust not in ("None", "none", ""):
+                        parties.append({"customer": cust, "department": dept, "state": state, "gst": gst})
+                        if gst:
+                            _set_gst(_clean_party_key(cust), gst)
+                            if dept:
+                                _set_gst(_clean_party_key(dept), gst)
+                                _set_gst(_clean_party_key(f"{cust} {dept}"), gst)
+                                _set_gst(_clean_party_key(f"{cust} {state}"), gst)
+            except Exception as ex:
+                print(f"[MasterData] Error loading parties from ManiFest.xlsx: {ex}")
+            finally:
+                if wb:
+                    try:
+                        wb.close()
+                    except Exception:
+                        pass
+
+        _CACHED_MANIFEST_PARTIES = (parties, gst_map)
+        return _CACHED_MANIFEST_PARTIES
 
 def _match_party_gst(name_or_text: str, gst_map: dict[str, str]) -> str | None:
     if not name_or_text:
@@ -2694,7 +2726,11 @@ def _match_party_gst(name_or_text: str, gst_map: dict[str, str]) -> str | None:
     return None
 
 def _load_manifest_data() -> dict[str, list[str]]:
-    mapping: dict[str, list[str]] = {}
+    global _CACHED_MANIFEST_DATA
+    with _MANIFEST_CACHE_LOCK:
+        if _CACHED_MANIFEST_DATA is not None:
+            return _CACHED_MANIFEST_DATA
+        mapping: dict[str, list[str]] = {}
     parties, _ = _load_manifest_parties()
     for p in parties:
         cust = p.get("customer", "")
@@ -2750,42 +2786,56 @@ def _load_manifest_data() -> dict[str, list[str]]:
                 if item not in mapping[k]:
                     mapping[k].append(item)
 
-    return mapping
+    _CACHED_MANIFEST_DATA = mapping
+    return _CACHED_MANIFEST_DATA
 
 def _load_counters_data() -> list[str]:
-    counters: list[str] = []
-    if os.path.isfile(COUNTERS_FILE_PATH):
-        try:
-            wb = openpyxl.load_workbook(COUNTERS_FILE_PATH, data_only=True)
-            ws = wb.active
-            # Header is ('ID', 'Counter Name', 'From Date', 'Close Date', 'Branch Name')
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row:
-                    continue
-                cnt_name = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                branch_name = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
-                # Replace single-digit index typos (e.g. '1' at row 27) with Branch Name
-                target = branch_name if (cnt_name.isdigit() or not cnt_name) else cnt_name
-                if target and target not in ("None", "none", "") and target not in counters:
-                    counters.append(target)
-                if branch_name and branch_name not in ("None", "none", "") and branch_name not in counters:
-                    counters.append(branch_name)
-        except Exception as ex:
-            print(f"[MasterData] Error loading BookingCounterMast.xlsx: {ex}")
+    global _CACHED_COUNTERS_DATA
+    with _MANIFEST_CACHE_LOCK:
+        if _CACHED_COUNTERS_DATA is not None:
+            return _CACHED_COUNTERS_DATA
 
-    # Standard booking counters matching Android MasterDataService
-    std_counters = [
-        "KOLKATA", "DELHI", "MUMBAI 01", "BANGLORE", "BELGAUM", "BHOPAL", "HYDERABAD",
-        "LUDHIANA", "JALNA", "CHENNAI", "INDORE-1", "PATIALA", "MANGLORE", "TUMKUR",
-        "PATALGANGA(MUMBAI)", "KARANPURA", "VIJAYWADA", "FARUKHNAGAR_BRANCH", "AHEMBADAB",
-        "PITHAMPUR_BRANCH", "ZIRAKPUR_1", "GHAZIABAD_1", "GURUGRAM_HUB", "RANCHI_1",
-        "JAIPUR_1", "PATNA_1", "NAGPUR_1", "BHIWANDI_1", "RAIPUR_1", "SILIGURI_1"
-    ]
-    for c in std_counters:
-        if c not in counters:
-            counters.append(c)
+        counters: list[str] = []
+        if os.path.isfile(COUNTERS_FILE_PATH):
+            wb = None
+            try:
+                wb = openpyxl.load_workbook(COUNTERS_FILE_PATH, data_only=True)
+                ws = wb.active
+                # Header is ('ID', 'Counter Name', 'From Date', 'Close Date', 'Branch Name')
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row:
+                        continue
+                    cnt_name = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+                    branch_name = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
+                    # Replace single-digit index typos (e.g. '1' at row 27) with Branch Name
+                    target = branch_name if (cnt_name.isdigit() or not cnt_name) else cnt_name
+                    if target and target not in ("None", "none", "") and target not in counters:
+                        counters.append(target)
+                    if branch_name and branch_name not in ("None", "none", "") and branch_name not in counters:
+                        counters.append(branch_name)
+            except Exception as ex:
+                print(f"[MasterData] Error loading BookingCounterMast.xlsx: {ex}")
+            finally:
+                if wb:
+                    try:
+                        wb.close()
+                    except Exception:
+                        pass
 
-    return counters
+        # Standard booking counters matching Android MasterDataService
+        std_counters = [
+            "KOLKATA", "DELHI", "MUMBAI 01", "BANGLORE", "BELGAUM", "BHOPAL", "HYDERABAD",
+            "LUDHIANA", "JALNA", "CHENNAI", "INDORE-1", "PATIALA", "MANGLORE", "TUMKUR",
+            "PATALGANGA(MUMBAI)", "KARANPURA", "VIJAYWADA", "FARUKHNAGAR_BRANCH", "AHEMBADAB",
+            "PITHAMPUR_BRANCH", "ZIRAKPUR_1", "GHAZIABAD_1", "GURUGRAM_HUB", "RANCHI_1",
+            "JAIPUR_1", "PATNA_1", "NAGPUR_1", "BHIWANDI_1", "RAIPUR_1", "SILIGURI_1"
+        ]
+        for c in std_counters:
+            if c not in counters:
+                counters.append(c)
+
+        _CACHED_COUNTERS_DATA = counters
+        return _CACHED_COUNTERS_DATA
 
 DRIVER_MASTER_FILE = os.path.join(os.path.dirname(__file__), "data", "driver_master.json")
 
@@ -2846,18 +2896,30 @@ def _load_driver_master() -> dict[str, dict[str, str]]:
             print(f"[DriverMaster] Load error: {ex}")
     return MASTER_DRIVER_REGISTRY
 
+_DRIVER_MASTER_LOCK = threading.RLock()
+
 def _save_driver_master(record: dict[str, str]):
     global MASTER_DRIVER_REGISTRY
     v_clean = "".join(c for c in record.get("vehicle_no", "").upper() if c.isalnum())
     if not v_clean:
         return
-    MASTER_DRIVER_REGISTRY[v_clean] = record
-    try:
-        os.makedirs(os.path.dirname(DRIVER_MASTER_FILE), exist_ok=True)
-        with open(DRIVER_MASTER_FILE, "w", encoding="utf-8") as f:
-            json.dump(MASTER_DRIVER_REGISTRY, f, indent=2)
-    except Exception as ex:
-        print(f"[DriverMaster] Save error: {ex}")
+    with _DRIVER_MASTER_LOCK:
+        MASTER_DRIVER_REGISTRY[v_clean] = record
+        temp_file = f"{DRIVER_MASTER_FILE}.tmp_{uuid.uuid4().hex}"
+        try:
+            os.makedirs(os.path.dirname(DRIVER_MASTER_FILE), exist_ok=True)
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(MASTER_DRIVER_REGISTRY, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_file, DRIVER_MASTER_FILE)
+        except Exception as ex:
+            print(f"[DriverMaster] Save error: {ex}")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
 
 # Load persistent driver master on startup
 _load_driver_master()
@@ -2923,6 +2985,7 @@ class ExportMetaRequest(BaseModel):
 
 # In-memory ephemeral cache for clean user-facing Excel bytes (avoids saving user files to disk)
 _USER_EXCEL_BYTES_CACHE: dict[str, bytes] = {}
+_USER_EXCEL_CACHE_LOCK = threading.RLock()
 
 @app.post("/api/export-excel-meta")
 async def api_export_excel_meta(req: ExportMetaRequest):
@@ -2948,19 +3011,22 @@ async def api_export_excel_meta(req: ExportMetaRequest):
 
 
     # 1. Build backend audit copy (retaining snapshot info: User Name, Export Date, Export Time, Exported At, History sheet)
-    audit_wb, audit_bytes, raw_filename, export_id = _build_workbook_for_docs(
+    audit_wb, audit_bytes, raw_filename, export_id = await asyncio.to_thread(
+        _build_workbook_for_docs,
         docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=True
     )
 
     # 2. Build user download copy (containing ONLY actual business data - Row 1 Headers, Rows 2+ Data, 0 metadata rows)
-    user_wb, user_bytes, _, _ = _build_workbook_for_docs(
+    user_wb, user_bytes, _, _ = await asyncio.to_thread(
+        _build_workbook_for_docs,
         docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False
     )
-    _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
-    _USER_EXCEL_BYTES_CACHE[export_id] = user_bytes
-    if len(_USER_EXCEL_BYTES_CACHE) > 50:
-        first_k = next(iter(_USER_EXCEL_BYTES_CACHE))
-        _USER_EXCEL_BYTES_CACHE.pop(first_k, None)
+    with _USER_EXCEL_CACHE_LOCK:
+        _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
+        _USER_EXCEL_BYTES_CACHE[export_id] = user_bytes
+        while len(_USER_EXCEL_BYTES_CACHE) > 50:
+            first_k = next(iter(_USER_EXCEL_BYTES_CACHE))
+            _USER_EXCEL_BYTES_CACHE.pop(first_k, None)
 
     # 3. Save backend snapshot audit copy into backend/export/snapshots_excel/
     # (Do NOT save user-downloaded Excel file to backend disk)
@@ -2972,7 +3038,8 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         lr_tag="",
         prefix="GR_Import_BNF"
     )
-    _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
+    with _USER_EXCEL_CACHE_LOCK:
+        _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
 
     # 4. Register Excel metadata in lifecycle tracker with unified export_id
     excel_meta = file_lifecycle_service.record_file_creation(
@@ -3132,11 +3199,12 @@ async def download_exported_file(
             actor_name = session_user.get("name") or actor_name
 
     # 1. Primary path: Stream clean in-memory user bytes (Row 1 Headers, Rows 2+ Data, 0 metadata rows)
-    clean_bytes = _USER_EXCEL_BYTES_CACHE.get(safe_name)
-    if not clean_bytes:
-        exp_match = re.search(r'EXP_[0-9]+_[a-f0-9]+', safe_name)
-        if exp_match and exp_match.group(0) in _USER_EXCEL_BYTES_CACHE:
-            clean_bytes = _USER_EXCEL_BYTES_CACHE[exp_match.group(0)]
+    with _USER_EXCEL_CACHE_LOCK:
+        clean_bytes = _USER_EXCEL_BYTES_CACHE.get(safe_name)
+        if not clean_bytes:
+            exp_match = re.search(r'EXP_[0-9]+_[a-f0-9]+', safe_name)
+            if exp_match and exp_match.group(0) in _USER_EXCEL_BYTES_CACHE:
+                clean_bytes = _USER_EXCEL_BYTES_CACHE[exp_match.group(0)]
 
     if clean_bytes:
         try:
@@ -3195,6 +3263,7 @@ async def download_exported_file(
     # 3. Dynamic fallback: Load internal audit snapshot from snapshots_excel and generate clean user report
     snap_path = audit_snapshot.resolve_snapshot_path(safe_name)
     if snap_path and os.path.isfile(snap_path):
+        wb = None
         try:
             wb = openpyxl.load_workbook(snap_path)
             # Remove internal audit History sheet
@@ -3211,7 +3280,8 @@ async def download_exported_file(
             clean_bytes = buf.getvalue()
 
             # Cache the clean bytes for future downloads
-            _USER_EXCEL_BYTES_CACHE[safe_name] = clean_bytes
+            with _USER_EXCEL_CACHE_LOCK:
+                _USER_EXCEL_BYTES_CACHE[safe_name] = clean_bytes
 
             try:
                 file_lifecycle_service.record_file_export(
@@ -3236,6 +3306,12 @@ async def download_exported_file(
         except Exception as e_stream:
             print(f"[Export Download Stream Error] {e_stream}")
             raise HTTPException(status_code=500, detail=f"Failed to generate clean download workbook: {e_stream}")
+        finally:
+            if wb is not None:
+                try:
+                    wb.close()
+                except Exception:
+                    pass
 
     raise HTTPException(status_code=404, detail="Exported Excel file not found.")
 
@@ -3413,10 +3489,15 @@ async def get_previous_uploads(
             cloud_data = user_cloud_service.get_user_cloud_data(req_mobile)
             cloud_uploads = cloud_data.get("uploaded_lrs")
             if isinstance(cloud_uploads, list):
+                dismissed_set = set(str(d).strip().lower() for d in cloud_data.get("dismissed_uploads", []))
+                active_uploads = [
+                    u for u in cloud_uploads
+                    if not any(str(u.get(k) or "").strip().lower() in dismissed_set for k in ("id", "saved_filename", "filename", "file_name", "file_id"))
+                ]
                 return {
                     "success": True,
-                    "total": len(cloud_uploads),
-                    "uploads": cloud_uploads
+                    "total": len(active_uploads),
+                    "uploads": active_uploads
                 }
 
         all_metadata = file_lifecycle_service.get_all_metadata(include_deleted=False, limit=200)
@@ -3800,6 +3881,44 @@ async def delete_user_cloud_lr(
         user_id=req_user_id
     )
     return result
+
+@app.post("/api/user-cloud-storage/delete-upload-history")
+async def delete_user_cloud_upload_history(
+    req: DeleteUserCloudLRRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Removes a specific LR from the authenticated user's uploaded_lrs (history) ONLY.
+    Does NOT remove from active_batch.
+    Does NOT affect verified LR records in the LR List or Excel exports.
+    Does NOT delete physical files from disk.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile
+    )
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    req_user_id = actor.get("user_id") or req.user_id or ""
+
+    if not req_mobile:
+        return {"success": False, "error": "User mobile is required"}
+
+    ids_to_delete = list(req.lr_identifiers) if req.lr_identifiers else []
+    if req.lr_identifier and req.lr_identifier not in ids_to_delete:
+        ids_to_delete.append(req.lr_identifier)
+
+    if not ids_to_delete:
+        return {"success": False, "error": "lr_identifier or lr_identifiers is required"}
+
+    result = user_cloud_service.delete_user_upload_history(
+        mobile=req_mobile,
+        lr_identifiers=ids_to_delete,
+        user_id=req_user_id
+    )
+    return result
+
+
 
 
 # =========================================================================

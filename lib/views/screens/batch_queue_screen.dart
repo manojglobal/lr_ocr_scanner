@@ -141,10 +141,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
           widget.controller.duplicateNoticeMessage ??
           'This LR already exists. You cannot add the same LR multiple times.';
 
-      widget.controller.acknowledgeDuplicateNotice();
-
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        widget.controller.acknowledgeDuplicateNotice();
 
         showDialog(
           context: context,

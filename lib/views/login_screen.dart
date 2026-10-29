@@ -103,6 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     final res = await widget.controller.geminiService.directLogin(mobile, name: name);
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 
@@ -203,11 +204,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               });
                               await widget.controller.geminiService.updateServerUrl(textController.text);
                               final ok = await widget.controller.geminiService.checkHealth();
-                              setDialogState(() {
-                                isPinging = false;
-                                isOnline = ok;
-                                pingResult = ok ? 'Connected! (Server Online)' : 'Cannot reach server. Check Wi-Fi & IP.';
-                              });
+                              if (ctx.mounted) {
+                                setDialogState(() {
+                                  isPinging = false;
+                                  isOnline = ok;
+                                  pingResult = ok ? 'Connected! (Server Online)' : 'Cannot reach server. Check Wi-Fi & IP.';
+                                });
+                              }
                             },
                       icon: isPinging
                           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
@@ -239,7 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
             FilledButton(
               onPressed: () async {
                 await widget.controller.geminiService.updateServerUrl(textController.text);
-                setState(() {});
+                if (mounted) setState(() {});
                 if (ctx.mounted) Navigator.of(ctx).pop();
               },
               child: const Text('Save & Apply'),
@@ -265,6 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     final res = await widget.controller.geminiService.sendOtp(mobile, name: name);
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 
@@ -302,6 +306,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     final res = await widget.controller.geminiService.verifyOtp(mobile, otp, name: name);
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 

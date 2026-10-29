@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ocr_to_excel/config/document_schema.dart';
 import 'package:ocr_to_excel/models/batch_item.dart';
 import 'package:ocr_to_excel/services/excel_service.dart';
@@ -79,6 +80,8 @@ class FakeOcrService extends OcrService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late FakePermissionService permissionService;
   late FakeImageService imageService;
   late FakeOcrService ocrService;
@@ -87,6 +90,7 @@ void main() {
   late BatchProcessingController controller;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     permissionService = FakePermissionService();
     imageService = FakeImageService();
     ocrService = FakeOcrService();
@@ -274,6 +278,24 @@ void main() {
         controller.duplicateNoticeMessage,
         'This LR already exists. You cannot add the same LR multiple times.',
       );
+    });
+
+    test('clearQueue preserves _previousUploadsCache and does not wipe previous history', () async {
+      imageService.nextCameraImage = '/path/to/invoice_preserve.jpg';
+      await controller.addFromCamera();
+      expect(controller.items.length, 1);
+
+      // Verify active queue item is completed
+      expect(controller.items.first.status, BatchItemStatus.completed);
+
+      // Call clearQueue (simulate what happens on Excel export / new batch)
+      controller.clearQueue();
+
+      // Active queue is cleared
+      expect(controller.items.isEmpty, isTrue);
+
+      // previousUploadsCache is NOT wiped
+      expect(controller.previousUploadsCache.isNotEmpty, isTrue);
     });
   });
 }

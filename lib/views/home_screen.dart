@@ -31,6 +31,33 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = 'Logistics User';
   String _userMobile = '';
   List<Map<String, dynamic>> _persistedRecentLrs = [];
+  Set<String> _dismissedRecentLrs = {};
+
+  bool _isItemDismissed(dynamic itemOrId) {
+    if (itemOrId == null) return false;
+    const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+    if (itemOrId is String) {
+      final s = itemOrId.trim();
+      return s.isNotEmpty && !generic.contains(s.toLowerCase()) && _dismissedRecentLrs.contains(s);
+    }
+    if (itemOrId is BatchItem) {
+      if (_dismissedRecentLrs.contains(itemOrId.id)) return true;
+      final fn = itemOrId.fileName.trim();
+      if (fn.isNotEmpty && !generic.contains(fn.toLowerCase()) && _dismissedRecentLrs.contains(fn)) return true;
+      final saved = itemOrId.record['saved_filename']?.toString().trim();
+      if (saved != null && saved.isNotEmpty && !generic.contains(saved.toLowerCase()) && _dismissedRecentLrs.contains(saved)) return true;
+      return false;
+    }
+    if (itemOrId is Map) {
+      final id = (itemOrId['id'] ?? itemOrId['file_id'] ?? '').toString().trim();
+      final fn = (itemOrId['fileName'] ?? itemOrId['filename'] ?? '').toString().trim();
+      final saved = (itemOrId['saved_filename'] ?? (itemOrId['record'] is Map ? itemOrId['record']['saved_filename'] : null) ?? '').toString().trim();
+      return (id.isNotEmpty && !generic.contains(id.toLowerCase()) && _dismissedRecentLrs.contains(id)) ||
+             (fn.isNotEmpty && !generic.contains(fn.toLowerCase()) && _dismissedRecentLrs.contains(fn)) ||
+             (saved.isNotEmpty && !generic.contains(saved.toLowerCase()) && _dismissedRecentLrs.contains(saved));
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -55,10 +82,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (widget.controller.duplicateNoticePending) {
       final msg = widget.controller.duplicateNoticeMessage ??
           'This LR already exists. You cannot add the same LR multiple times.';
-      widget.controller.acknowledgeDuplicateNotice();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        widget.controller.acknowledgeDuplicateNotice();
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -160,10 +187,10 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(Icons.delete_outline, color: Color(0xFFDC2626), size: 24),
             SizedBox(width: 8),
-            Text('Remove Consignment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text('Remove from History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ],
         ),
-        content: const Text('Are you sure you want to remove this LR document?'),
+        content: const Text('Remove this document from Previously Uploaded history? It will remain available in your LR List.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -180,30 +207,39 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (confirmed != true) return;
 
-    final targetId = itmData['id']?.toString() ?? '';
-    final fileName = itmData['fileName']?.toString() ?? '';
+    final targetId = (itmData['id'] ?? '').toString().trim();
+    final fileName = (itmData['fileName'] ?? itmData['filename'] ?? '').toString().trim();
+    final savedFilename = (itmData['saved_filename'] ?? (itmData['record'] is Map ? itmData['record']['saved_filename'] : null) ?? '').toString().trim();
 
-    // 1. Remove from active controller items if present
-    final activeMatches = widget.controller.items
-        .where((i) => (targetId.isNotEmpty && i.id == targetId) || (fileName.isNotEmpty && i.fileName == fileName))
-        .toList();
-    for (final item in activeMatches) {
-      widget.controller.removeItem(item.id);
-    }
+    // NOTE: Active controller items (LR List) are intentionally KEPT INTACT.
+    // We do NOT remove the item from widget.controller.items.
 
-    // 2. Remove from persisted recent uploads
+    // 1. Remove from persisted recent uploads & update controller cache
     final prefs = await SharedPreferences.getInstance();
     _persistedRecentLrs.removeWhere(
-      (r) => (targetId.isNotEmpty && r['id']?.toString() == targetId) || (fileName.isNotEmpty && r['fileName']?.toString() == fileName),
+      (r) => (targetId.isNotEmpty && (r['id']?.toString() == targetId || r['file_id']?.toString() == targetId)) ||
+             (fileName.isNotEmpty && (r['fileName']?.toString() == fileName || r['filename']?.toString() == fileName)) ||
+             (savedFilename.isNotEmpty && (r['saved_filename']?.toString() == savedFilename || (r['record'] is Map && r['record']['saved_filename']?.toString() == savedFilename))),
     );
     await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(_persistedRecentLrs));
+    widget.controller.setPreviousUploadsCache(_persistedRecentLrs);
 
-    // 3. Notify backend API to soft-delete
-    if (targetId.isNotEmpty) {
-      final mobile = widget.controller.activeUserMobile ?? _userMobile;
-      UserCloudService.instance.deleteCloudLr(
+    // 2. Track dismissed history items in-memory and persistently
+    const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+    if (targetId.isNotEmpty && !generic.contains(targetId.toLowerCase())) _dismissedRecentLrs.add(targetId);
+    if (fileName.isNotEmpty && !generic.contains(fileName.toLowerCase())) _dismissedRecentLrs.add(fileName);
+    if (savedFilename.isNotEmpty && !generic.contains(savedFilename.toLowerCase())) _dismissedRecentLrs.add(savedFilename);
+    await prefs.setStringList('bnf_dismissed_recent_lrs', _dismissedRecentLrs.toList());
+
+    // 3. Notify backend API to dismiss from uploaded_lrs (history) ONLY in cloud DB
+    final mobile = widget.controller.activeUserMobile ?? _userMobile;
+    final idsToSend = [targetId, fileName, savedFilename]
+        .where((s) => s.isNotEmpty && !generic.contains(s.toLowerCase()))
+        .toList();
+    if (idsToSend.isNotEmpty) {
+      UserCloudService.instance.deleteCloudUploadHistory(
         mobile,
-        [targetId],
+        idsToSend,
         baseUrl: widget.controller.geminiService.serverUrl,
       ).catchError((_) => false);
     }
@@ -254,6 +290,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _isSameLrUpload(Map<String, dynamic> a, Map<String, dynamic> b) {
+    const genericStrings = {'lr document', 'document', 'item', 'image', 'photo', 'camera', 'upload', 'null', 'none', 'undefined', ''};
+    const genericLrs = {'-', '0', 'null', 'none', 'n/a', '', 'undefined'};
+
     // 1. Direct ID match
     final idA = (a['id'] ?? '').toString().trim();
     final idB = (b['id'] ?? '').toString().trim();
@@ -262,18 +301,18 @@ class _HomeScreenState extends State<HomeScreen> {
     // 2. Saved filename match (e.g. from server / snapshots)
     final savedA = (a['saved_filename'] ?? (a['record'] is Map ? a['record']['saved_filename'] : null) ?? '').toString().trim().toLowerCase();
     final savedB = (b['saved_filename'] ?? (b['record'] is Map ? b['record']['saved_filename'] : null) ?? '').toString().trim().toLowerCase();
-    if (savedA.isNotEmpty && savedB.isNotEmpty && savedA == savedB) return true;
+    if (savedA.isNotEmpty && savedB.isNotEmpty && !genericStrings.contains(savedA) && !genericStrings.contains(savedB) && savedA == savedB) return true;
 
     // 3. File name match
     final fnA = (a['fileName'] ?? a['filename'] ?? '').toString().trim().toLowerCase();
     final fnB = (b['fileName'] ?? b['filename'] ?? '').toString().trim().toLowerCase();
-    if (fnA.isNotEmpty && fnB.isNotEmpty && fnA == fnB) return true;
+    if (fnA.isNotEmpty && fnB.isNotEmpty && !genericStrings.contains(fnA) && !genericStrings.contains(fnB) && fnA == fnB) return true;
 
-    // 4. File stem match (handles prefixes e.g. 1730000_doc.jpg vs doc.jpg)
-    if (fnA.isNotEmpty && fnB.isNotEmpty) {
-      final stemA = fnA.split('.').first;
-      final stemB = fnB.split('.').first;
-      if (stemA.isNotEmpty && stemB.isNotEmpty && (stemA.endsWith(stemB) || stemB.endsWith(stemA))) {
+    // 4. File stem match (handles prefixes e.g. 1730000_doc.jpg vs doc.jpg cleanly without substring collision)
+    if (fnA.isNotEmpty && fnB.isNotEmpty && !genericStrings.contains(fnA) && !genericStrings.contains(fnB)) {
+      final cleanStemA = fnA.split('.').first.replaceFirst(RegExp(r'^\d+_'), '');
+      final cleanStemB = fnB.split('.').first.replaceFirst(RegExp(r'^\d+_'), '');
+      if (cleanStemA.isNotEmpty && cleanStemB.isNotEmpty && !genericStrings.contains(cleanStemA) && !genericStrings.contains(cleanStemB) && cleanStemA == cleanStemB) {
         return true;
       }
     }
@@ -285,19 +324,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final baseA = pathA.isNotEmpty ? pathA.split(RegExp(r'[/\\]')).last.toLowerCase() : fnA;
     final baseB = pathB.isNotEmpty ? pathB.split(RegExp(r'[/\\]')).last.toLowerCase() : fnB;
-    if (baseA.isNotEmpty && baseB.isNotEmpty && (baseA == baseB || baseA == fnB || fnA == baseB)) {
+    if (baseA.isNotEmpty && baseB.isNotEmpty && !genericStrings.contains(baseA) && !genericStrings.contains(baseB) && (baseA == baseB || baseA == fnB || fnA == baseB)) {
       return true;
     }
 
     // 6. Preview URL match
     final urlA = (a['preview_url'] ?? '').toString().trim().toLowerCase();
     final urlB = (b['preview_url'] ?? '').toString().trim().toLowerCase();
-    if (urlA.isNotEmpty && urlB.isNotEmpty && urlA == urlB) return true;
+    if (urlA.isNotEmpty && urlB.isNotEmpty && !urlA.contains('dummy') && urlA == urlB) return true;
 
     // 7. LR No match
     final lrA = (a['lrNo'] ?? (a['record'] is Map ? (a['record']['LR No *'] ?? a['record']['grno'] ?? a['record']['BNF LR No'] ?? '') : '')).toString().trim().toLowerCase();
     final lrB = (b['lrNo'] ?? (b['record'] is Map ? (b['record']['LR No *'] ?? b['record']['grno'] ?? b['record']['BNF LR No'] ?? '') : '')).toString().trim().toLowerCase();
-    if (lrA.isNotEmpty && lrB.isNotEmpty && lrA == lrB) return true;
+    if (lrA.isNotEmpty && lrB.isNotEmpty && !genericLrs.contains(lrA) && !genericLrs.contains(lrB) && lrA == lrB) return true;
 
     return false;
   }
@@ -369,11 +408,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadRecentUploads() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final dismissedList = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+      const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+      _dismissedRecentLrs = Set<String>.from(dismissedList.where((s) => !generic.contains(s.trim().toLowerCase())));
+
       final raw = prefs.getString('bnf_recent_uploaded_lrs');
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw) as List<dynamic>;
         final rawMaps = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        final deduped = _deduplicateUploadList(rawMaps);
+        final filtered = rawMaps.where((m) => !_isItemDismissed(m)).toList();
+        final deduped = _deduplicateUploadList(filtered);
         await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(deduped));
         widget.controller.setPreviousUploadsCache(deduped);
         if (mounted) {
@@ -382,8 +426,8 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         }
       }
-      // Async sync from server /api/previous-uploads
-      widget.controller.syncPreviousUploadsFromServer().then((uploads) {
+      // Async sync from server /api/previous-uploads (respecting dismissed history items)
+      widget.controller.syncPreviousUploadsFromServer().then((uploads) async {
         if (uploads.isNotEmpty && mounted) {
           _syncLoadedUploads(uploads);
         }
@@ -391,16 +435,19 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
-  void _syncLoadedUploads(List<Map<String, dynamic>> uploads) {
+  void _syncLoadedUploads(List<Map<String, dynamic>> uploads, {Set<String>? dismissed}) {
     try {
       final list = <Map<String, dynamic>>[];
       for (final srv in uploads) {
         final fn = (srv['filename'] ?? srv['fileName'] ?? '').toString();
         final id = (srv['id'] ?? srv['file_id'] ?? '').toString();
         if (fn.toLowerCase().contains('dummy') || id.toLowerCase().contains('dummy')) continue;
+        if (_isItemDismissed(srv) || _isItemDismissed(id) || _isItemDismissed(fn)) continue;
+        if (dismissed != null && (dismissed.contains(id) || dismissed.contains(fn))) continue;
         list.add({
           'id': id,
           'fileName': fn,
+          'saved_filename': srv['saved_filename'] ?? '',
           'imagePath': srv['file_path'] ?? srv['preview_url'] ?? fn,
           'lrNo': srv['lr_no'] ?? srv['lrNo'] ?? '',
           'isPdf': _toBoolean(srv['isPdf']) || fn.toLowerCase().endsWith('.pdf'),
@@ -413,9 +460,14 @@ class _HomeScreenState extends State<HomeScreen> {
           'record': srv['data'] ?? srv['record'] ?? {},
         });
       }
-      final combined = [...list, ..._persistedRecentLrs];
+      final combined = <Map<String, dynamic>>[];
+      combined.addAll(_persistedRecentLrs.where((r) => !_isItemDismissed(r)));
+      combined.addAll(list);
       final deduped = _deduplicateUploadList(combined).take(25).toList();
       widget.controller.setPreviousUploadsCache(deduped);
+      SharedPreferences.getInstance().then((p) {
+        p.setString('bnf_recent_uploaded_lrs', jsonEncode(deduped));
+      });
       if (mounted) {
         setState(() {
           _persistedRecentLrs = deduped;
@@ -440,6 +492,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final list = <Map<String, dynamic>>[];
       for (final item in currentItems) {
+        // Active upload/verified session item: clear any prior dismissal so it appears in history
+        _dismissedRecentLrs.remove(item.id);
+        _dismissedRecentLrs.remove(item.fileName);
+        final sv = item.record['saved_filename']?.toString();
+        if (sv != null && sv.isNotEmpty) _dismissedRecentLrs.remove(sv);
         final lr = (item.record['LR No *'] ?? item.record['grno'] ?? item.record['BNF LR No'] ?? '').toLowerCase();
         if (item.fileName.toLowerCase().contains('nloiad273') ||
             item.id.toLowerCase().contains('nloiad273') ||
@@ -465,6 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
         list.add({
           'id': item.id,
           'fileName': item.fileName,
+          'saved_filename': item.record['saved_filename'] ?? '',
           'imagePath': item.imagePath,
           'lrNo': item.record['LR No *'] ?? item.record['grno'] ?? item.record['BNF LR No'] ?? '',
           'isPdf': item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf'),
@@ -476,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'record': item.record,
         });
       }
-      final combined = [...list, ..._persistedRecentLrs];
+      final combined = [...list, ..._persistedRecentLrs.where((r) => !_isItemDismissed(r))];
       final toSave = _deduplicateUploadList(combined).take(20).toList();
       await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(toSave));
       widget.controller.setPreviousUploadsCache(toSave);
@@ -577,6 +635,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // If new item was added, automatically open Screen 4: Edit View
     if (mounted && widget.controller.items.length > countBefore) {
+      final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+      if (!isCurrent) return;
       final newItem = widget.controller.items.last;
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -698,6 +758,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // If new item was added, open Step 2: LR & Master Verification
       if (mounted && widget.controller.items.length > countBefore) {
+        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        if (!isCurrent) return;
         final newItem = widget.controller.items[countBefore];
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -743,6 +805,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (mounted && widget.controller.items.length > countBefore) {
+        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        if (!isCurrent) return;
         final newItem = widget.controller.items[countBefore];
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -926,8 +990,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final items = widget.controller.items;
         final isProcessing = widget.controller.isProcessing;
         final List<Map<String, dynamic>> rawDisplayList = [];
-        // 1. Current active batch items
+        // 1. Current active batch items (skipping any dismissed from history strip)
         for (final i in items) {
+          if (_isItemDismissed(i)) continue;
           final fn = i.fileName.toLowerCase();
           final id = i.id.toLowerCase();
           final lr = (i.record['LR No *'] ?? i.record['grno'] ?? i.record['BNF LR No'] ?? '').toLowerCase();
@@ -950,8 +1015,8 @@ class _HomeScreenState extends State<HomeScreen> {
             });
           }
         }
-        // 2. Merged with persisted & server previous uploads
-        rawDisplayList.addAll(_persistedRecentLrs);
+        // 2. Merged with persisted & server previous uploads (skipping dismissed)
+        rawDisplayList.addAll(_persistedRecentLrs.where((r) => !_isItemDismissed(r)));
         final displayRecent = _deduplicateUploadList(rawDisplayList);
 
         return Scaffold(
@@ -1283,7 +1348,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               final fileName = itmData['fileName']?.toString() ?? 'LR Document';
                               final lrNo = itmData['lrNo']?.toString() ?? '';
                               final imagePath = itmData['imagePath']?.toString() ?? '';
-                              final itemObj = itmData['item'] is BatchItem ? (itmData['item'] as BatchItem) : null;
+                              // itemObj unused
                               final isVerified = _isItemVerified(itmData);
                               final dt = DateTime.tryParse(itmData['createdAt']?.toString() ?? '') ?? DateTime.now();
                               final previewImg = (itmData['preview_image'] ?? itmData['record']?['preview_image'])?.toString() ?? '';

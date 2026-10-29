@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -14,9 +15,15 @@ class FileLifecycleService {
   Directory? _snapshotsDir;
   Map<String, Map<String, dynamic>> _cache = {};
   bool _initialized = false;
+  Completer<void>? _initCompleter;
 
   Future<void> _ensureInitialized() async {
     if (_initialized && _registryFile != null) return;
+    if (_initCompleter != null) {
+      await _initCompleter!.future;
+      return;
+    }
+    _initCompleter = Completer<void>();
     try {
       final dir = await getApplicationDocumentsDirectory();
       _registryFile = File('${dir.path}/$_registryFileName');
@@ -58,13 +65,20 @@ class FileLifecycleService {
       debugPrint('[FileLifecycleService] Init error: $e');
       _cache = {};
       _initialized = true;
+    } finally {
+      if (_initCompleter != null && !_initCompleter!.isCompleted) {
+        _initCompleter!.complete();
+      }
+      _initCompleter = null;
     }
   }
 
   Future<void> _persist() async {
     try {
       if (_registryFile != null) {
-        await _registryFile!.writeAsString(jsonEncode(_cache), flush: true);
+        final tmpFile = File('${_registryFile!.path}.tmp_${DateTime.now().microsecondsSinceEpoch}');
+        await tmpFile.writeAsString(jsonEncode(_cache), flush: true);
+        await tmpFile.rename(_registryFile!.path);
       }
     } catch (e) {
       debugPrint('[FileLifecycleService] Persist error: $e');

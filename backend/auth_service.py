@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import secrets
+import threading
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +19,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 _otp_store = {}
 # Active Sessions: { "token_abc": { "user_id": "...", "mobile": "...", "name": "...", "created_at": float } }
 _sessions = {}
+_auth_lock = threading.RLock()
 
 
 def _clean_mobile(mobile: str) -> str:
@@ -31,18 +33,32 @@ def _clean_mobile(mobile: str) -> str:
 
 
 def _load_users() -> dict:
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    with _auth_lock:
+        if os.path.exists(USERS_FILE):
+            try:
+                with open(USERS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
 
 
 def _save_users(users: dict):
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2)
+    with _auth_lock:
+        temp_file = f"{USERS_FILE}.tmp_{uuid.uuid4().hex}"
+        try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(users, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_file, USERS_FILE)
+        except Exception as e:
+            print(f"[AuthService] Error saving users.json: {e}")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
 
 
 def send_otp(mobile_raw: str, name: str | None = None) -> dict:
@@ -58,28 +74,29 @@ def send_otp(mobile_raw: str, name: str | None = None) -> dict:
         }
 
     now = time.time()
-    existing = _otp_store.get(mobile)
-    if existing:
-        elapsed = now - existing.get("last_sent_at", 0)
-        if elapsed < 30:
-            remaining = int(30 - elapsed)
-            return {
-                "success": False,
-                "error": f"Please wait {remaining} second{'s' if remaining != 1 else ''} before requesting a new OTP.",
-                "cooldown_remaining": remaining
-            }
+    with _auth_lock:
+        existing = _otp_store.get(mobile)
+        if existing:
+            elapsed = now - existing.get("last_sent_at", 0)
+            if elapsed < 30:
+                remaining = int(30 - elapsed)
+                return {
+                    "success": False,
+                    "error": f"Please wait {remaining} second{'s' if remaining != 1 else ''} before requesting a new OTP.",
+                    "cooldown_remaining": remaining
+                }
 
-    # Generate 6-digit cryptographically random OTP
-    otp_code = str(secrets.randbelow(900000) + 100000)
-    expires_at = now + 300.0  # 5 minutes validity
+        # Generate 6-digit cryptographically random OTP
+        otp_code = str(secrets.randbelow(900000) + 100000)
+        expires_at = now + 300.0  # 5 minutes validity
 
-    _otp_store[mobile] = {
-        "otp": otp_code,
-        "expires_at": expires_at,
-        "attempts_left": 3,
-        "last_sent_at": now,
-        "name": name or (existing.get("name") if existing else "") or "Logistics User"
-    }
+        _otp_store[mobile] = {
+            "otp": otp_code,
+            "expires_at": expires_at,
+            "attempts_left": 3,
+            "last_sent_at": now,
+            "name": name or (existing.get("name") if existing else "") or "Logistics User"
+        }
 
     # Terminal visibility for testing & logs
     print("=" * 65)
@@ -115,71 +132,72 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
     if not otp_code or len(otp_code) != 6:
         return {"success": False, "error": "Please enter a valid 6-digit numeric OTP."}
 
-    entry = _otp_store.get(mobile)
-    if not entry:
-        return {
-            "success": False,
-            "error": "No active OTP found for this mobile number. Please click 'Send OTP' first."
-        }
-
-    now = time.time()
-    if now > entry["expires_at"]:
-        del _otp_store[mobile]
-        return {
-            "success": False,
-            "error": "OTP has expired. Please request a new OTP."
-        }
-
-    if entry["attempts_left"] <= 0:
-        del _otp_store[mobile]
-        return {
-            "success": False,
-            "error": "Maximum retry limit exceeded. Please request a fresh OTP."
-        }
-
-    # Check match (also allows '123456' as master test OTP in development mode)
-    if entry["otp"] != otp_code and otp_code != "123456":
-        entry["attempts_left"] -= 1
-        rem = entry["attempts_left"]
-        if rem <= 0:
-            del _otp_store[mobile]
+    with _auth_lock:
+        entry = _otp_store.get(mobile)
+        if not entry:
             return {
                 "success": False,
-                "error": "Incorrect OTP. Maximum retry attempts reached. Please request a new OTP."
+                "error": "No active OTP found for this mobile number. Please click 'Send OTP' first."
             }
-        return {
-            "success": False,
-            "error": f"Incorrect OTP. You have {rem} attempt{'s' if rem != 1 else ''} remaining.",
-            "attempts_left": rem
+
+        now = time.time()
+        if now > entry["expires_at"]:
+            _otp_store.pop(mobile, None)
+            return {
+                "success": False,
+                "error": "OTP has expired. Please request a new OTP."
+            }
+
+        if entry["attempts_left"] <= 0:
+            _otp_store.pop(mobile, None)
+            return {
+                "success": False,
+                "error": "Maximum retry limit exceeded. Please request a fresh OTP."
+            }
+
+        # Check match (also allows '123456' as master test OTP in development mode)
+        if entry["otp"] != otp_code and otp_code != "123456":
+            entry["attempts_left"] -= 1
+            rem = entry["attempts_left"]
+            if rem <= 0:
+                _otp_store.pop(mobile, None)
+                return {
+                    "success": False,
+                    "error": "Incorrect OTP. Maximum retry attempts reached. Please request a new OTP."
+                }
+            return {
+                "success": False,
+                "error": f"Incorrect OTP. You have {rem} attempt{'s' if rem != 1 else ''} remaining.",
+                "attempts_left": rem
+            }
+
+        # OTP Verified Successfully -> Single-Use Consumption
+        stored_name = name or entry.get("name") or "Logistics User"
+        _otp_store.pop(mobile, None)
+
+        # Create/Update User Registry
+        users = _load_users()
+        user_id = users.get(mobile, {}).get("id") or str(uuid.uuid4())[:8]
+        user_record = {
+            "id": user_id,
+            "mobile": mobile,
+            "name": stored_name,
+            "role": "operator",
+            "last_login": datetime.now().isoformat(),
+            "created_at": users.get(mobile, {}).get("created_at") or datetime.now().isoformat()
         }
+        users[mobile] = user_record
+        _save_users(users)
 
-    # OTP Verified Successfully -> Single-Use Consumption
-    stored_name = name or entry.get("name") or "Logistics User"
-    del _otp_store[mobile]
-
-    # Create/Update User Registry
-    users = _load_users()
-    user_id = users.get(mobile, {}).get("id") or str(uuid.uuid4())[:8]
-    user_record = {
-        "id": user_id,
-        "mobile": mobile,
-        "name": stored_name,
-        "role": "operator",
-        "last_login": datetime.now().isoformat(),
-        "created_at": users.get(mobile, {}).get("created_at") or datetime.now().isoformat()
-    }
-    users[mobile] = user_record
-    _save_users(users)
-
-    # Issue Session Token
-    session_token = f"bnf_{uuid.uuid4().hex}"
-    _sessions[session_token] = {
-        "user_id": user_id,
-        "mobile": mobile,
-        "name": stored_name,
-        "role": "operator",
-        "login_at": datetime.now().isoformat()
-    }
+        # Issue Session Token
+        session_token = f"bnf_{uuid.uuid4().hex}"
+        _sessions[session_token] = {
+            "user_id": user_id,
+            "mobile": mobile,
+            "name": stored_name,
+            "role": "operator",
+            "login_at": datetime.now().isoformat()
+        }
 
     print(f"[AUTH SUCCESS] User logged in: {stored_name} (+91 {mobile}) | Token: {session_token[:12]}...")
 
@@ -205,29 +223,30 @@ def direct_login(mobile_raw: str, name: str | None = None) -> dict:
 
     stored_name = name or "Logistics User"
 
-    # Create/Update User Registry
-    users = _load_users()
-    user_id = users.get(mobile, {}).get("id") or str(uuid.uuid4())[:8]
-    user_record = {
-        "id": user_id,
-        "mobile": mobile,
-        "name": stored_name,
-        "role": "operator",
-        "last_login": datetime.now().isoformat(),
-        "created_at": users.get(mobile, {}).get("created_at") or datetime.now().isoformat()
-    }
-    users[mobile] = user_record
-    _save_users(users)
+    # Create/Update User Registry under lock
+    with _auth_lock:
+        users = _load_users()
+        user_id = users.get(mobile, {}).get("id") or str(uuid.uuid4())[:8]
+        user_record = {
+            "id": user_id,
+            "mobile": mobile,
+            "name": stored_name,
+            "role": "operator",
+            "last_login": datetime.now().isoformat(),
+            "created_at": users.get(mobile, {}).get("created_at") or datetime.now().isoformat()
+        }
+        users[mobile] = user_record
+        _save_users(users)
 
-    # Issue Session Token
-    session_token = f"bnf_{uuid.uuid4().hex}"
-    _sessions[session_token] = {
-        "user_id": user_id,
-        "mobile": mobile,
-        "name": stored_name,
-        "role": "operator",
-        "login_at": datetime.now().isoformat()
-    }
+        # Issue Session Token
+        session_token = f"bnf_{uuid.uuid4().hex}"
+        _sessions[session_token] = {
+            "user_id": user_id,
+            "mobile": mobile,
+            "name": stored_name,
+            "role": "operator",
+            "login_at": datetime.now().isoformat()
+        }
 
     print(f"[AUTH SUCCESS - DIRECT] User logged in: {stored_name} (+91 {mobile}) | Token: {session_token[:12]}...")
 
@@ -243,7 +262,9 @@ def get_session_user(token: str | None) -> dict | None:
     if not token or not isinstance(token, str):
         return None
     clean_token = token.replace("Bearer ", "").strip()
-    return _sessions.get(clean_token)
+    with _auth_lock:
+        entry = _sessions.get(clean_token)
+        return dict(entry) if entry else None
 
 
 def logout_session(token: str | None) -> bool:
@@ -251,8 +272,6 @@ def logout_session(token: str | None) -> bool:
     if not token or not isinstance(token, str):
         return False
     clean_token = token.replace("Bearer ", "").strip()
-    if clean_token in _sessions:
-        del _sessions[clean_token]
-        return True
-    return False
+    with _auth_lock:
+        return _sessions.pop(clean_token, None) is not None
 

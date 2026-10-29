@@ -44,6 +44,7 @@ class BatchProcessingController extends ChangeNotifier {
   String? _activeUserName;
   String? _activeSessionToken;
   Timer? _cloudSyncTimer;
+  Completer<void>? _processingCompleter;
 
   BatchProcessingController({
     PermissionService? permissionService,
@@ -304,7 +305,7 @@ class BatchProcessingController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final mob = prefs.getString('bnf_user_mobile');
       final name = prefs.getString('bnf_user_name');
-      final token = prefs.getString('bnf_session_token');
+      final token = prefs.getString('bnf_user_token') ?? prefs.getString('bnf_session_token');
       final recentRaw = prefs.getString('bnf_recent_uploaded_lrs');
       if (recentRaw != null && recentRaw.isNotEmpty) {
         try {
@@ -327,6 +328,7 @@ class BatchProcessingController extends ChangeNotifier {
     if (mob == null || mob.trim().isEmpty) return;
     try {
       final cloudData = await UserCloudService.instance.fetchUserCloudData(mob, baseUrl: _geminiService.serverUrl);
+      if (_isDisposed || _activeUserMobile != mob) return;
       if (cloudData != null) {
         // 1. Hydrate active batch (merge without duplicating)
         if (cloudData['active_batch'] is List) {
@@ -353,8 +355,43 @@ class BatchProcessingController extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         if (cloudData['uploaded_lrs'] is List && (cloudData['uploaded_lrs'] as List).isNotEmpty) {
           final cloudUploads = (cloudData['uploaded_lrs'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-          _previousUploadsCache = cloudUploads;
-          await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cloudData['uploaded_lrs']));
+          final dismissedRaw = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+          const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+          final dismissed = dismissedRaw.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
+
+          final filteredCloud = cloudUploads.where((u) {
+            final id = (u['id'] ?? u['file_id'] ?? '').toString().trim();
+            final fn = (u['filename'] ?? u['fileName'] ?? '').toString().trim().toLowerCase();
+            final sv = (u['saved_filename'] ?? '').toString().trim().toLowerCase();
+            if (id.isNotEmpty && !generic.contains(id) && dismissed.contains(id)) return false;
+            if (fn.isNotEmpty && !generic.contains(fn) && dismissed.contains(fn)) return false;
+            if (sv.isNotEmpty && !generic.contains(sv) && dismissed.contains(sv)) return false;
+            return true;
+          }).toList();
+
+          final mergedUploads = <Map<String, dynamic>>[...filteredCloud];
+          for (final local in _previousUploadsCache) {
+            final lId = (local['id'] ?? local['file_id'] ?? '').toString().trim();
+            final lFn = (local['fileName'] ?? local['filename'] ?? '').toString().trim().toLowerCase();
+            final lSv = (local['saved_filename'] ?? '').toString().trim().toLowerCase();
+            if ((lId.isNotEmpty && !generic.contains(lId) && dismissed.contains(lId)) ||
+                (lFn.isNotEmpty && !generic.contains(lFn) && dismissed.contains(lFn)) ||
+                (lSv.isNotEmpty && !generic.contains(lSv) && dismissed.contains(lSv))) {
+              continue;
+            }
+            final exists = mergedUploads.any((m) {
+              final mId = (m['id'] ?? m['file_id'] ?? '').toString().trim();
+              final mSv = (m['saved_filename'] ?? '').toString().trim().toLowerCase();
+              final mFn = (m['filename'] ?? m['fileName'] ?? '').toString().trim().toLowerCase();
+              if (lId.isNotEmpty && mId.isNotEmpty && lId == mId) return true;
+              if (lSv.isNotEmpty && mSv.isNotEmpty && lSv == mSv) return true;
+              if (lFn.isNotEmpty && mFn.isNotEmpty && !generic.contains(lFn) && !generic.contains(mFn) && lFn == mFn) return true;
+              return false;
+            });
+            if (!exists) mergedUploads.add(local);
+          }
+          _previousUploadsCache = mergedUploads;
+          await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(mergedUploads));
         }
 
         // 3. Cache generated Excel exports
@@ -375,9 +412,45 @@ class BatchProcessingController extends ChangeNotifier {
         sessionToken: _activeSessionToken,
       );
       if (uploads.isNotEmpty) {
-        _previousUploadsCache = List<Map<String, dynamic>>.from(uploads);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(uploads));
+        final dismissedRaw = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+        const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+        final dismissed = dismissedRaw.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
+
+        final filteredUploads = uploads.where((u) {
+          final id = (u['id'] ?? u['file_id'] ?? '').toString().trim();
+          final fn = (u['filename'] ?? u['fileName'] ?? '').toString().trim().toLowerCase();
+          final sv = (u['saved_filename'] ?? '').toString().trim().toLowerCase();
+          if (id.isNotEmpty && !generic.contains(id) && dismissed.contains(id)) return false;
+          if (fn.isNotEmpty && !generic.contains(fn) && dismissed.contains(fn)) return false;
+          if (sv.isNotEmpty && !generic.contains(sv) && dismissed.contains(sv)) return false;
+          return true;
+        }).toList();
+
+        final mergedUploads = <Map<String, dynamic>>[...filteredUploads];
+        for (final local in _previousUploadsCache) {
+          final lId = (local['id'] ?? local['file_id'] ?? '').toString().trim();
+          final lFn = (local['fileName'] ?? local['filename'] ?? '').toString().trim().toLowerCase();
+          final lSv = (local['saved_filename'] ?? '').toString().trim().toLowerCase();
+          if ((lId.isNotEmpty && !generic.contains(lId) && dismissed.contains(lId)) ||
+              (lFn.isNotEmpty && !generic.contains(lFn) && dismissed.contains(lFn)) ||
+              (lSv.isNotEmpty && !generic.contains(lSv) && dismissed.contains(lSv))) {
+            continue;
+          }
+          final exists = mergedUploads.any((m) {
+            final mId = (m['id'] ?? m['file_id'] ?? '').toString().trim();
+            final mSv = (m['saved_filename'] ?? '').toString().trim().toLowerCase();
+            final mFn = (m['filename'] ?? m['fileName'] ?? '').toString().trim().toLowerCase();
+            if (lId.isNotEmpty && mId.isNotEmpty && lId == mId) return true;
+            if (lSv.isNotEmpty && mSv.isNotEmpty && lSv == mSv) return true;
+            if (lFn.isNotEmpty && mFn.isNotEmpty && !generic.contains(lFn) && !generic.contains(mFn) && lFn == mFn) return true;
+            return false;
+          });
+          if (!exists) mergedUploads.add(local);
+        }
+        _previousUploadsCache = mergedUploads;
+        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(mergedUploads));
+        return mergedUploads;
       }
       return uploads;
     } catch (e) {
@@ -768,8 +841,12 @@ class BatchProcessingController extends ChangeNotifier {
   /// After all items complete, automatically saves an Excel file so the user
   /// always has an up-to-date export without needing to manually tap "Export".
   Future<void> _processQueue() async {
-    if (_isProcessing) return;
+    if (_isProcessing) {
+      await _processingCompleter?.future;
+      return;
+    }
     _isProcessing = true;
+    _processingCompleter = Completer<void>();
     _statusMessage = 'Processing images...';
     final pendingCount = _items.where((i) => i.status == BatchItemStatus.pending).length;
     _processingTotalFiles = pendingCount > 0 ? pendingCount : 1;
@@ -999,7 +1076,7 @@ class BatchProcessingController extends ChangeNotifier {
               }
             ];
 
-            _items[currentIndex] = item.copyWith(
+            _items[currentIndex] = _items[currentIndex].copyWith(
               status: BatchItemStatus.completed,
               processedAt: now,
               record: parseResult.data,
@@ -1013,11 +1090,59 @@ class BatchProcessingController extends ChangeNotifier {
               versions: initialVersions,
               editHistory: initialHistory,
             );
+
+                        // Record completed LR into history cache immediately so it never automatically vanishes
+            try {
+              final completedDoc = {
+                'id': _items[currentIndex].id,
+                'fileName': _items[currentIndex].fileName,
+                'saved_filename': _items[currentIndex].record['saved_filename'] ?? '',
+                'imagePath': _items[currentIndex].imagePath,
+                'lrNo': _items[currentIndex].record['LR No *'] ?? _items[currentIndex].record['grno'] ?? _items[currentIndex].record['BNF LR No'] ?? '',
+                'isPdf': _items[currentIndex].fileName.toLowerCase().endsWith('.pdf') || _items[currentIndex].imagePath.toLowerCase().endsWith('.pdf'),
+                'createdAt': _items[currentIndex].createdAt.toIso8601String(),
+                'status': 'completed',
+                'isVerified': _items[currentIndex].isVerified,
+                'preview_url': _items[currentIndex].record['preview_url'] ?? '',
+                'preview_path': _items[currentIndex].record['preview_path'] ?? '',
+                'preview_image': _items[currentIndex].record['preview_image'] ?? '',
+                'record': _items[currentIndex].record,
+              };
+              const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
+              final curId = completedDoc['id']?.toString().trim() ?? '';
+              final curFn = completedDoc['fileName']?.toString().trim().toLowerCase() ?? '';
+              final curSv = (completedDoc['saved_filename'] ?? '').toString().trim().toLowerCase();
+
+              _previousUploadsCache.removeWhere((r) {
+                final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim();
+                final rFn = (r['fileName'] ?? r['filename'] ?? '').toString().trim().toLowerCase();
+                final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
+                if (curId.isNotEmpty && rId.isNotEmpty && curId == rId) return true;
+                if (curSv.isNotEmpty && rSv.isNotEmpty && curSv == rSv) return true;
+                if (curFn.isNotEmpty && rFn.isNotEmpty && !genericFns.contains(curFn) && curFn == rFn) return true;
+                return false;
+              });
+              _previousUploadsCache.insert(0, completedDoc);
+              Future<void>(() async {
+                try {
+                  final p = await SharedPreferences.getInstance();
+                  await p.setString('bnf_recent_uploaded_lrs', jsonEncode(_previousUploadsCache));
+                  final dismissed = p.getStringList('bnf_dismissed_recent_lrs');
+                  if (dismissed != null && dismissed.isNotEmpty) {
+                    final toRemove = {curId, curFn, curSv}..removeWhere((s) => s.isEmpty);
+                    final updated = dismissed.where((s) => !toRemove.contains(s.trim().toLowerCase()) && !toRemove.contains(s.trim())).toList();
+                    if (updated.length != dismissed.length) {
+                      await p.setStringList('bnf_dismissed_recent_lrs', updated);
+                    }
+                  }
+                } catch (_) {}
+              });
+            } catch (_) {}
           }
         } catch (e) {
           final currentIndex = _items.indexWhere((i) => i.id == item.id);
           if (currentIndex != -1) {
-            _items[currentIndex] = item.copyWith(
+            _items[currentIndex] = _items[currentIndex].copyWith(
               status: BatchItemStatus.error,
               errorMessage: e.toString(),
               processedAt: DateTime.now(),
@@ -1029,6 +1154,10 @@ class BatchProcessingController extends ChangeNotifier {
       }
     } finally {
       _isProcessing = false;
+      if (_processingCompleter != null && !_processingCompleter!.isCompleted) {
+        _processingCompleter!.complete();
+      }
+      _processingCompleter = null;
       _statusMessage = 'Processing complete. Saving Excel...';
       notifyListeners();
       triggerCloudSync();
@@ -1416,7 +1545,7 @@ class BatchProcessingController extends ChangeNotifier {
   /// Exports items into a single styled Excel file.
   /// If [itemsToExport] is provided, only those items (e.g. verified-only) are exported.
   Future<String?> exportToExcel({DocumentSchema? schema, List<BatchItem>? itemsToExport}) async {
-    final list = itemsToExport ?? _items;
+    final list = List<BatchItem>.from(itemsToExport ?? _items);
     if (list.isEmpty) return null;
 
     try {
@@ -1460,10 +1589,21 @@ class BatchProcessingController extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (!_isDisposed && hasListeners) {
+      super.notifyListeners();
+    }
+  }
+
+  @override
   void dispose() {
     if (!_isDisposed) {
       _isDisposed = true;
       _cloudSyncTimer?.cancel();
+      if (_processingCompleter != null && !_processingCompleter!.isCompleted) {
+        _processingCompleter!.complete();
+      }
+      _processingCompleter = null;
       _ocrService.dispose();
       super.dispose();
     }
