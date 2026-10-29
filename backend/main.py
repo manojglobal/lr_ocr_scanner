@@ -1418,13 +1418,14 @@ def _resolve_user_from_request(
     Resolves the authenticated user context from session token, user_id, or mobile number.
     Returns dict with keys: user_id, user_mobile, user_name.
     """
-    resolved_id = (user_id or "").strip()
-    resolved_mobile = (user_mobile or "").strip()
-    resolved_name = (user_name or "").strip()
+    resolved_id = str(user_id).strip() if (user_id and isinstance(user_id, str)) else ""
+    resolved_mobile = str(user_mobile).strip() if (user_mobile and isinstance(user_mobile, str)) else ""
+    resolved_name = str(user_name).strip() if (user_name and isinstance(user_name, str)) else ""
+    auth_header = authorization if (authorization and isinstance(authorization, str)) else None
 
     # 1. First attempt to resolve via active session token
-    if authorization:
-        session_user = auth_service.get_session_user(authorization)
+    if auth_header:
+        session_user = auth_service.get_session_user(auth_header)
         if session_user:
             resolved_id = session_user.get("user_id") or resolved_id
             resolved_mobile = session_user.get("mobile") or resolved_mobile
@@ -3914,6 +3915,38 @@ async def delete_user_cloud_upload_history(
     result = user_cloud_service.delete_user_upload_history(
         mobile=req_mobile,
         lr_identifiers=ids_to_delete,
+        user_id=req_user_id
+    )
+    return result
+
+
+@app.post("/api/user-cloud-storage/undismiss-upload")
+async def undismiss_user_cloud_upload(
+    req: DeleteUserCloudLRRequest,
+    authorization: str | None = Header(default=None)
+):
+    """
+    Clears specified identifiers from dismissed_uploads in the user's cloud DB,
+    ensuring newly uploaded or re-uploaded LRs immediately appear in Previously Uploaded LRs.
+    """
+    actor = _resolve_user_from_request(
+        authorization=authorization,
+        user_id=req.user_id,
+        user_mobile=req.user_mobile
+    )
+    req_mobile = actor.get("user_mobile") or req.user_mobile or ""
+    req_user_id = actor.get("user_id") or req.user_id or ""
+
+    if not req_mobile:
+        return {"success": False, "error": "User mobile is required"}
+
+    ids_to_clear = list(req.lr_identifiers) if req.lr_identifiers else []
+    if req.lr_identifier and req.lr_identifier not in ids_to_clear:
+        ids_to_clear.append(req.lr_identifier)
+
+    result = user_cloud_service.undismiss_user_upload(
+        mobile=req_mobile,
+        identifiers=ids_to_clear,
         user_id=req_user_id
     )
     return result

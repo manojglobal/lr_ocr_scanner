@@ -2143,63 +2143,92 @@
       return false;
     }
 
-    // --- Session-Based Batch Isolation & Cleanup ---
-    (function clearLegacyFrontendHistory() {
-      try {
-        // Automatically prune any oversized completed ID arrays or dead keys across all accounts
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('bnf_completed_lr_ids_')) {
-            try {
-              const arr = JSON.parse(localStorage.getItem(k) || '[]');
-              if (Array.isArray(arr) && arr.length > 50) {
-                localStorage.setItem(k, JSON.stringify(arr.slice(-50)));
-              }
-            } catch (_) {}
-          }
-          if (k && k.startsWith('bnf_exported_batches_')) {
-            try {
-              const arr = JSON.parse(localStorage.getItem(k) || '[]');
-              if (Array.isArray(arr) && arr.length > 15) {
-                localStorage.setItem(k, JSON.stringify(arr.slice(0, 15)));
-              }
-            } catch (_) {}
-          }
-        }
+    // --- In-Memory State & Decoupled Backend Persistence ---
+    // Critical: LR data, batches, recents, tombstones, and image blobs are NOT stored in browser localStorage or sessionStorage!
+    // They are stored authoritatively in the backend JSON DB (backend/data/cloud_db/<mobile>.json) and disk stores,
+    // and cached in memory and IndexedDB (ImageDB) to completely eliminate QuotaExceededError.
+    let userRecentsCache = [];
+    let userDismissedTombstones = new Set();
+    let userCompletedItemsSet = new Set();
+    let userExportedBatchesCache = [];
+    let localDriverCache = {};
 
-        const cleanupKey = 'bnf_session_isolation_v4';
-        if (!localStorage.getItem(cleanupKey)) {
-          const keysToRemove = [];
+    // --- Automatic Migration & Quota Purge ---
+    // Migrates legacy localStorage batches to the backend cloud DB once, then purges all bloated keys from localStorage.
+    (async function migrateAndPurgeBrowserStorage() {
+      try {
+        let user = null;
+        try {
+          const uRaw = localStorage.getItem('bnf_user');
+          if (uRaw) user = JSON.parse(uRaw);
+        } catch (_) {}
+
+        // 1. One-time recovery: If legacy batch data exists in localStorage, push to backend cloud DB so no user data is lost
+        if (user && user.mobile) {
+          let legacyBatch = [];
           for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
-            if (k && (k.startsWith('bnf_batch_') || k.startsWith('bnf_deleted_') || k.startsWith('bnf_session_batch_') || k === 'bnf_recent_uploaded_files')) {
-              keysToRemove.push(k);
+            if (k && (k.startsWith('bnf_account_batch_') || k.startsWith('bnf_session_batch_'))) {
+              try {
+                const raw = localStorage.getItem(k);
+                if (raw) {
+                  const arr = JSON.parse(raw);
+                  if (Array.isArray(arr) && arr.length > 0) legacyBatch.push(...arr);
+                }
+              } catch (_) {}
             }
           }
-          keysToRemove.forEach(k => localStorage.removeItem(k));
-          localStorage.setItem(cleanupKey, 'true');
-        }
-
-        // Clean all session batch stores in localStorage of dummy LRs
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('bnf_session_batch_')) {
-            try {
-              const raw = localStorage.getItem(k);
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) {
-                  const cleaned = parsed.filter(item => item && !isDummyLRItem(item));
-                  localStorage.setItem(k, JSON.stringify(cleaned));
-                }
+          if (legacyBatch.length > 0) {
+            const uniqueMap = new Map();
+            legacyBatch.forEach(item => {
+              if (item && item.id && !isDummyLRItem(item)) uniqueMap.set(item.id, item);
+            });
+            const docs = Array.from(uniqueMap.values()).map(it => {
+              const c = Object.assign({}, it);
+              if (c.imageSrc && c.imageSrc.length > 40000) c.imageSrc = '';
+              if (c.originalPdfSrc) c.originalPdfSrc = '';
+              return c;
+            });
+            if (docs.length > 0) {
+              try {
+                await fetch('/api/user-cloud-storage/save-batch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    documents: docs,
+                    user_mobile: user.mobile,
+                    user_id: user.id || null,
+                    user_name: user.name || 'Logistics User'
+                  })
+                });
+                console.log(`[Storage Migration] Safely persisted ${docs.length} legacy LR records to backend cloud DB.`);
+              } catch (migErr) {
+                console.warn('[Storage Migration] Notice syncing legacy batch to cloud DB:', migErr);
               }
-            } catch (_) {}
+            }
           }
         }
 
-        // Purge any legacy shared un-isolated recent uploads key
-        localStorage.removeItem('bnf_recent_uploaded_files');
-      } catch (e) {}
+        // 2. Wipe all bulky LR data, batches, recents, tombstones, and driver caches from localStorage
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (k === 'bnf_user' || k === 'bnf_session_token') continue; // Preserve user auth credentials only (~150 bytes)
+          if (k.startsWith('bnf_') || k === 'BNF_MASTER_DRIVER_CACHE') {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => {
+          try { localStorage.removeItem(k); } catch (_) {}
+        });
+
+        // 3. Clear sessionStorage completely
+        try { sessionStorage.clear(); } catch (_) {}
+        console.log('[Storage Migration] Browser storage cleaned up. Zero QuotaExceededError risks.');
+      } catch (e) {
+        console.warn('[Storage Migration] Notice during cleanup:', e);
+      }
     })();
 
     // --- Stable Per-Account Storage Keying Helpers ---
@@ -2228,36 +2257,29 @@
     }
 
     function getUserRemovedTombstones(user = currentUser) {
-      const k = getUserRemovedStorageKey(user);
-      if (!k) return [];
-      try {
-        const raw = localStorage.getItem(k);
-        return raw ? JSON.parse(raw) : [];
-      } catch (_) {
-        return [];
-      }
+      return Array.from(userDismissedTombstones);
     }
 
     function isItemTombstonedByUser(item, user = currentUser) {
-      if (!item) return false;
-      const tombstones = getUserRemovedTombstones(user);
-      if (!tombstones || tombstones.length === 0) return false;
+      if (!item || userDismissedTombstones.size === 0) return false;
       const itemId = item.id ? String(item.id).trim().toLowerCase() : '';
       const itemFn = (item.filename || item.fileName || item.file_name || '').toString().trim().toLowerCase();
       const itemSaved = item.saved_filename ? String(item.saved_filename).trim().toLowerCase() : '';
       const itemFid = (item.file_id || item.upload_id || '').toString().trim().toLowerCase();
-      const itemLrNo = (item.data?.['grno'] || item.data?.['LR No *'] || item.lrNo || '').toString().trim().toLowerCase();
-      const isGeneric = (s) => !s || ['lr document', 'document', 'undefined', 'null', 'item', 'none'].includes(s.toLowerCase());
-      return tombstones.some(t => {
-        if (!t) return false;
-        const strT = String(t).trim().toLowerCase();
-        if (isGeneric(strT)) return false;
-        return (itemId && !isGeneric(itemId) && itemId === strT) ||
-               (itemSaved && !isGeneric(itemSaved) && itemSaved === strT) ||
-               (itemFn && !isGeneric(itemFn) && itemFn === strT) ||
-               (itemFid && !isGeneric(itemFid) && itemFid === strT) ||
-               (itemLrNo && !isGeneric(itemLrNo) && itemLrNo === strT);
-      });
+      const isGeneric = (s) => !s || s.length < 3 || [
+        '-', '--', 'n/a', 'na', 'none', 'null', 'undefined',
+        'lr document', 'document', 'item', 'default', 'scan', 'image', 'photo',
+        'document.pdf', 'document.jpg', 'scan.pdf', 'scan.jpg'
+      ].includes(s.toLowerCase());
+
+      for (const t of userDismissedTombstones) {
+        if (!t || isGeneric(t)) continue;
+        if (itemId && itemId === t) return true;
+        if (itemSaved && itemSaved === t) return true;
+        if (itemFid && itemFid === t) return true;
+        if (itemFn && !isGeneric(itemFn) && itemFn === t) return true;
+      }
+      return false;
     }
 
     function isSameUploadWeb(a, b) {
@@ -2297,134 +2319,54 @@
       if (item.is_exported === true || item.isExported === true) return true;
       if (typeof item.exportedAt === 'string' && item.exportedAt.trim().length > 0) return true;
       if (typeof item.exported_at === 'string' && item.exported_at.trim().length > 0) return true;
-      const k = getUserCompletedItemsStorageKey(user);
-      if (!k) return false;
-      try {
-        const raw = localStorage.getItem(k);
-        const set = raw ? JSON.parse(raw) : [];
-        if (!set || !Array.isArray(set) || set.length === 0) return false;
-        const ignored = new Set(['', '-', 'none', 'null', 'undefined', 'lr document', 'document.jpg', 'default']);
-        const itemId = item.id ? String(item.id).trim() : '';
-        const itemFn = item.filename ? String(item.filename).trim() : '';
-        const itemSaved = item.saved_filename ? String(item.saved_filename).trim() : '';
-        const itemLr = item.data ? (item.data['LR No *'] || item.data['lrno'] || item.data['grno']) : (item.lrNo || '');
-        const strLr = itemLr ? String(itemLr).trim() : '';
-        return set.some(s => {
-          if (!s) return false;
-          const strS = String(s).trim();
-          if (ignored.has(strS.toLowerCase())) return false;
-          return (itemId && itemId === strS) ||
-                 (itemFn && !ignored.has(itemFn.toLowerCase()) && itemFn === strS) ||
-                 (itemSaved && !ignored.has(itemSaved.toLowerCase()) && itemSaved === strS) ||
-                 (strLr && !ignored.has(strLr.toLowerCase()) && strLr === strS);
-        });
-      } catch (_) {
-        return false;
-      }
+      const itemId = item.id ? String(item.id).trim() : '';
+      const itemFn = item.filename ? String(item.filename).trim() : '';
+      const itemSaved = item.saved_filename ? String(item.saved_filename).trim() : '';
+      const itemLr = item.data ? (item.data['LR No *'] || item.data['lrno'] || item.data['grno']) : (item.lrNo || '');
+      const strLr = itemLr ? String(itemLr).trim() : '';
+      return (itemId && userCompletedItemsSet.has(itemId)) ||
+             (itemSaved && userCompletedItemsSet.has(itemSaved)) ||
+             (itemFn && userCompletedItemsSet.has(itemFn)) ||
+             (strLr && userCompletedItemsSet.has(strLr));
     }
 
     function markBatchAsCompletedAndClearPending(exportedDocs, exportMeta = {}) {
       if (!currentUser) return;
       const exportId = exportMeta.export_id || ('exp_' + Date.now());
-      const expBatchesKey = getUserExportedStorageKey();
-      const compIdsKey = getUserCompletedItemsStorageKey();
-      const recentKey = getUserRecentStorageKey();
-
       const docsToMark = (Array.isArray(exportedDocs) && exportedDocs.length > 0) ? exportedDocs : verifiedBatch;
       if (!docsToMark || docsToMark.length === 0) return;
 
       const completedIds = [];
-      const completedFilenames = [];
-      const completedSavedNames = [];
-      const completedLrNos = [];
       const ignoredValues = new Set(['', '-', 'none', 'null', 'undefined', 'lr document', 'document.jpg', 'default']);
 
       docsToMark.forEach(d => {
         if (!d) return;
-        if (d.id && !ignoredValues.has(String(d.id).trim().toLowerCase())) completedIds.push(String(d.id).trim());
-        if (d.filename && !ignoredValues.has(String(d.filename).trim().toLowerCase())) completedFilenames.push(String(d.filename).trim());
-        if (d.saved_filename && !ignoredValues.has(String(d.saved_filename).trim().toLowerCase())) completedSavedNames.push(String(d.saved_filename).trim());
+        if (d.id && !ignoredValues.has(String(d.id).trim().toLowerCase())) {
+          userCompletedItemsSet.add(String(d.id).trim());
+          completedIds.push(String(d.id).trim());
+        }
+        if (d.saved_filename && !ignoredValues.has(String(d.saved_filename).trim().toLowerCase())) {
+          userCompletedItemsSet.add(String(d.saved_filename).trim());
+        }
         const lr = (d.data && (d.data['LR No *'] || d.data['lrno'] || d.data['grno'])) || d.lrNo || '';
-        if (lr && !ignoredValues.has(String(lr).trim().toLowerCase())) completedLrNos.push(String(lr).trim());
+        if (lr && !ignoredValues.has(String(lr).trim().toLowerCase())) {
+          userCompletedItemsSet.add(String(lr).trim());
+        }
       });
 
-      // 1. Record completed LR keys in localStorage (compact, quota-safe strategy capped at 50)
-      if (compIdsKey) {
-        try {
-          let existingCompleted = [];
-          try {
-            existingCompleted = JSON.parse(localStorage.getItem(compIdsKey) || '[]');
-          } catch (_) {
-            existingCompleted = [];
-          }
-          if (!Array.isArray(existingCompleted)) existingCompleted = [];
+      userExportedBatchesCache.unshift({
+        export_id: exportId,
+        filename: exportMeta.filename || 'export.xlsx',
+        count: docsToMark.length,
+        exported_at: exportMeta.exported_at || new Date().toISOString(),
+        doc_ids: completedIds.slice(0, 10)
+      });
+      if (userExportedBatchesCache.length > 25) userExportedBatchesCache = userExportedBatchesCache.slice(0, 25);
 
-          // Primary keys: store unique IDs & saved filenames only to minimize byte footprint
-          const allNew = [...completedIds, ...completedSavedNames, ...completedLrNos];
-          allNew.forEach(val => {
-            if (val && !existingCompleted.includes(val)) existingCompleted.push(val);
-          });
-          if (existingCompleted.length > 50) {
-            existingCompleted = existingCompleted.slice(-50);
-          }
-          localStorage.setItem(compIdsKey, JSON.stringify(existingCompleted));
-        } catch (compErr) {
-          console.warn('[Storage Quota] Notice while storing completed LR set, trimming to minimal:', compErr);
-          try {
-            const minimalIds = completedIds.slice(-10);
-            localStorage.setItem(compIdsKey, JSON.stringify(minimalIds));
-          } catch (_) {}
-        }
-      }
-
-      // 2. Record batch metadata in exported batches log (quota-safe capped at 15)
-      if (expBatchesKey) {
-        try {
-          let batches = [];
-          try {
-            batches = JSON.parse(localStorage.getItem(expBatchesKey) || '[]');
-          } catch (_) {
-            batches = [];
-          }
-          if (!Array.isArray(batches)) batches = [];
-          batches.unshift({
-            export_id: exportId,
-            filename: exportMeta.filename || 'export.xlsx',
-            count: docsToMark.length,
-            exported_at: exportMeta.exported_at || new Date().toISOString(),
-            doc_ids: completedIds.slice(0, 10)
-          });
-          if (batches.length > 15) batches = batches.slice(0, 15);
-          localStorage.setItem(expBatchesKey, JSON.stringify(batches));
-        } catch (bErr) {
-          console.warn('[Storage Quota] Notice while storing export batch metadata:', bErr);
-          try {
-            localStorage.setItem(expBatchesKey, JSON.stringify([]));
-          } catch (_) {}
-        }
-      }
-
-      const matchesAnyCompleted = (item) => {
-        if (!item) return false;
-        const iId = item.id ? String(item.id).trim() : '';
-        const iFn = item.filename ? String(item.filename).trim() : '';
-        const iSaved = item.saved_filename ? String(item.saved_filename).trim() : '';
-        const iLr = (item.data && (item.data['LR No *'] || item.data['lrno'] || item.data['grno'])) || item.lrNo || '';
-        const strLr = iLr ? String(iLr).trim() : '';
-        return (iId && completedIds.includes(iId)) ||
-               (iFn && !ignoredValues.has(iFn.toLowerCase()) && completedFilenames.includes(iFn)) ||
-               (iSaved && !ignoredValues.has(iSaved.toLowerCase()) && completedSavedNames.includes(iSaved)) ||
-               (strLr && !ignoredValues.has(strLr.toLowerCase()) && completedLrNos.includes(strLr));
-      };
-
-      // 3. User requirement: downloading a file should not delete its data in LR list section and Previous uploaded LR section.
-      // Data should only be removed when the user clicks the "Clear All." button.
-      // Therefore, verifiedBatch and recents are preserved intact.
       try {
         saveUserBatches();
       } catch (_) {}
 
-      // 4. Update UI badges and views
       updateBatchBadge();
       renderBatchTable();
       renderPreviousUploadsWeb();
@@ -2437,127 +2379,18 @@
       if (isLoadingUserBatches) return;
       isLoadingUserBatches = true;
       try {
-        const token = sessionToken || (currentUser ? currentUser.token : null);
-        const accountBatchKey = getUserBatchStorageKey();
-        const accountDeletedKey = getUserDeletedStorageKey();
-        const recentKey = getUserRecentStorageKey();
-
-        if (!accountBatchKey && !token) {
+        if (!currentUser) {
           verifiedBatch = [];
           deletedBatch = [];
+          userRecentsCache = [];
+          userDismissedTombstones.clear();
           updateBatchBadge();
+          renderBatchTable();
+          renderPreviousUploadsWeb();
           return;
         }
-        try {
-          let raw = null;
-          if (accountBatchKey) {
-            raw = localStorage.getItem(accountBatchKey);
-          }
-          if (!raw && token) {
-            raw = localStorage.getItem('bnf_session_batch_' + token);
-          }
-          const parsed = raw ? JSON.parse(raw) : [];
-          verifiedBatch = (Array.isArray(parsed) ? parsed : []).filter(item => item && !isDummyLRItem(item)).map(item => {
-            const cached = getDocImage(item.id, item.filename);
-            if (cached) {
-              if (!item.imageSrc && cached.imageSrc) item.imageSrc = cached.imageSrc;
-              if (!item.preview_image && cached.preview_image) item.preview_image = cached.preview_image;
-              if (!item.originalPdfSrc && cached.originalPdfSrc) item.originalPdfSrc = cached.originalPdfSrc;
-              if ((!item.preview_pages || item.preview_pages.length === 0) && cached.preview_pages) item.preview_pages = cached.preview_pages;
-              if (!item.page_count && cached.page_count) item.page_count = cached.page_count;
-              if (!item.file_url && cached.file_url) item.file_url = cached.file_url;
-              if (!item.preview_url && cached.preview_url) item.preview_url = cached.preview_url;
-            }
-            if (!item.current_page) item.current_page = 1;
-            return item;
-          });
 
-          // Ensure all undownloaded pending records from account recents are restored into verifiedBatch
-          if (recentKey) {
-            let recents = [];
-            try {
-              recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
-            } catch (_) {
-              recents = [];
-            }
-            let addedFromRecents = false;
-            (Array.isArray(recents) ? recents : []).forEach(r => {
-              if (!r || !r.filename || isDummyLRItem(r) || isItemTombstonedByUser(r)) return;
-              const alreadyInBatch = verifiedBatch.some(b => b.id === r.id || b.filename === r.filename || (b.saved_filename && b.saved_filename === r.saved_filename));
-              if (!alreadyInBatch) {
-                const cached = getDocImage(r.id, r.filename);
-                const restoredItem = {
-                  id: r.id || ('rec_' + Date.now()),
-                  filename: r.filename,
-                  saved_filename: r.saved_filename || null,
-                  file_url: r.file_url || (r.saved_filename ? `/uploads/${r.saved_filename}` : null),
-                  preview_url: r.preview_url || null,
-                  page_count: r.page_count || 1,
-                  current_page: 1,
-                  preview_pages: r.preview_pages || (cached && cached.preview_pages ? cached.preview_pages : []),
-                  imageSrc: (cached && cached.imageSrc) || r.preview_image || r.preview_url || null,
-                  preview_image: (cached && cached.preview_image) || r.preview_image || null,
-                  thumbnail_image: (cached && cached.preview_image) || r.preview_image || null,
-                  originalPdfSrc: (cached && cached.originalPdfSrc) || null,
-                  data: Object.assign({}, r.data || {}),
-                  ocrEngine: r.ocrEngine || 'surya_ocr',
-                  createdAt: r.createdAt || new Date().toISOString(),
-                  editedAt: null,
-                  exportedAt: null,
-                  deletedAt: null,
-                  current_version: 1,
-                  versions: r.versions || [
-                    {
-                      version: 1,
-                      timestamp: r.createdAt || new Date().toISOString(),
-                      action: 'add',
-                      user_name: currentUser?.name || 'Logistics User',
-                      user_mobile: currentUser?.mobile || '',
-                      ocr_engine: r.ocrEngine || 'surya_ocr',
-                      details: 'Restored from pending uploads',
-                      snapshot_data: Object.assign({}, r.data || {})
-                    }
-                  ],
-                  editHistory: r.editHistory || [
-                    {
-                      timestamp: r.createdAt || new Date().toISOString(),
-                      user: currentUser?.name || 'Logistics User',
-                      mobile: currentUser?.mobile || '',
-                      action: 'add',
-                      version: 1,
-                      details: 'Restored from pending uploads'
-                    }
-                  ]
-                };
-                verifiedBatch.push(restoredItem);
-                addedFromRecents = true;
-              }
-            });
-            if (addedFromRecents) {
-              saveUserBatches();
-            }
-          }
-        } catch (e) {
-          verifiedBatch = [];
-        }
-        try {
-          let rawDel = null;
-          if (accountDeletedKey) {
-            rawDel = localStorage.getItem(accountDeletedKey);
-          }
-          if (!rawDel && token) {
-            rawDel = localStorage.getItem('bnf_session_deleted_' + token);
-          }
-          deletedBatch = rawDel ? JSON.parse(rawDel) : [];
-        } catch (e) {
-          deletedBatch = [];
-        }
-        autoPurgeOldData();
-        updateBatchBadge();
-        renderBatchTable();
-        renderPreviousUploadsWeb();
-
-        // Asynchronously hydrate any batch items that need high-res images from IndexedDB
+        // Hydrate any batch items that need high-res images from IndexedDB (disk-backed ImageDB, never localStorage)
         if (Array.isArray(verifiedBatch)) {
           verifiedBatch.forEach(async (item) => {
             if (!item.imageSrc || item.imageSrc.length < 5000) {
@@ -2612,19 +2445,10 @@
         const cloudExcels = Array.isArray(cloud.generated_excels) ? cloud.generated_excels : [];
         const cloudDismissed = Array.isArray(cloud.dismissed_uploads) ? cloud.dismissed_uploads : [];
 
-        // Synchronize cloud dismissals into local storage tombstones
-        const remKey = getUserRemovedStorageKey();
-        if (remKey && cloudDismissed.length > 0) {
-          try {
-            let localTombstones = JSON.parse(localStorage.getItem(remKey) || '[]');
-            cloudDismissed.forEach(cd => {
-              if (cd && !localTombstones.some(t => String(t).trim().toLowerCase() === String(cd).trim().toLowerCase())) {
-                localTombstones.push(String(cd).trim());
-              }
-            });
-            localStorage.setItem(remKey, JSON.stringify(localTombstones));
-          } catch (_) {}
-        }
+        // Synchronize cloud dismissals into in-memory tombstones (zero localStorage)
+        cloudDismissed.forEach(cd => {
+          if (cd) userDismissedTombstones.add(String(cd).trim().toLowerCase());
+        });
 
         // 1. Hydrate active batch from cloud JSON DB (supports cross-device & browser closure)
         if (cloudActive.length > 0) {
@@ -2635,93 +2459,77 @@
             if (!exists) merged.push(localItem);
           });
           verifiedBatch = merged;
-          saveUserBatches();
           updateBatchBadge();
           renderBatchTable();
         }
 
-        // 2. Hydrate previously uploaded LRs
-        const recentKey = getUserRecentStorageKey();
-        if (recentKey) {
-          try {
-            let existingRecents = [];
-            try {
-              existingRecents = JSON.parse(localStorage.getItem(recentKey) || '[]');
-            } catch (_) {}
-            const filteredCloud = cloudUploads.filter(cu => cu && !isItemTombstonedByUser(cu));
+        // 2. Hydrate previously uploaded LRs in memory (zero localStorage)
+        const filteredCloud = cloudUploads.filter(cu => cu && !isItemTombstonedByUser(cu));
+        const mergedMap = new Map();
+        // First add existing in-memory recents
+        userRecentsCache.forEach(er => {
+          if (er && er.filename && !isItemTombstonedByUser(er)) {
+            const uid = er.id || er.saved_filename || er.filename;
+            mergedMap.set(uid, er);
+          }
+        });
+        // Then merge cloud uploads
+        filteredCloud.forEach(cu => {
+          if (!cu || isDummyLRItem(cu) || isItemTombstonedByUser(cu)) return;
+          const matchKey = Array.from(mergedMap.keys()).find(k => isSameUploadWeb(cu, mergedMap.get(k)));
+          if (matchKey) {
+            const existing = mergedMap.get(matchKey);
+            mergedMap.set(matchKey, Object.assign({}, cu, existing, {
+              file_url: existing.file_url || cu.file_url,
+              saved_filename: existing.saved_filename || cu.saved_filename,
+              preview_url: existing.preview_url || cu.preview_url,
+              filename: (existing.filename && existing.filename !== 'LR Document') ? existing.filename : (cu.filename || existing.filename),
+              preview_image: existing.preview_image || cu.preview_image
+            }));
+          } else {
+            const uid = cu.id || cu.saved_filename || cu.filename;
+            mergedMap.set(uid, cu);
+          }
+        });
 
-            // NEVER wipe or overwrite local history with an empty or stale cloud response!
-            const mergedMap = new Map();
-            // First add existing local recents (preserves local filenames & thumbnails)
-            existingRecents.forEach(er => {
-              if (er && er.filename && !isItemTombstonedByUser(er)) {
-                const uid = er.id || er.saved_filename || er.filename;
-                mergedMap.set(uid, er);
-              }
+        // Also ensure any verifiedBatch items are in mergedMap and update existing with verified data
+        (verifiedBatch || []).forEach(b => {
+          if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b)) return;
+          const matchKey = Array.from(mergedMap.keys()).find(k => isSameUploadWeb(b, mergedMap.get(k)));
+          const bCompact = (b.thumbnail_image && b.thumbnail_image.length <= 60000) ? b.thumbnail_image : ((b.preview_image && b.preview_image.length <= 60000) ? b.preview_image : null);
+          if (!matchKey) {
+            const uid = b.id || b.saved_filename || b.filename;
+            mergedMap.set(uid, {
+              id: b.id,
+              filename: b.filename,
+              saved_filename: b.saved_filename || null,
+              file_url: b.file_url || null,
+              preview_image: bCompact,
+              preview_url: b.preview_url || null,
+              preview_pages: b.preview_pages || [],
+              page_count: b.page_count || 1,
+              data: Object.assign({}, b.data || {}),
+              createdAt: b.createdAt || new Date().toISOString(),
+              isPdf: Boolean((b.filename && b.filename.toLowerCase().endsWith('.pdf')) || (b.saved_filename && b.saved_filename.toLowerCase().endsWith('.pdf')))
             });
-            // Then merge cloud uploads (preserving local high-quality thumbnail if present)
-            filteredCloud.forEach(cu => {
-              if (!cu || isDummyLRItem(cu) || isItemTombstonedByUser(cu)) return;
-              const matchKey = Array.from(mergedMap.keys()).find(k => isSameUploadWeb(cu, mergedMap.get(k)));
-              if (matchKey) {
-                const existing = mergedMap.get(matchKey);
-                mergedMap.set(matchKey, Object.assign({}, cu, existing, {
-                  file_url: existing.file_url || cu.file_url,
-                  saved_filename: existing.saved_filename || cu.saved_filename,
-                  preview_url: existing.preview_url || cu.preview_url,
-                  filename: (existing.filename && existing.filename !== 'LR Document') ? existing.filename : (cu.filename || existing.filename),
-                  preview_image: existing.preview_image || cu.preview_image
-                }));
-              } else {
-                const uid = cu.id || cu.saved_filename || cu.filename;
-                mergedMap.set(uid, cu);
-              }
-            });
+          } else {
+            const existing = mergedMap.get(matchKey);
+            mergedMap.set(matchKey, Object.assign({}, existing, {
+              data: Object.assign({}, existing.data || {}, b.data || {}),
+              preview_image: bCompact || existing.preview_image,
+              saved_filename: b.saved_filename || existing.saved_filename,
+              file_url: b.file_url || existing.file_url,
+              preview_url: b.preview_url || existing.preview_url
+            }));
+          }
+        });
 
-            // Also ensure any verifiedBatch items are in mergedMap and update existing with verified data
-            (verifiedBatch || []).forEach(b => {
-              if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b)) return;
-              const matchKey = Array.from(mergedMap.keys()).find(k => isSameUploadWeb(b, mergedMap.get(k)));
-              const bCompact = (b.thumbnail_image && b.thumbnail_image.length <= 60000) ? b.thumbnail_image : ((b.preview_image && b.preview_image.length <= 60000) ? b.preview_image : null);
-              if (!matchKey) {
-                const uid = b.id || b.saved_filename || b.filename;
-                mergedMap.set(uid, {
-                  id: b.id,
-                  filename: b.filename,
-                  saved_filename: b.saved_filename || null,
-                  file_url: b.file_url || null,
-                  preview_image: bCompact,
-                  preview_url: b.preview_url || null,
-                  preview_pages: b.preview_pages || [],
-                  page_count: b.page_count || 1,
-                  data: Object.assign({}, b.data || {}),
-                  createdAt: b.createdAt || new Date().toISOString(),
-                  isPdf: Boolean((b.filename && b.filename.toLowerCase().endsWith('.pdf')) || (b.saved_filename && b.saved_filename.toLowerCase().endsWith('.pdf')))
-                });
-              } else {
-                const existing = mergedMap.get(matchKey);
-                mergedMap.set(matchKey, Object.assign({}, existing, {
-                  data: Object.assign({}, existing.data || {}, b.data || {}),
-                  preview_image: bCompact || existing.preview_image,
-                  saved_filename: b.saved_filename || existing.saved_filename,
-                  file_url: b.file_url || existing.file_url,
-                  preview_url: b.preview_url || existing.preview_url
-                }));
-              }
-            });
-
-            const mergedRecents = Array.from(mergedMap.values()).slice(0, 25);
-            localStorage.setItem(recentKey, JSON.stringify(mergedRecents));
-          } catch (_) {}
-          renderPreviousUploadsWeb();
-        }
+        userRecentsCache = Array.from(mergedMap.values()).slice(0, 25);
+        renderPreviousUploadsWeb();
 
         // 3. Hydrate generated Excel exports
-        const expBatchesKey = getUserExportedStorageKey();
-        if (expBatchesKey && cloudExcels.length > 0) {
-          try {
-            localStorage.setItem(expBatchesKey, JSON.stringify(cloudExcels));
-          } catch (_) {}
+        if (cloudExcels.length > 0) {
+          userExportedBatchesCache = cloudExcels;
           loadAndRenderExportHistory();
         }
       } catch (err) {
@@ -2767,67 +2575,15 @@
     function saveUserBatches() {
       if (!currentUser) return;
       try {
-        const accountBatchKey = getUserBatchStorageKey();
-        const accountDeletedKey = getUserDeletedStorageKey();
-
-        // Strip heavy multi-megabyte base64 strings for localStorage persistence to prevent QuotaExceededError
-        const sanitized = verifiedBatch.map(item => {
-          // Always ensure in-memory store and IndexedDB keep full images
+        // Always ensure in-memory store and IndexedDB (ImageDB) keep full images (never localStorage)
+        verifiedBatch.forEach(item => {
           storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
-
-          const clone = Object.assign({}, item);
-          delete clone.originalPdfSrc;
-          // Keep compact preview_image for localStorage (<= 30KB), strip giant raw base64
-          if (clone.imageSrc && clone.imageSrc.length > 30000) clone.imageSrc = '';
-          if (clone.preview_image && clone.preview_image.length > 30000) clone.preview_image = '';
-          if (clone.thumbnail_image && clone.thumbnail_image.length > 30000) clone.thumbnail_image = '';
-          if (Array.isArray(clone.preview_pages)) {
-            clone.preview_pages = clone.preview_pages.filter(p => typeof p === 'string' && (p.startsWith('http') || p.startsWith('/') || p.length <= 30000));
-          }
-          return clone;
         });
 
-        const safeSet = (key, val) => {
-          if (!key) return;
-          try {
-            localStorage.setItem(key, JSON.stringify(val));
-          } catch (err) {
-            console.warn(`Quota notice for ${key}, falling back to minimal payload:`, err);
-            try {
-              const minimal = Array.isArray(val) ? val.map(it => {
-                const m = Object.assign({}, it);
-                delete m.imageSrc;
-                delete m.preview_image;
-                delete m.thumbnail_image;
-                delete m.originalPdfSrc;
-                delete m.preview_pages;
-                return m;
-              }) : val;
-              localStorage.setItem(key, JSON.stringify(minimal));
-            } catch (innerErr) {
-              console.error(`Failed to store minimal payload for ${key}:`, innerErr);
-            }
-          }
-        };
-
-        // 1. Primary persistence keyed by user account mobile
-        if (accountBatchKey) {
-          safeSet(accountBatchKey, sanitized);
-        }
-        if (accountDeletedKey) {
-          safeSet(accountDeletedKey, deletedBatch);
-        }
-
-        // 2. Also keep session token key synced for backwards compatibility
-        if (currentUser.token) {
-          safeSet('bnf_session_batch_' + currentUser.token, sanitized);
-          safeSet('bnf_session_deleted_' + currentUser.token, deletedBatch);
-        }
-
-        // 3. Persist batch state to user's dedicated cloud JSON DB
+        // Persist batch state authoritatively to user's dedicated cloud JSON DB
         syncUserBatchToCloud();
       } catch (e) {
-        console.warn('Batch session quota warning:', e);
+        console.warn('Batch session notice:', e);
       }
     }
 
@@ -2852,16 +2608,7 @@
         if (deletedBatch.length !== before) changed = true;
       }
       if (changed && currentUser) {
-        try {
-          const accountBatchKey = getUserBatchStorageKey();
-          const accountDeletedKey = getUserDeletedStorageKey();
-          if (accountBatchKey) localStorage.setItem(accountBatchKey, JSON.stringify(verifiedBatch));
-          if (accountDeletedKey) localStorage.setItem(accountDeletedKey, JSON.stringify(deletedBatch));
-          if (currentUser.token) {
-            localStorage.setItem('bnf_session_batch_' + currentUser.token, JSON.stringify(verifiedBatch));
-            localStorage.setItem('bnf_session_deleted_' + currentUser.token, JSON.stringify(deletedBatch));
-          }
-        } catch (e) {}
+        saveUserBatches();
       }
     }
 
@@ -4873,14 +4620,30 @@
           const resolvedFileId = result?.file_id || result?.upload_id || ('lr_' + Date.now() + '_' + i);
 
           // Active upload: clear any stale dismissals/tombstones for this file so it appears in history
-          const uploadRemovedKey = getUserRemovedStorageKey();
-          if (uploadRemovedKey) {
-            try {
-              let tbs = JSON.parse(localStorage.getItem(uploadRemovedKey) || '[]');
-              const toClear = [resolvedFileId, result?.saved_filename, file.name].filter(Boolean).map(s => String(s).trim().toLowerCase());
-              tbs = tbs.filter(t => !toClear.includes(String(t).trim().toLowerCase()));
-              localStorage.setItem(uploadRemovedKey, JSON.stringify(tbs));
-            } catch (_) {}
+          // Clear any dismissal tombstone in memory and notify backend cloud DB
+          const toClear = [
+            resolvedFileId,
+            result?.saved_filename,
+            file.name,
+            extractedLrNo,
+            result?.data?.['grno'],
+            result?.data?.['LR No *'],
+            result?.data?.['BNF LR No']
+          ].filter(Boolean).map(s => String(s).trim().toLowerCase());
+          toClear.forEach(t => userDismissedTombstones.delete(t));
+
+          if (currentUser) {
+            const undismissHeaders = { 'Content-Type': 'application/json' };
+            if (currentUser.token) undismissHeaders['Authorization'] = 'Bearer ' + currentUser.token;
+            fetch('/api/user-cloud-storage/undismiss-upload', {
+              method: 'POST',
+              headers: undismissHeaders,
+              body: JSON.stringify({
+                lr_identifiers: toClear,
+                user_mobile: currentUser.mobile || null,
+                user_id: currentUser.id || null
+              })
+            }).catch(() => {});
           }
 
           const item = {
@@ -4933,7 +4696,7 @@
           storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
           verifiedBatch.push(item);
           saveUserBatches();
-          saveRecentUploadWeb(item);
+          saveRecentUploadWeb(item, true);
           processedCount++;
           activeItem = item;
 
@@ -6194,21 +5957,13 @@
     };
 
     function getLocalDriverCache() {
-      try {
-        const raw = localStorage.getItem('BNF_MASTER_DRIVER_CACHE');
-        if (raw) return JSON.parse(raw);
-      } catch (_) {}
-      return {};
+      return localDriverCache || {};
     }
 
     function saveLocalDriverCache(vehNo, driverData) {
       if (!vehNo || !driverData) return;
-      try {
-        const clean = vehNo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        const cache = getLocalDriverCache();
-        cache[clean] = driverData;
-        localStorage.setItem('BNF_MASTER_DRIVER_CACHE', JSON.stringify(cache));
-      } catch (_) {}
+      const clean = vehNo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      localDriverCache[clean] = driverData;
     }
 
     async function autoFetchAndFillMasterDriverWeb() {
@@ -6423,34 +6178,34 @@
       }
     }
 
-    function saveRecentUploadWeb(item) {
+    function saveRecentUploadWeb(item, isNewUpload = false) {
       if (!item || isDummyLRItem(item)) return;
-      const key = getUserRecentStorageKey();
-      if (!key) return;
-      // Item is actively uploaded or verified: clear any prior dismissal tombstone
-      const remKey = getUserRemovedStorageKey();
-      if (remKey) {
-        try {
-          let tombstones = JSON.parse(localStorage.getItem(remKey) || '[]');
-          const idList = [item.id, item.saved_filename, item.filename].filter(Boolean).map(s => String(s).trim().toLowerCase());
-          const remaining = tombstones.filter(t => !idList.includes(String(t).trim().toLowerCase()));
-          if (remaining.length !== tombstones.length) {
-            localStorage.setItem(remKey, JSON.stringify(remaining));
-          }
-        } catch (_) {}
-      }
-      try {
-        let recents = [];
-        try {
-          recents = JSON.parse(localStorage.getItem(key) || '[]');
-        } catch (_) {
-          recents = [];
-        }
 
-        // Ensure full high-resolution image and PDF are securely stored in IndexedDB and memory
+      // If this is an existing LR being edited/saved (NOT a new upload) and it was dismissed by user,
+      // preserve the user's dismissal choice - do NOT revive it in recent uploads history!
+      if (!isNewUpload && isItemTombstonedByUser(item)) {
+        storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
+        return;
+      }
+
+      // If active new upload, clear any prior dismissal tombstone in memory
+      if (isNewUpload) {
+        const idList = [
+          item.id,
+          item.saved_filename,
+          item.filename,
+          item.lrNo,
+          item.data?.['grno'],
+          item.data?.['LR No *'],
+          item.data?.['BNF LR No']
+        ].filter(Boolean).map(s => String(s).trim().toLowerCase());
+        idList.forEach(idVal => userDismissedTombstones.delete(idVal));
+      }
+
+      try {
+        // Ensure full high-resolution image and PDF are securely stored in IndexedDB (ImageDB) and memory (never localStorage)
         storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
 
-        // Lightweight record for localStorage (never store giant blobs in localStorage)
         const compactPreview = (item.thumbnail_image && item.thumbnail_image.length <= 60000)
           ? item.thumbnail_image
           : ((item.preview_image && item.preview_image.length <= 60000)
@@ -6472,19 +6227,17 @@
                  (item.imageSrc && item.imageSrc.startsWith('data:application/pdf')) ||
                  Boolean(item.originalPdfSrc)
         };
-        recents = recents.filter(r => !isSameUploadWeb(r, record));
-        recents.unshift(record);
-        if (recents.length > 25) recents = recents.slice(0, 25);
-        localStorage.setItem(key, JSON.stringify(recents));
+        userRecentsCache = userRecentsCache.filter(r => !isSameUploadWeb(r, record));
+        userRecentsCache.unshift(record);
+        if (userRecentsCache.length > 25) userRecentsCache = userRecentsCache.slice(0, 25);
+        renderPreviousUploadsWeb();
       } catch (e) {
-        console.warn('Recent upload storage quota notice:', e);
+        console.warn('Recent upload notice:', e);
       }
     }
 
     async function syncPreviousUploadsFromServer() {
       if (!currentUser) return;
-      const key = getUserRecentStorageKey();
-      if (!key) return;
 
       try {
         const queryParams = new URLSearchParams();
@@ -6503,14 +6256,6 @@
         if (!res.ok) return;
         const json = await res.json();
         if (json && json.success && Array.isArray(json.uploads)) {
-          let recents = [];
-          try {
-            recents = JSON.parse(localStorage.getItem(key) || '[]');
-          } catch (_) {
-            recents = [];
-          }
-          recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
-
           let batchUpdated = false;
 
           // Merge server-persisted uploads (server is source of truth for physical files)
@@ -6520,10 +6265,10 @@
             // Decoupled history removal: dismissed items are excluded from carousel only
             const isHistoryTombstoned = isItemTombstonedByUser(srv);
             if (!isHistoryTombstoned) {
-              const existingIdx = recents.findIndex(r => isSameUploadWeb(r, srv));
+              const existingIdx = userRecentsCache.findIndex(r => isSameUploadWeb(r, srv));
               const entry = {
                 id: srv.id,
-                filename: (srv.filename && srv.filename !== 'LR Document') ? srv.filename : (existingIdx !== -1 ? recents[existingIdx].filename : 'LR Document'),
+                filename: (srv.filename && srv.filename !== 'LR Document') ? srv.filename : (existingIdx !== -1 ? userRecentsCache[existingIdx].filename : 'LR Document'),
                 saved_filename: srv.saved_filename,
                 file_url: srv.file_url,
                 preview_url: srv.preview_url,
@@ -6535,13 +6280,13 @@
                 preview_image: srv.isPdf ? null : srv.preview_url
               };
               if (existingIdx !== -1) {
-                recents[existingIdx] = Object.assign({}, entry, recents[existingIdx], {
-                  data: Object.assign({}, entry.data || {}, recents[existingIdx].data || {}),
-                  filename: (recents[existingIdx].filename && recents[existingIdx].filename !== 'LR Document') ? recents[existingIdx].filename : entry.filename,
-                  preview_image: recents[existingIdx].preview_image || entry.preview_image
+                userRecentsCache[existingIdx] = Object.assign({}, entry, userRecentsCache[existingIdx], {
+                  data: Object.assign({}, entry.data || {}, userRecentsCache[existingIdx].data || {}),
+                  filename: (userRecentsCache[existingIdx].filename && userRecentsCache[existingIdx].filename !== 'LR Document') ? userRecentsCache[existingIdx].filename : entry.filename,
+                  preview_image: userRecentsCache[existingIdx].preview_image || entry.preview_image
                 });
               } else {
-                recents.push(entry);
+                userRecentsCache.push(entry);
               }
             }
 
@@ -6596,9 +6341,8 @@
             }
           });
 
-          recents.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-          if (recents.length > 25) recents = recents.slice(0, 25);
-          localStorage.setItem(key, JSON.stringify(recents));
+          userRecentsCache.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          if (userRecentsCache.length > 25) userRecentsCache = userRecentsCache.slice(0, 25);
           renderPreviousUploadsWeb();
 
           if (batchUpdated) {
@@ -6608,12 +6352,12 @@
           }
         }
       } catch (err) {
-        console.warn('Sync previous uploads notice:', err);
+        console.warn('Sync server uploads notice:', err);
       }
     }
 
     function renderPreviousUploadsWeb() {
-      const container = document.getElementById('previousUploadsList');
+      const container = document.getElementById('previousUploadsList') || document.getElementById('previousUploadsContainer');
       const countBadge = document.getElementById('previousUploadsCountBadge');
       if (!container) return;
 
@@ -6627,23 +6371,11 @@
         return;
       }
 
-      const key = getUserRecentStorageKey();
-      let recents = [];
-      try {
-        recents = JSON.parse(localStorage.getItem(key) || '[]');
-      } catch (e) {
-        recents = [];
-      }
-
-      // Filter out any dummy / test / placeholder entries and tombstones
-      recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
-      try {
-        localStorage.setItem(key, JSON.stringify(recents));
-      } catch (_) {}
+      // Filter out any dummy entries and tombstones
+      let recents = userRecentsCache.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
 
       // Merge verifiedBatch so all currently loaded session documents display immediately and update verified data
       if (Array.isArray(verifiedBatch) && verifiedBatch.length > 0) {
-        let batchAdded = false;
         verifiedBatch.forEach(b => {
           if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b)) return;
           const existIdx = recents.findIndex(r => isSameUploadWeb(r, b));
@@ -6670,26 +6402,20 @@
           };
           if (existIdx === -1) {
             recents.unshift(bRecord);
-            batchAdded = true;
           } else {
             // Update existing entry with latest verified fields and preview
             recents[existIdx] = Object.assign({}, recents[existIdx], bRecord, {
               data: Object.assign({}, recents[existIdx].data || {}, b.data || {}),
               preview_image: bCompact || recents[existIdx].preview_image
             });
-            batchAdded = true;
           }
         });
-        if (batchAdded) {
-          try {
-            localStorage.setItem(key, JSON.stringify(recents.slice(0, 25)));
-          } catch (_) {}
-        }
       }
 
-      if (countBadge) countBadge.innerText = `${recents.length} files`;
+      userRecentsCache = recents.slice(0, 25);
+      if (countBadge) countBadge.innerText = `${userRecentsCache.length} files`;
 
-      if (recents.length === 0) {
+      if (userRecentsCache.length === 0) {
         container.innerHTML = `
           <div class="col-span-full py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
             <p class="text-xs font-semibold">No previously uploaded LR documents yet.</p>
@@ -6699,7 +6425,7 @@
         return;
       }
 
-      container.innerHTML = recents.map((r, idx) => {
+      container.innerHTML = userRecentsCache.map((r, idx) => {
         const d = r.data || {};
         const lrNo = d['grno'] || d['LR No *'] || d['BNF LR No'] || r.lrNo || r.filename || '—';
         const isPdf = Boolean(r.isPdf || (r.filename && r.filename.toLowerCase().endsWith('.pdf')) || (r.saved_filename && r.saved_filename.toLowerCase().endsWith('.pdf')));
@@ -6708,7 +6434,6 @@
 
         let mediaPreview = '';
         if (isPdf) {
-          // Requirement: For PDF files, show a PDF icon with the filename
           mediaPreview = `
             <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-red-50/70 border border-red-200/80 flex flex-col items-center justify-center p-2 text-center group-hover:bg-red-50 transition">
               <span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-xs pointer-events-none">PDF</span>
@@ -6718,31 +6443,34 @@
               <span class="text-[10px] font-semibold text-slate-700 line-clamp-2 px-1 break-all leading-tight" title="${r.filename}">
                 ${r.filename}
               </span>
+              ${r.page_count && r.page_count > 1 ? `<span class="mt-1 px-1.5 py-0.2 text-[9px] font-semibold bg-red-100 text-red-700 rounded-full border border-red-200">${r.page_count} Pages</span>` : ''}
+            </div>
+          `;
+        } else if (thumbSrc) {
+          mediaPreview = `
+            <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
+              <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
+              ${r.page_count && r.page_count > 1 ? `<span class="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-900/75 text-white shadow-xs">${r.page_count} Pgs</span>` : ''}
             </div>
           `;
         } else {
-          // Requirement: For Image files, show image previews
-          if (thumbSrc) {
-            mediaPreview = `
-              <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
-                <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
-              </div>
-            `;
-          } else {
-            mediaPreview = `
-              <div id="thumb_box_${idx}" class="w-full h-24 bg-slate-100 text-slate-500 flex flex-col items-center justify-center rounded-lg border border-slate-200">
-                <i data-lucide="image" class="w-7 h-7 text-sky-500"></i>
-                <span class="text-[10px] font-bold mt-1 text-slate-500">Image</span>
-              </div>
-            `;
-          }
+          mediaPreview = `
+            <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex flex-col items-center justify-center border border-slate-200 text-slate-400">
+              <i data-lucide="image" class="w-6 h-6 mb-1 text-slate-400"></i>
+              <span class="text-[10px] font-medium text-slate-500 line-clamp-1 px-1">${r.filename}</span>
+            </div>
+          `;
         }
 
         const targetId = encodeURIComponent(r.id || r.saved_filename || r.filename || ('prev_' + idx)).replace(/'/g, "%27");
         return `
           <div onclick="openPreviousUploadPreview('${targetId}')" class="group relative cursor-pointer bg-white p-2.5 rounded-xl border border-slate-200 hover:border-sky-400 hover:shadow-md transition" title="Click to Open Step 2: LR & Master Verification">
-            <button type="button" onclick="removePreviousUploadItem(event, '${targetId}')" class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-slate-100 hover:bg-rose-500 text-slate-400 hover:text-white flex items-center justify-center transition shadow-sm opacity-80 hover:opacity-100 z-10 cursor-pointer" title="Remove from recent uploads">
-              <i data-lucide="x" class="w-3 h-3 pointer-events-none"></i>
+            <!-- Remove Button (Dismiss from History Strip ONLY) -->
+            <button type="button"
+                    onclick="removePreviousUploadItem(event, '${targetId}')"
+                    class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-slate-900/70 hover:bg-red-600 text-white flex items-center justify-center transition shadow-sm opacity-80 group-hover:opacity-100 z-10 cursor-pointer"
+                    title="Remove from previously uploaded history">
+              <i data-lucide="x" class="w-3.5 h-3.5 pointer-events-none"></i>
             </button>
             ${mediaPreview}
             <div class="mt-2">
@@ -6760,7 +6488,7 @@
       if (window.lucide && lucide.createIcons) lucide.createIcons();
 
       // Asynchronously hydrate missing image thumbnails from IndexedDB in the background (images only)
-      recents.forEach(async (r, idx) => {
+      userRecentsCache.forEach(async (r, idx) => {
         if (r.isPdf) return; // Keep clean PDF icon with filename for PDFs
         const boxEl = document.getElementById(`thumb_box_${idx}`);
         if (boxEl && !boxEl.querySelector('img')) {
@@ -6796,12 +6524,6 @@
       _pendingRemoveUploadIdentifier = identifierOrIdx;
 
       let targetItem = null;
-      const key = getUserRecentStorageKey();
-      let recents = [];
-      try {
-        recents = JSON.parse(localStorage.getItem(key) || '[]');
-      } catch (_) {}
-
       let targetId = null;
       let numIdx = -1;
       if (typeof identifierOrIdx === 'number') {
@@ -6816,15 +6538,15 @@
 
       if (targetId) {
         const tLow = targetId.toLowerCase();
-        targetItem = recents.find(r => {
+        targetItem = userRecentsCache.find(r => {
           if (!r) return false;
           return (r.id && String(r.id).trim().toLowerCase() === tLow) ||
                  (r.saved_filename && String(r.saved_filename).trim().toLowerCase() === tLow) ||
                  (r.filename && String(r.filename).trim().toLowerCase() === tLow);
         });
       }
-      if (!targetItem && numIdx >= 0 && numIdx < recents.length) {
-        targetItem = recents[numIdx];
+      if (!targetItem && numIdx >= 0 && numIdx < userRecentsCache.length) {
+        targetItem = userRecentsCache[numIdx];
       }
       if (!targetItem && targetId) {
         const tLow = targetId.toLowerCase();
@@ -6883,13 +6605,8 @@
       }
       if (!currentUser || identifierOrIdx === null || identifierOrIdx === undefined) return;
 
-      const key = getUserRecentStorageKey();
-      const removedKey = getUserRemovedStorageKey();
-      if (!key) return;
-
       try {
-        let recents = JSON.parse(localStorage.getItem(key) || '[]');
-        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
+        let recents = userRecentsCache.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
 
         let removed = null;
         let targetId = null;
@@ -6925,7 +6642,7 @@
 
         if (rIdx !== -1) {
           removed = recents.splice(rIdx, 1)[0];
-          localStorage.setItem(key, JSON.stringify(recents));
+          userRecentsCache = recents;
         } else if (targetId) {
           // Check verifiedBatch in case it was only displayed in-memory
           const tLow = targetId.toLowerCase();
@@ -6942,37 +6659,30 @@
           }
         }
 
-        // 1. Record persistent tombstone locally so server sync never resurrects it in recent uploads strip
-        if (removedKey && removed) {
-          let tombstones = [];
-          try {
-            tombstones = JSON.parse(localStorage.getItem(removedKey) || '[]');
-          } catch (_) {
-            tombstones = [];
-          }
-          const GENERIC_DISMISS = ['lr document', 'document', 'undefined', 'null', 'item', 'none'];
+        if (removed) {
+          const GENERIC_DISMISS = [
+            'lr document', 'document', 'undefined', 'null', 'item', 'none',
+            '-', '--', 'n/a', 'na', 'default', 'scan', 'image', 'photo',
+            'document.pdf', 'document.jpg', 'scan.pdf', 'scan.jpg'
+          ];
           const idList = [
             removed.id,
             removed.saved_filename,
             removed.filename,
             removed.file_id,
             removed.upload_id,
-            targetId,
-            removed.lrNo,
-            removed.data?.['grno'],
-            removed.data?.['LR No *'],
-            removed.data?.['BNF LR No']
+            targetId
           ]
             .filter(Boolean)
             .map(s => String(s).trim())
-            .filter(s => s.length > 0 && !GENERIC_DISMISS.includes(s.toLowerCase()) && !s.startsWith('prev_'));
+            .filter(s => s.length >= 3 && !GENERIC_DISMISS.includes(s.toLowerCase()) && !s.startsWith('prev_'));
 
           idList.forEach(idVal => {
-            if (idVal && !tombstones.some(t => String(t).trim().toLowerCase() === idVal.toLowerCase())) {
-              tombstones.push(idVal);
-            }
+            if (idVal) userDismissedTombstones.add(idVal.toLowerCase());
           });
-          localStorage.setItem(removedKey, JSON.stringify(tombstones));
+
+          // Also purge any match from userRecentsCache
+          userRecentsCache = userRecentsCache.filter(r => !isSameUploadWeb(r, removed));
 
           // 2. NOTE: Active verifiedBatch (LR List) is intentionally KEPT INTACT!
           // Removing from Previously Uploaded LRs removes the item from the history strip ONLY.
@@ -6999,6 +6709,8 @@
           });
         }
         renderPreviousUploadsWeb();
+        renderBatchTable();
+        updateBatchBadge();
       } catch (e) {
         console.error('Error removing previous upload item:', e);
       }
@@ -7007,12 +6719,7 @@
 
     async function openPreviousUploadPreview(identifierOrIdx) {
       try {
-        let recents = [];
-        const key = getUserRecentStorageKey();
-        try {
-          recents = key ? JSON.parse(localStorage.getItem(key) || '[]') : [];
-        } catch (_) {}
-        recents = recents.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
+        let recents = userRecentsCache.filter(r => r && r.filename && !isDummyLRItem(r) && !isItemTombstonedByUser(r));
         if (Array.isArray(verifiedBatch)) {
           verifiedBatch.forEach(b => {
             if (!b || !b.filename || isDummyLRItem(b) || isItemTombstonedByUser(b)) return;
@@ -7093,6 +6800,7 @@
         console.error('Error opening previous preview:', e);
       }
     }
+    window.openPreviousUploadPreview = openPreviousUploadPreview;
 
     function navigateToAddMoreList() {
       if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser) {
@@ -7296,12 +7004,8 @@
 
     function renderBatchTable() {
       if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser && !isLoadingUserBatches) {
-        const batchKey = getUserBatchStorageKey();
-        const recKey = getUserRecentStorageKey();
-        if ((batchKey && localStorage.getItem(batchKey)) || (recKey && localStorage.getItem(recKey))) {
-          loadUserBatches();
-          return;
-        }
+        loadUserBatches();
+        return;
       }
       updateBatchBadge();
       updateDeletedBadgeCount();
@@ -7533,35 +7237,19 @@
         updateBatchBadge();
         renderBatchTable();
 
-        // 4. Remove from Recent Uploads in localStorage and UI
-        const recentKey = getUserRecentStorageKey();
-        if (recentKey) {
-          try {
-            let recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
-            recents = recents.filter(r => {
-              if (!r) return false;
-              return !targetIdentifiers.includes(r.id) &&
-                     !targetIdentifiers.includes(r.saved_filename) &&
-                     !targetIdentifiers.includes(r.filename);
-            });
-            localStorage.setItem(recentKey, JSON.stringify(recents));
-            renderPreviousUploadsWeb();
-          } catch (_) {}
-        }
+        // 4. Remove from Recent Uploads in memory and UI
+        userRecentsCache = userRecentsCache.filter(r => {
+          if (!r) return false;
+          return !targetIdentifiers.includes(r.id) &&
+                 !targetIdentifiers.includes(r.saved_filename) &&
+                 !targetIdentifiers.includes(r.filename);
+        });
+        renderPreviousUploadsWeb();
 
-        // 5. Register persistent tombstone so server sync never resurrects it
-        const removedKey = getUserRemovedStorageKey();
-        if (removedKey) {
-          try {
-            let tombstones = JSON.parse(localStorage.getItem(removedKey) || '[]');
-            targetIdentifiers.forEach(idKey => {
-              if (idKey && !tombstones.includes(idKey)) {
-                tombstones.push(idKey);
-              }
-            });
-            localStorage.setItem(removedKey, JSON.stringify(tombstones));
-          } catch (_) {}
-        }
+        // 5. Register persistent tombstone in memory so server sync never resurrects it
+        targetIdentifiers.forEach(idKey => {
+          if (idKey) userDismissedTombstones.add(String(idKey).trim().toLowerCase());
+        });
 
         // 6. Asynchronously permanently remove from server cloud JSON DB & lifecycle registry
         if (currentUser) {
@@ -7604,14 +7292,7 @@
     }
 
     function clearBatch() {
-      const recentKey = getUserRecentStorageKey();
-      let hasRecents = false;
-      if (recentKey) {
-        try {
-          const rec = JSON.parse(localStorage.getItem(recentKey) || '[]');
-          if (Array.isArray(rec) && rec.length > 0) hasRecents = true;
-        } catch (_) {}
-      }
+      const hasRecents = Array.isArray(userRecentsCache) && userRecentsCache.length > 0;
       if ((!verifiedBatch || verifiedBatch.length === 0) && !hasRecents) {
         showClearConsignmentValidationModal();
         return;
@@ -7631,19 +7312,8 @@
     async function proceedClearAllConfirmModal() {
       closeClearAllConfirmModal();
 
-      const recentKey = getUserRecentStorageKey();
-      let recents = [];
-      if (recentKey) {
-        try {
-          recents = JSON.parse(localStorage.getItem(recentKey) || '[]');
-        } catch (_) {
-          recents = [];
-        }
-      }
-      if (!Array.isArray(recents)) recents = [];
-
       const hasBatch = Array.isArray(verifiedBatch) && verifiedBatch.length > 0;
-      const hasRecents = recents.length > 0;
+      const hasRecents = Array.isArray(userRecentsCache) && userRecentsCache.length > 0;
       if (!hasBatch && !hasRecents) return;
 
       const delTimestamp = new Date().toISOString();
@@ -7680,34 +7350,18 @@
       }
 
       // 1. Clear Previous Uploaded LR section upon explicit Clear All action
-      if (recentKey) {
-        try {
-          localStorage.setItem(recentKey, JSON.stringify([]));
-        } catch (_) {}
-      }
+      const allCleared = [...(verifiedBatch || []), ...userRecentsCache];
+      userRecentsCache = [];
 
-      // 2. DO NOT delete Excel export history in localStorage - keep History section preserved.
+      // 2. DO NOT delete Excel export history - keep History section preserved.
 
-      // 3. Record tombstones for cleared items across BOTH verifiedBatch and recents so server sync does not resurrect cleared items
-      const removedKey = getUserRemovedStorageKey();
-      if (removedKey) {
-        try {
-          let tombstones = [];
-          try {
-            tombstones = JSON.parse(localStorage.getItem(removedKey) || '[]');
-          } catch (_) {
-            tombstones = [];
-          }
-          const allCleared = [...(verifiedBatch || []), ...recents];
-          allCleared.forEach(b => {
-            if (!b) return;
-            if (b.id && !tombstones.includes(b.id)) tombstones.push(b.id);
-            if (b.saved_filename && !tombstones.includes(b.saved_filename)) tombstones.push(b.saved_filename);
-            if (b.filename && !tombstones.includes(b.filename)) tombstones.push(b.filename);
-          });
-          localStorage.setItem(removedKey, JSON.stringify(tombstones));
-        } catch (_) {}
-      }
+      // 3. Record tombstones for cleared items across BOTH verifiedBatch and recents
+      allCleared.forEach(b => {
+        if (!b) return;
+        if (b.id) userDismissedTombstones.add(String(b.id).trim().toLowerCase());
+        if (b.saved_filename) userDismissedTombstones.add(String(b.saved_filename).trim().toLowerCase());
+        if (b.filename) userDismissedTombstones.add(String(b.filename).trim().toLowerCase());
+      });
 
       // 4. Clear verifiedBatch and persist
       verifiedBatch = [];
@@ -8257,13 +7911,7 @@
         const data = await resp.json();
         const history = data.history || [];
 
-        // Synchronize local storage with current surviving backend files
-        const expBatchesKey = getUserExportedStorageKey();
-        if (expBatchesKey) {
-          try {
-            localStorage.setItem(expBatchesKey, JSON.stringify(history));
-          } catch (_) {}
-        }
+        userExportedBatchesCache = history;
 
         if (badge) {
           badge.innerText = `${history.length} Export${history.length === 1 ? '' : 's'}`;

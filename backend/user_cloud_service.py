@@ -103,7 +103,7 @@ def get_user_cloud_data(mobile: str, user_id: str | None = None) -> dict:
 
 
 def save_user_active_batch(mobile: str, documents: list[dict], user_id: str | None = None, user_name: str | None = None) -> bool:
-    """Updates active LR batch in the user's cloud JSON DB."""
+    """Updates active LR batch in the user's cloud JSON DB and synchronizes uploaded_lrs."""
     if not isinstance(documents, list):
         documents = []
 
@@ -113,35 +113,75 @@ def save_user_active_batch(mobile: str, documents: list[dict], user_id: str | No
 
         # Keep matching records in uploaded_lrs updated with verified data
         uploaded_list = data.get("uploaded_lrs", [])
-        if uploaded_list and documents:
-            for doc in documents:
-                if not isinstance(doc, dict):
-                    continue
-                d_id = str(doc.get("id") or "").strip()
-                d_sv = str(doc.get("saved_filename") or "").strip().lower()
-                d_fn = str(doc.get("filename") or "").strip().lower()
-                for idx, u in enumerate(uploaded_list):
-                    u_id = str(u.get("id") or "").strip()
-                    u_sv = str(u.get("saved_filename") or "").strip().lower()
-                    u_fn = str(u.get("filename") or "").strip().lower()
+        if not isinstance(uploaded_list, list):
+            uploaded_list = []
 
-                    id_match = d_id and u_id and d_id == u_id
-                    sv_match = d_sv and u_sv and d_sv == u_sv
-                    fn_match = d_fn and u_fn and d_fn != "lr document" and u_fn != "lr document" and d_fn == u_fn
+        dismissed_set = {str(d).strip().lower() for d in data.get("dismissed_uploads", []) if d}
 
-                    if id_match or sv_match or fn_match:
-                        uploaded_list[idx] = {
-                            **u,
-                            "data": {**(u.get("data") or {}), **(doc.get("data") or {})},
-                            "editedAt": doc.get("editedAt") or doc.get("edited_at") or u.get("editedAt"),
-                            "current_version": doc.get("current_version", u.get("current_version", 1)),
-                            "versions": doc.get("versions") or u.get("versions") or [],
-                            "filename": doc.get("filename") if (doc.get("filename") and doc.get("filename") != "LR Document") else u.get("filename"),
-                            "saved_filename": doc.get("saved_filename") or u.get("saved_filename"),
-                        }
-                        break
-            data["uploaded_lrs"] = uploaded_list
+        for doc in documents:
+            if not isinstance(doc, dict):
+                continue
+            d_id = str(doc.get("id") or "").strip()
+            d_sv = str(doc.get("saved_filename") or "").strip().lower()
+            d_fn = str(doc.get("filename") or "").strip().lower()
+            d_fid = str(doc.get("file_id") or "").strip().lower()
 
+            # Check if this document was explicitly dismissed by user
+            is_dismissed = False
+            for cand in (d_id.lower(), d_sv, d_fn, d_fid):
+                if cand and cand in dismissed_set:
+                    is_dismissed = True
+                    break
+            if is_dismissed:
+                continue
+
+            matched_idx = -1
+            for idx, u in enumerate(uploaded_list):
+                u_id = str(u.get("id") or "").strip()
+                u_sv = str(u.get("saved_filename") or "").strip().lower()
+                u_fn = str(u.get("filename") or "").strip().lower()
+
+                id_match = d_id and u_id and d_id == u_id
+                sv_match = d_sv and u_sv and d_sv == u_sv
+                fn_match = d_fn and u_fn and d_fn != "lr document" and u_fn != "lr document" and d_fn == u_fn
+
+                if id_match or sv_match or fn_match:
+                    matched_idx = idx
+                    break
+
+            if matched_idx >= 0:
+                uploaded_list[matched_idx] = {
+                    **uploaded_list[matched_idx],
+                    "data": {**(uploaded_list[matched_idx].get("data") or {}), **(doc.get("data") or {})},
+                    "editedAt": doc.get("editedAt") or doc.get("edited_at") or uploaded_list[matched_idx].get("editedAt"),
+                    "current_version": doc.get("current_version", uploaded_list[matched_idx].get("current_version", 1)),
+                    "versions": doc.get("versions") or uploaded_list[matched_idx].get("versions") or [],
+                    "filename": doc.get("filename") if (doc.get("filename") and doc.get("filename") != "LR Document") else uploaded_list[matched_idx].get("filename"),
+                    "saved_filename": doc.get("saved_filename") or uploaded_list[matched_idx].get("saved_filename"),
+                    "file_url": doc.get("file_url") or uploaded_list[matched_idx].get("file_url"),
+                    "preview_url": doc.get("preview_url") or uploaded_list[matched_idx].get("preview_url"),
+                    "preview_pages": doc.get("preview_pages") or uploaded_list[matched_idx].get("preview_pages", []),
+                    "page_count": doc.get("page_count", uploaded_list[matched_idx].get("page_count", 1)),
+                    "isPdf": bool(doc.get("isPdf", uploaded_list[matched_idx].get("isPdf", False)))
+                }
+            else:
+                # Add newly verified LR into uploaded_lrs so it persists in upload history across refresh
+                safe_fn = doc.get("filename") or doc.get("saved_filename") or f"upload_{d_id or int(datetime.now().timestamp())}"
+                doc_saved = doc.get("saved_filename")
+                uploaded_list.insert(0, {
+                    "id": d_id or f"lr_{int(datetime.now().timestamp())}",
+                    "filename": safe_fn,
+                    "saved_filename": doc_saved,
+                    "file_url": doc.get("file_url") or (f"/snapshots/{doc_saved}" if doc_saved else None),
+                    "preview_url": doc.get("preview_url") or doc.get("preview_image"),
+                    "preview_pages": doc.get("preview_pages") or [],
+                    "page_count": doc.get("page_count", 1),
+                    "isPdf": bool(doc.get("isPdf") or (safe_fn and safe_fn.lower().endswith(".pdf")) or (doc_saved and str(doc_saved).lower().endswith(".pdf"))),
+                    "data": doc.get("data") or {},
+                    "createdAt": doc.get("createdAt") or doc.get("created_at") or datetime.now().astimezone().isoformat()
+                })
+
+        data["uploaded_lrs"] = uploaded_list
         return _save_user_db(mobile, data)
 
 
@@ -159,6 +199,21 @@ def record_uploaded_lr(mobile: str, lr_entry: dict, user_id: str | None = None, 
         doc_id = lr_entry.get("id") or lr_entry.get("file_id")
         doc_fn = lr_entry.get("filename") or lr_entry.get("file_name") or lr_entry.get("fileName")
         doc_saved = lr_entry.get("saved_filename")
+
+        # 0. Undismiss: clear matching identifiers from dismissed_uploads so newly uploaded LR appears in history
+        dismissed = data.get("dismissed_uploads", [])
+        if dismissed:
+            lr_data = lr_entry.get("data") or {}
+            to_clear_lower = {
+                str(x).strip().lower() for x in (
+                    doc_id, doc_fn, doc_saved,
+                    lr_entry.get("lrNo"),
+                    lr_data.get("grno"),
+                    lr_data.get("LR No *"),
+                    lr_data.get("BNF LR No")
+                ) if x and str(x).strip()
+            }
+            data["dismissed_uploads"] = [d for d in dismissed if str(d).strip().lower() not in to_clear_lower]
 
         # 1. Update uploaded_lrs
         uploaded_list = data.get("uploaded_lrs", [])
@@ -468,11 +523,20 @@ def delete_user_upload_history(
     else:
         target_keys = {str(lr_identifiers).strip()}
 
-    target_keys = {k for k in target_keys if k}
+    GENERIC_KEYS = {"lr document", "document", "item", "null", "none", "undefined", "-", "--", "n/a", "na", "", "default"}
+    target_keys = {k for k in target_keys if k and k.lower().strip() not in GENERIC_KEYS and len(k.strip()) >= 3}
     if not target_keys:
         return {"success": False, "error": "No valid identifier provided"}
 
     target_keys_lower = {k.lower().strip() for k in target_keys}
+    import urllib.parse
+    for k in list(target_keys):
+        try:
+            unquoted = urllib.parse.unquote(k).strip().lower()
+            if unquoted:
+                target_keys_lower.add(unquoted)
+        except Exception:
+            pass
 
     def _matches(item: dict) -> bool:
         if not isinstance(item, dict):
@@ -517,4 +581,57 @@ def delete_user_upload_history(
         "removed_from_uploads": removed_from_uploads,
         "active_batch_count": len(data.get("active_batch", [])),
         "remaining_uploads": len(data["uploaded_lrs"])
+    }
+
+
+
+def undismiss_user_upload(
+    mobile: str,
+    identifiers: list[str] | str,
+    user_id: str | None = None
+) -> dict:
+    """
+    Removes specified identifiers from dismissed_uploads in the user's cloud DB,
+    allowing an uploaded or re-uploaded LR to display in Previously Uploaded LRs.
+    """
+    clean_mob = _clean_mobile(mobile) or "guest"
+    if not identifiers:
+        return {"success": False, "error": "identifiers required"}
+
+    if isinstance(identifiers, str):
+        target_keys = {identifiers.strip()}
+    elif isinstance(identifiers, (list, tuple, set)):
+        target_keys = {str(k).strip() for k in identifiers if k and str(k).strip()}
+    else:
+        target_keys = {str(identifiers).strip()}
+
+    target_keys = {k for k in target_keys if k}
+    if not target_keys:
+        return {"success": False, "error": "No valid identifier provided"}
+
+    target_keys_lower = {k.lower().strip() for k in target_keys}
+    import urllib.parse
+    for k in list(target_keys):
+        try:
+            unquoted = urllib.parse.unquote(k).strip().lower()
+            if unquoted:
+                target_keys_lower.add(unquoted)
+        except Exception:
+            pass
+
+    with _lock:
+        data = _load_user_db(clean_mob, user_id=user_id)
+        dismissed = data.get("dismissed_uploads", [])
+        orig_len = len(dismissed)
+        data["dismissed_uploads"] = [d for d in dismissed if str(d).strip().lower() not in target_keys_lower]
+        cleared_count = orig_len - len(data["dismissed_uploads"])
+        if cleared_count > 0:
+            _save_user_db(clean_mob, data)
+
+    print(f"[UserCloudService] Undismissed {list(target_keys)} for user +91 {clean_mob}: removed {cleared_count} tombstone(s)")
+    return {
+        "success": True,
+        "user_mobile": clean_mob,
+        "cleared_count": cleared_count,
+        "remaining_dismissed": len(data.get("dismissed_uploads", []))
     }

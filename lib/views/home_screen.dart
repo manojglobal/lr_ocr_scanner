@@ -59,6 +59,31 @@ class _HomeScreenState extends State<HomeScreen> {
     return false;
   }
 
+  Map<String, dynamic> _cleanItemForStorage(Map<String, dynamic> raw) {
+    final clean = Map<String, dynamic>.from(raw);
+    clean.remove('preview_image');
+    clean.remove('image_preview');
+    clean.remove('imageSrc');
+    clean.remove('thumbnail');
+    clean.remove('image_data');
+    clean.remove('base64');
+    clean.remove('file_bytes');
+    clean.removeWhere((k, v) => v is String && v.length > 500 && (v.startsWith('data:image') || !v.contains(' ')));
+    if (clean['record'] is Map) {
+      final rec = Map<String, dynamic>.from(clean['record'] as Map);
+      rec.remove('preview_image');
+      rec.remove('image_preview');
+      rec.remove('imageSrc');
+      rec.remove('thumbnail');
+      rec.remove('image_data');
+      rec.remove('base64');
+      rec.remove('file_bytes');
+      rec.removeWhere((k, v) => v is String && v.length > 500 && (v.startsWith('data:image') || !v.contains(' ')));
+      clean['record'] = rec;
+    }
+    return clean;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -179,29 +204,127 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _deleteRecentUploadItem(int idx, Map<String, dynamic> itmData) async {
+    final rec = (itmData['record'] is Map)
+        ? (itmData['record'] as Map)
+        : (itmData['data'] is Map ? itmData['data'] as Map : null);
+    final lrLabel = (rec?['LR No *'] ??
+            rec?['grno'] ??
+            rec?['BNF LR No'] ??
+            itmData['lrNo'] ??
+            itmData['fileName'] ??
+            itmData['filename'] ??
+            '')
+        .toString()
+        .trim();
+    final hasSpecificLabel = lrLabel.isNotEmpty && lrLabel.toLowerCase() != 'lr document';
+    final dynamicMessage = hasSpecificLabel
+        ? 'Are you sure you want to remove consignment LR "$lrLabel" from Previously Uploaded history? It will remain available in your LR List.'
+        : 'Are you sure you want to remove this LR from Previously Uploaded history? It will remain available in your LR List.';
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.delete_outline, color: Color(0xFFDC2626), size: 24),
-            SizedBox(width: 8),
-            Text('Remove from History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ],
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with Red Warning Icon & Title (Matches Web Modal)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        color: Color(0xFFDC2626),
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Remove Consignment LR',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'WARNING',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFEF4444),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Dynamic Body Message
+              Text(
+                dynamicMessage,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF334155),
+                  height: 1.45,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Action Buttons: Cancel and Confirm
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF334155),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      elevation: 0,
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('Confirm', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        content: const Text('Remove this document from Previously Uploaded history? It will remain available in your LR List.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove'),
-          ),
-        ],
       ),
     );
 
@@ -412,12 +535,24 @@ class _HomeScreenState extends State<HomeScreen> {
       const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
       _dismissedRecentLrs = Set<String>.from(dismissedList.where((s) => !generic.contains(s.trim().toLowerCase())));
 
+      final mob = widget.controller.activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? _userMobile;
+      if (mob.isNotEmpty) {
+        final cloudData = await UserCloudService.instance.fetchUserCloudData(mob, baseUrl: widget.controller.geminiService.serverUrl);
+        if (cloudData != null && cloudData['dismissed_uploads'] is List) {
+          final srvDismissed = (cloudData['dismissed_uploads'] as List)
+              .map((e) => e.toString().trim())
+              .where((s) => s.isNotEmpty && !generic.contains(s.toLowerCase()));
+          _dismissedRecentLrs.addAll(srvDismissed);
+          await prefs.setStringList('bnf_dismissed_recent_lrs', _dismissedRecentLrs.toList());
+        }
+      }
+
       final raw = prefs.getString('bnf_recent_uploaded_lrs');
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw) as List<dynamic>;
         final rawMaps = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         final filtered = rawMaps.where((m) => !_isItemDismissed(m)).toList();
-        final deduped = _deduplicateUploadList(filtered);
+        final deduped = _deduplicateUploadList(filtered).map(_cleanItemForStorage).toList();
         await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(deduped));
         widget.controller.setPreviousUploadsCache(deduped);
         if (mounted) {
@@ -463,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final combined = <Map<String, dynamic>>[];
       combined.addAll(_persistedRecentLrs.where((r) => !_isItemDismissed(r)));
       combined.addAll(list);
-      final deduped = _deduplicateUploadList(combined).take(25).toList();
+      final deduped = _deduplicateUploadList(combined).map(_cleanItemForStorage).take(25).toList();
       widget.controller.setPreviousUploadsCache(deduped);
       SharedPreferences.getInstance().then((p) {
         p.setString('bnf_recent_uploaded_lrs', jsonEncode(deduped));
@@ -484,6 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveRecentUploads(List<BatchItem> currentItems) async {
     try {
+      if (currentItems.isEmpty) return;
       final prefs = await SharedPreferences.getInstance();
       Directory? docsDir;
       try {
@@ -491,12 +627,18 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {}
 
       final list = <Map<String, dynamic>>[];
+      final toUndismiss = <String>{};
       for (final item in currentItems) {
         // Active upload/verified session item: clear any prior dismissal so it appears in history
         _dismissedRecentLrs.remove(item.id);
         _dismissedRecentLrs.remove(item.fileName);
+        toUndismiss.add(item.id);
+        toUndismiss.add(item.fileName);
         final sv = item.record['saved_filename']?.toString();
-        if (sv != null && sv.isNotEmpty) _dismissedRecentLrs.remove(sv);
+        if (sv != null && sv.isNotEmpty) {
+          _dismissedRecentLrs.remove(sv);
+          toUndismiss.add(sv);
+        }
         final lr = (item.record['LR No *'] ?? item.record['grno'] ?? item.record['BNF LR No'] ?? '').toLowerCase();
         if (item.fileName.toLowerCase().contains('nloiad273') ||
             item.id.toLowerCase().contains('nloiad273') ||
@@ -531,11 +673,22 @@ class _HomeScreenState extends State<HomeScreen> {
           'isVerified': item.isVerified,
           'preview_url': item.record['preview_url'] ?? '',
           'preview_path': previewPath,
-          'record': item.record,
+          'record': _cleanItemForStorage(item.record)['record'] ?? _cleanItemForStorage(item.record),
         });
       }
+
+      await prefs.setStringList('bnf_dismissed_recent_lrs', _dismissedRecentLrs.toList());
+      final mob = widget.controller.activeUserMobile ?? _userMobile;
+      if (mob.isNotEmpty && toUndismiss.isNotEmpty) {
+        UserCloudService.instance.undismissCloudUpload(
+          mob,
+          toUndismiss.toList(),
+          baseUrl: widget.controller.geminiService.serverUrl,
+        ).catchError((_) => false);
+      }
+
       final combined = [...list, ..._persistedRecentLrs.where((r) => !_isItemDismissed(r))];
-      final toSave = _deduplicateUploadList(combined).take(20).toList();
+      final toSave = _deduplicateUploadList(combined).map(_cleanItemForStorage).take(25).toList();
       await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(toSave));
       widget.controller.setPreviousUploadsCache(toSave);
       if (mounted) {

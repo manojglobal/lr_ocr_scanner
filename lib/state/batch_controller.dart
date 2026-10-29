@@ -322,7 +322,33 @@ class BatchProcessingController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Hydrates active batch and previous uploads from shared cloud JSON DB (/api/user-cloud-storage)
+
+  Map<String, dynamic> _cleanDocForStorage(Map<String, dynamic> doc) {
+    final clean = Map<String, dynamic>.from(doc);
+    clean.remove('preview_image');
+    clean.remove('image_preview');
+    clean.remove('imageSrc');
+    clean.remove('thumbnail');
+    clean.remove('image_data');
+    clean.remove('base64');
+    clean.remove('file_bytes');
+    clean.removeWhere((k, v) => v is String && v.length > 500 && (v.startsWith('data:image') || !v.contains(' ')));
+    if (clean['record'] is Map) {
+      final rec = Map<String, dynamic>.from(clean['record'] as Map);
+      rec.remove('preview_image');
+      rec.remove('image_preview');
+      rec.remove('imageSrc');
+      rec.remove('thumbnail');
+      rec.remove('image_data');
+      rec.remove('base64');
+      rec.remove('file_bytes');
+      rec.removeWhere((k, v) => v is String && v.length > 500 && (v.startsWith('data:image') || !v.contains(' ')));
+      clean['record'] = rec;
+    }
+    return clean;
+  }
+
+    /// Hydrates active batch and previous uploads from shared cloud JSON DB (/api/user-cloud-storage)
   Future<void> hydrateFromCloud() async {
     final mob = _activeUserMobile;
     if (mob == null || mob.trim().isEmpty) return;
@@ -353,11 +379,21 @@ class BatchProcessingController extends ChangeNotifier {
 
         // 2. Cache uploaded LRs from cloud into local SharedPreferences for instant HomeScreen parity
         final prefs = await SharedPreferences.getInstance();
+        final dismissedRaw = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+        const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+        final dismissed = dismissedRaw.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
+
+        // Synchronize cloud-side dismissed items so cross-platform dismissals persist after restart
+        if (cloudData['dismissed_uploads'] is List) {
+          final serverDismissed = (cloudData['dismissed_uploads'] as List)
+              .map((e) => e.toString().trim())
+              .where((s) => s.isNotEmpty && !generic.contains(s.toLowerCase()));
+          dismissed.addAll(serverDismissed);
+          await prefs.setStringList('bnf_dismissed_recent_lrs', dismissed.toList());
+        }
+
         if (cloudData['uploaded_lrs'] is List && (cloudData['uploaded_lrs'] as List).isNotEmpty) {
           final cloudUploads = (cloudData['uploaded_lrs'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-          final dismissedRaw = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
-          const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
-          final dismissed = dismissedRaw.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
 
           final filteredCloud = cloudUploads.where((u) {
             final id = (u['id'] ?? u['file_id'] ?? '').toString().trim();
@@ -390,8 +426,9 @@ class BatchProcessingController extends ChangeNotifier {
             });
             if (!exists) mergedUploads.add(local);
           }
-          _previousUploadsCache = mergedUploads;
-          await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(mergedUploads));
+          final cleanMerged = mergedUploads.map(_cleanDocForStorage).toList();
+          _previousUploadsCache = cleanMerged;
+          await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cleanMerged));
         }
 
         // 3. Cache generated Excel exports
@@ -448,9 +485,10 @@ class BatchProcessingController extends ChangeNotifier {
           });
           if (!exists) mergedUploads.add(local);
         }
-        _previousUploadsCache = mergedUploads;
-        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(mergedUploads));
-        return mergedUploads;
+        final cleanMerged = mergedUploads.map(_cleanDocForStorage).toList();
+        _previousUploadsCache = cleanMerged;
+        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cleanMerged));
+        return cleanMerged;
       }
       return uploads;
     } catch (e) {
@@ -1093,7 +1131,7 @@ class BatchProcessingController extends ChangeNotifier {
 
                         // Record completed LR into history cache immediately so it never automatically vanishes
             try {
-              final completedDoc = {
+              final completedDoc = _cleanDocForStorage({
                 'id': _items[currentIndex].id,
                 'fileName': _items[currentIndex].fileName,
                 'saved_filename': _items[currentIndex].record['saved_filename'] ?? '',
@@ -1105,9 +1143,9 @@ class BatchProcessingController extends ChangeNotifier {
                 'isVerified': _items[currentIndex].isVerified,
                 'preview_url': _items[currentIndex].record['preview_url'] ?? '',
                 'preview_path': _items[currentIndex].record['preview_path'] ?? '',
-                'preview_image': _items[currentIndex].record['preview_image'] ?? '',
-                'record': _items[currentIndex].record,
-              };
+                'preview_image': '',
+                'record': _cleanDocForStorage(_items[currentIndex].record),
+              });
               const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
               final curId = completedDoc['id']?.toString().trim() ?? '';
               final curFn = completedDoc['fileName']?.toString().trim().toLowerCase() ?? '';
@@ -1133,6 +1171,13 @@ class BatchProcessingController extends ChangeNotifier {
                     final updated = dismissed.where((s) => !toRemove.contains(s.trim().toLowerCase()) && !toRemove.contains(s.trim())).toList();
                     if (updated.length != dismissed.length) {
                       await p.setStringList('bnf_dismissed_recent_lrs', updated);
+                    }
+                    if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty && toRemove.isNotEmpty) {
+                      UserCloudService.instance.undismissCloudUpload(
+                        _activeUserMobile!,
+                        toRemove.toList(),
+                        baseUrl: _geminiService.serverUrl,
+                      ).catchError((_) => false);
                     }
                   }
                 } catch (_) {}

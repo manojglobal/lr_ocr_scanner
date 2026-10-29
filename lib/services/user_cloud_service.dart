@@ -198,4 +198,47 @@ class UserCloudService {
     }
     return false;
   }
+
+  /// Restores LRs to previously uploaded history in cloud JSON DB if re-uploaded.
+  Future<bool> undismissCloudUpload(
+    String mobile,
+    List<String> lrIdentifiers, {
+    String? userId,
+    String? baseUrl,
+  }) async {
+    final cleanMobile = mobile.replaceAll(RegExp(r'\D'), '');
+    if (cleanMobile.isEmpty || lrIdentifiers.isEmpty) return false;
+
+    try {
+      final server = await _resolveServerUrl(baseUrl);
+      final uri = Uri.parse('$server/api/user-cloud-storage/undismiss-upload');
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('bnf_user_token') ?? prefs.getString(_prefSessionToken) ?? '';
+      final resolvedId = userId ?? prefs.getString(_prefUserId);
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      if (token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+
+      final payload = jsonEncode({
+        'user_mobile': cleanMobile,
+        'user_id': resolvedId,
+        'lr_identifiers': lrIdentifiers,
+      });
+
+      final resp = await http.post(uri, headers: headers, body: payload).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        final jsonBody = jsonDecode(resp.body);
+        return jsonBody['success'] == true;
+      }
+    } catch (e) {
+      debugPrint('[UserCloudService] undismissCloudUpload error: $e');
+    }
+    return false;
+  }
 }
