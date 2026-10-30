@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
-import '../home_screen.dart';
 import '../widgets/step_indicator_bar.dart';
 
 /// Screen 8: Excel Preview (BNF GR Import Format - 49 Columns).
@@ -37,6 +36,14 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     _activeSheetIndex = widget.initialTab;
     _loadUserInfo();
     _fetchExportHistory();
+  }
+
+  @override
+  void didUpdateWidget(ExcelPreviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _activeSheetIndex = widget.initialTab;
+    }
   }
 
   Future<void> _loadUserInfo() async {
@@ -522,79 +529,50 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                 : _buildSheet2AuditTable(allItems),
           ),
 
-          // Bottom Action Bar: Add More LR (left) & Generate Excel (right)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(15),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  // Bottom-Left: Add More LR matching Sheet 2 layout
-                  OutlinedButton.icon(
-                    key: const Key('excel_preview_add_more_lr_btn'),
-                    onPressed: () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => HomeScreen(
-                            controller: widget.controller,
-                          ),
-                        ),
-                        (route) => false,
-                      );
-                    },
-                    icon: const Icon(Icons.add, size: 18, color: Color(0xFF334155)),
-                    label: const Text(
-                      'Add More LR',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155)),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF1F5F9), // slate-100
-                      side: const BorderSide(color: Color(0xFFCBD5E1)), // slate-300
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Bottom-Right: Generate Excel (N LRs) matching Sheet 2 layout
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: (_isGenerating || verifiedItems.isEmpty) ? null : _confirmAndGenerateExcel,
-                      icon: _isGenerating
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.table_chart_outlined, size: 18),
-                      label: Text(
-                        _isGenerating
-                            ? 'Generating Excel...'
-                            : 'Generate Excel (${verifiedItems.length} LRs)',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF0284C7), // sky-600
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 2,
-                      ),
-                    ),
+          // Bottom Action Bar: Generate Excel only when on Sheet 0 (Excel Preview) and verifiedItems is not empty
+          if (_activeSheetIndex == 0 && verifiedItems.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(15),
+                    blurRadius: 8,
+                    offset: const Offset(0, -2),
                   ),
                 ],
               ),
+              child: SafeArea(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _isGenerating ? null : _confirmAndGenerateExcel,
+                    icon: _isGenerating
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.table_chart_outlined, size: 18),
+                    label: Text(
+                      _isGenerating
+                          ? 'Generating Excel...'
+                          : 'Generate Excel (${verifiedItems.length} LRs)',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0284C7), // sky-600
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
         ],
       ),
       bottomNavigationBar: StepIndicatorBar(currentStep: 10, controller: widget.controller),
@@ -916,7 +894,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
               padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
               child: Center(
                 child: Text(
-                  'No Excel exports generated yet.\nTap "Generate Excel" below to export your first workbook.',
+                  'No Excel exports generated yet.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),

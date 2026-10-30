@@ -397,8 +397,11 @@
               <h2 class="text-base sm:text-lg font-bold text-slate-800">Verify & Edit LR Data</h2>
             </div>
             <div class="flex items-center space-x-2">
-              <button onclick="handleEditBack()" id="btnEditBackTop" class="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition">
-                <span id="btnEditBackTextTop">Cancel</span>
+              <button onclick="handleEditBack()" id="btnEditBackTop" class="hidden px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition">
+                <span id="btnEditBackTextTop">Back</span>
+              </button>
+              <button type="button" onclick="confirmCancelVerificationStep2()" id="btnEditCancelTop" class="px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-300 transition">
+                Cancel
               </button>
               <button onclick="handleEditNext()" id="btnEditNextTop" class="px-4 py-1.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm transition flex items-center space-x-1.5">
                 <span id="btnEditNextTextTop">Next</span>
@@ -607,7 +610,8 @@
                 <p class="text-xs text-slate-500">Verify customer, department, counter, and driver details.</p>
               </div>
               <div class="flex items-center space-x-2">
-                <button type="button" onclick="handleCustomizationBackToScanData()" id="btnCustomCancelTop" class="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition">&larr; Back to LR Data</button>
+                <button type="button" onclick="handleCustomizationBackToScanData()" id="btnCustomBackTop" class="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition">&larr; Back to LR Data</button>
+                <button type="button" onclick="confirmCancelVerificationStep2()" id="btnCustomCancelTop" class="px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-300 transition">Cancel</button>
                 <button type="button" onclick="saveAndVerifyFromCustomization()" id="btnCustomNextTop" class="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition flex items-center space-x-1.5">
                   <span>✓ Save & Verify</span>
                 </button>
@@ -844,19 +848,19 @@
     <!-- ==================================================================== -->
     <section id="screen8_excel_preview" class="screen-view max-w-6xl w-full mx-auto space-y-3 h-full min-h-0 flex flex-col overflow-hidden" hidden style="display: none !important;">
       <div class="flex items-center justify-between shrink-0">
-        <div>
-          <h2 class="text-xl font-bold text-slate-800">LR Preview</h2>
-        </div>
+        <!-- <div>
+          <h2 id="screen8_title" class="text-xl font-bold text-slate-800">History</h2>
+        </div> -->
         <button onclick="handleScreen8Back()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-300">Back</button>
       </div>
 
       <!-- Sheet Tabs Switcher -->
-      <div class="flex items-center space-x-2 border-b border-slate-200 pb-2 text-xs font-bold shrink-0">
+      <!-- <div class="flex items-center space-x-2 border-b border-slate-200 pb-2 text-xs font-bold shrink-0">
         <button id="s8TabBtn_audit" onclick="switchPreviewSheet('audit')" class="px-3.5 py-1.5 rounded-lg bg-sky-600 text-white shadow-sm flex items-center space-x-1.5 transition">
           <i data-lucide="clock" class="w-3.5 h-3.5 text-white"></i>
           <span>Export History & Audit Log</span>
         </button>
-      </div>
+      </div> -->
 
       <!-- Sheet 1 Section (BNF Format) -->
       <div id="s8Container_sheet1" class="space-y-3 flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -2791,11 +2795,22 @@
     }
 
     // --- Screen Router ---
+    let currentActiveScreenId = 'screen1_login';
+    let step2OriginScreen = 'screen2_upload';
+
     function navigateTo(screenId) {
       // Security Gate: Redirect to Screen 1 if trying to access screens without OTP
       if (!currentUser && screenId !== 'screen1_login') {
         screenId = 'screen1_login';
       }
+
+      // Track Step 2 Origin screen (screen2_upload or screen7_lrlist)
+      if (screenId === 'screen4_edit' || screenId === 'screen4b_customization') {
+        if (currentActiveScreenId !== 'screen4_edit' && currentActiveScreenId !== 'screen4b_customization') {
+          step2OriginScreen = (currentActiveScreenId === 'screen7_lrlist') ? 'screen7_lrlist' : 'screen2_upload';
+        }
+      }
+      currentActiveScreenId = screenId;
 
       // Requirement 7: Robust component visibility and conditional rendering
       const screens = document.querySelectorAll('.screen-view');
@@ -4000,7 +4015,7 @@
       if (window.lucide && lucide.createIcons) lucide.createIcons();
     }
 
-    function showAppConfirmModal({ title, subtitle = 'Confirmation', message, confirmText = 'Confirm', onConfirm = null, onCancel = null }) {
+    function showAppConfirmModal({ title, subtitle = 'Confirmation', message, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm = null, onCancel = null }) {
       const modal = document.getElementById('appDialogModal');
       if (!modal) return;
 
@@ -4020,7 +4035,10 @@
       if (subEl) subEl.innerText = subtitle || 'Confirmation';
       if (msgEl) msgEl.innerText = message || '';
 
-      if (cancelBtn) cancelBtn.classList.remove('hidden');
+      if (cancelBtn) {
+        cancelBtn.classList.remove('hidden');
+        cancelBtn.innerText = cancelText || 'Cancel';
+      }
       if (confirmBtn) {
         confirmBtn.classList.remove('hidden');
         confirmBtn.innerText = confirmText || 'Confirm';
@@ -4034,6 +4052,19 @@
 
       modal.classList.remove('hidden');
       if (window.lucide && lucide.createIcons) lucide.createIcons();
+    }
+
+    function confirmCancelVerificationStep2() {
+      showAppConfirmModal({
+        title: 'Cancel Verification?',
+        subtitle: 'Step 2 Verification',
+        message: 'Are you sure you want to cancel verification? Any unsaved changes may be lost.',
+        cancelText: 'Continue Verification',
+        confirmText: 'Yes, Cancel',
+        onConfirm: () => {
+          navigateTo(step2OriginScreen || 'screen2_upload');
+        }
+      });
     }
 
     function closeAppDialogModal(isOkClick = false) {
@@ -5249,10 +5280,26 @@
       const isFirst = (tabId === 'basic');
       const isLast = (tabId === 'other');
 
-      const backText = isFirst ? 'Cancel' : 'Back';
+      const backText = 'Back';
       if (btnBack) btnBack.innerText = backText;
       if (btnBackTopText) btnBackTopText.innerText = backText;
       else if (btnBackTop) btnBackTop.innerText = backText;
+
+      // Web UI Fix: Hide Back button only on Basic Details tab; keep visible on all other tabs
+      if (btnBackTop) {
+        if (isFirst) {
+          btnBackTop.classList.add('hidden');
+        } else {
+          btnBackTop.classList.remove('hidden');
+        }
+      }
+      if (btnBack) {
+        if (isFirst) {
+          btnBack.classList.add('hidden');
+        } else {
+          btnBack.classList.remove('hidden');
+        }
+      }
 
       const nextText = isLast ? 'Next: Master Data' : 'Next';
       if (btnNextText) btnNextText.innerText = nextText;
@@ -5737,8 +5784,7 @@
       if (idx > 0) {
         switchTab(EDIT_TABS[idx - 1]);
       } else {
-        // Tab 1 (basic) Back/Cancel -> return to Upload screen (screen2_upload)
-        navigateTo('screen2_upload');
+        navigateTo(step2OriginScreen || 'screen2_upload');
       }
     }
 
@@ -7538,6 +7584,7 @@
 
     function switchPreviewSheet(sheet) {
       currentPreviewSheet = sheet;
+      const s8Title = document.getElementById('screen8_title');
       const btn1 = document.getElementById('s8TabBtn_sheet1');
       const btn2 = document.getElementById('s8TabBtn_audit');
       const navHist = document.getElementById('navHistoryBtn');
@@ -7545,6 +7592,7 @@
       const cont2 = document.getElementById('s8Container_audit');
 
       if (sheet === 'sheet1') {
+        if (s8Title) s8Title.innerText = 'Excel Preview';
         if (btn1) btn1.className = "px-3.5 py-1.5 rounded-lg bg-sky-600 text-white shadow-sm flex items-center space-x-1.5 transition";
         if (btn2) btn2.className = "px-3.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center space-x-1.5 transition";
         if (navHist) {
@@ -7554,6 +7602,7 @@
         if (cont2) cont2.classList.add('hidden');
         populateExcelPreview();
       } else {
+        if (s8Title) s8Title.innerText = 'History';
         if (btn2) btn2.className = "px-3.5 py-1.5 rounded-lg bg-sky-600 text-white shadow-sm flex items-center space-x-1.5 transition";
         if (btn1) btn1.className = "px-3.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center space-x-1.5 transition";
         if (navHist) {

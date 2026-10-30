@@ -391,6 +391,10 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         ),
       );
       if (result != null && mounted) {
+        if (result['cancelled'] == true) {
+          Navigator.of(context).pop();
+          return;
+        }
         final tabIndex = result['tabIndex'] as int? ?? 0;
         final targetKey = result['targetKey'] as String?;
         final label = result['label'] as String? ?? '';
@@ -437,7 +441,12 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         elevation: 0.5,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: brandNavy),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () async {
+            final shouldCancel = await showCancelVerificationConfirmation(context);
+            if (shouldCancel && context.mounted) {
+              Navigator.of(context).pop();
+            }
+          },
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -701,22 +710,22 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                   Expanded(
                     flex: 1,
                     child: OutlinedButton(
-                      onPressed: () {
-                        if (_tabController.index > 0) {
-                          _tabController.animateTo(_tabController.index - 1);
-                        } else {
+                      onPressed: () async {
+                        final shouldCancel = await showCancelVerificationConfirmation(context);
+                        if (shouldCancel && context.mounted) {
                           Navigator.of(context).pop();
                         }
                       },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: brandNavy,
-                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        backgroundColor: const Color(0xFFFEF2F2),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: Text(
-                        _tabController.index > 0 ? 'Back' : 'Cancel',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFFDC2626)),
                       ),
                     ),
                   ),
@@ -983,4 +992,65 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       default: return key;
     }
   }
+}
+
+/// Standardized Confirmation Dialog for Step 2 Cancel Verification
+Future<bool> showCancelVerificationConfirmation(BuildContext context) async {
+  final result = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        title: const Text(
+          'Cancel Verification?',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
+        ),
+        content: const Text(
+          'Are you sure you want to cancel verification? Any unsaved changes may be lost.',
+          style: TextStyle(fontSize: 14, color: Color(0xFF475569), height: 1.4),
+        ),
+        actions: [
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF475569),
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+                child: const Text(
+                  'Continue Verification',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+                child: const Text(
+                  'Yes, Cancel',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+  return result ?? false;
 }

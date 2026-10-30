@@ -1635,16 +1635,6 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                 color: Colors.blueGrey,
                               ),
                             ),
-
-                            const SizedBox(height: 8),
-
-                            ElevatedButton.icon(
-                              onPressed: _navigateToAddMoreLR,
-
-                              icon: const Icon(Icons.add, size: 16),
-
-                              label: const Text('Add LRs Now'),
-                            ),
                           ],
                         ),
                       )

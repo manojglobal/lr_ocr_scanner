@@ -5,6 +5,7 @@ import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
+import 'edit_bilty_screen.dart';
 
 /// Screen 6: LR Customization & Driver Details
 /// Matches Step 6 in Logistics_LR_OCR_Workflow_App_Mockup__1_.png:
@@ -571,6 +572,20 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
               children: [
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
+                    foregroundColor: brandNavy,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: const Size(0, 30),
+                  ),
+                  icon: const Icon(Icons.arrow_back, size: 14),
+                  label: const Text('Back to LR Data', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
                     foregroundColor: brandBlue,
                     backgroundColor: const Color(0xFFF0F9FF),
                     side: const BorderSide(color: Color(0xFFBAE6FD)),
@@ -686,6 +701,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                         const SizedBox(height: 14),
                         _buildLabel('Department'),
                         DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: _departmentOptions.contains(_selectedDepartment) ? _selectedDepartment : null,
                           items: _departmentOptions
                               .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13))))
@@ -715,6 +731,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                             builder: (context) {
                               final isCounterErr = _hasValidated && _selectedCounter.trim().isEmpty;
                               return DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 initialValue: _counterOptions.contains(_selectedCounter) ? _selectedCounter : null,
                                 items: _counterOptions
                                     .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
@@ -761,6 +778,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                             builder: (context) {
                               final isCatErr = _hasValidated && _selectedVehicleCategory.trim().isEmpty;
                               return DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 initialValue: _vehicleCategoryOptions.contains(_selectedVehicleCategory) ? _selectedVehicleCategory : null,
                                 items: _vehicleCategoryOptions
                                     .map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 13))))
@@ -1027,46 +1045,63 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Bottom Action Buttons: Back & Save & Verify (Balanced 50/50 sizing and clear alignment)
-                    Row(
+                    // Bottom Action Buttons: Cancel, Back to LR Data, & Save & Verify
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          flex: 1,
-                          child: OutlinedButton.icon(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.arrow_back, size: 16),
-                            label: const Text(
-                              'Back to LR Data',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.visible,
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  final shouldCancel = await showCancelVerificationConfirmation(context);
+                                  if (shouldCancel && context.mounted) {
+                                    Navigator.of(context).pop({'cancelled': true});
+                                  }
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFFDC2626),
+                                  side: const BorderSide(color: Color(0xFFFCA5A5)),
+                                  backgroundColor: const Color(0xFFFEF2F2),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFFDC2626)),
+                                ),
+                              ),
                             ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: brandNavy,
-                              side: const BorderSide(color: Color(0xFFCBD5E1)),
-                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 1,
+                              child: ElevatedButton.icon(
+                                onPressed: _saveAndVerify,
+                                icon: const Icon(Icons.check_circle_outline, size: 18),
+                                label: const Text(
+                                  'Save & Verify',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.visible,
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: brandBlue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 1,
-                          child: ElevatedButton.icon(
-                            onPressed: _saveAndVerify,
-                            icon: const Icon(Icons.check_circle_outline, size: 18),
-                            label: const Text(
-                              'Save & Verify',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.visible,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: brandBlue,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back, size: 14, color: brandNavy),
+                          label: const Text(
+                            'Back to LR Data',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: brandNavy),
                           ),
                         ),
                       ],
