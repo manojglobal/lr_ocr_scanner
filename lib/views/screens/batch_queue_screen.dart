@@ -14,6 +14,7 @@ import '../../models/batch_item.dart';
 
 import '../../state/batch_controller.dart';
 
+import '../home_screen.dart';
 import '../widgets/ocr_processing_dialog.dart';
 
 import '../widgets/step_indicator_bar.dart';
@@ -71,7 +72,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
     if (widget.autoOpenAddMore) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _showAddMoreDialog();
+        if (mounted) _navigateToAddMoreLR();
       });
     }
   }
@@ -218,6 +219,20 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
     return fallback;
   }
 
+  void _navigateToAddMoreLR() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(controller: widget.controller),
+        ),
+        (route) => false,
+      );
+    }
+  }
+
+  // ignore: unused_element
   void _showAddMoreDialog() {
     showModalBottomSheet<void>(
       context: context,
@@ -943,7 +958,10 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
       listenable: widget.controller,
 
       builder: (context, _) {
-        final allItems = widget.controller.items.where((i) => i.isVerified).toList();
+        final allItems = widget.controller.items
+            .where((i) => i.isVerified && i.status != BatchItemStatus.pending && i.status != BatchItemStatus.processing)
+            .toList();
+        final verifiedCount = allItems.length;
 
         final filteredItems = allItems.where((item) {
           final d = item.record;
@@ -1025,8 +1043,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
               if (_dateFrom != null && dt.isBefore(_dateFrom!)) return false;
 
               if (_dateTo != null &&
-                  dt.isAfter(_dateTo!.add(const Duration(days: 1))))
+                  dt.isAfter(_dateTo!.add(const Duration(days: 1)))) {
                 return false;
+              }
 
               return true;
             });
@@ -1051,6 +1070,21 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
             backgroundColor: Colors.white,
             elevation: 1,
             titleSpacing: 14,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+              tooltip: 'Back to Upload LR',
+              onPressed: () {
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                } else {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => HomeScreen(controller: widget.controller),
+                    ),
+                  );
+                }
+              },
+            ),
             title: const Text(
               'LR List (For Excel Export)',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -1068,7 +1102,8 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                   children: [
                     // Add More LR (Web Parity) placed directly below page title
                     InkWell(
-                      onTap: _showAddMoreDialog,
+                      key: const Key('batch_queue_add_more_lr_btn'),
+                      onTap: _navigateToAddMoreLR,
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -1604,7 +1639,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                             const SizedBox(height: 8),
 
                             ElevatedButton.icon(
-                              onPressed: _showAddMoreDialog,
+                              onPressed: _navigateToAddMoreLR,
 
                               icon: const Icon(Icons.add, size: 16),
 
@@ -1867,7 +1902,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                       Text(
                                         item.editedAt != null
                                             ? 'Edited: ${item.editedAt!.hour.toString().padLeft(2, '0')}:${item.editedAt!.minute.toString().padLeft(2, '0')}'
-                                            : 'Never edited',
+                                            : '',
 
                                         style: TextStyle(
                                           fontSize: 10,
@@ -2090,7 +2125,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                           label: Text(
                             _isExporting
                                 ? 'Exporting...'
-                                : 'Download Excel (${allItems.length} LRs)',
+                                : 'Download Excel ($verifiedCount LRs)',
 
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,

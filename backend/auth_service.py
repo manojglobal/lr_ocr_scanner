@@ -66,6 +66,13 @@ def send_otp(mobile_raw: str, name: str | None = None) -> dict:
     Generates a cryptographically secure 6-digit OTP for the mobile number.
     Enforces a 30-second resend cooldown and 5-minute expiration.
     """
+    clean_name = str(name or "").strip()
+    if not clean_name:
+        return {
+            "success": False,
+            "error": "Please enter your name."
+        }
+
     mobile = _clean_mobile(mobile_raw)
     if len(mobile) != 10 or not mobile[0] in "56789":
         return {
@@ -95,7 +102,7 @@ def send_otp(mobile_raw: str, name: str | None = None) -> dict:
             "expires_at": expires_at,
             "attempts_left": 3,
             "last_sent_at": now,
-            "name": name or (existing.get("name") if existing else "") or "Logistics User"
+            "name": clean_name or (existing.get("name") if existing else "")
         }
 
     # Terminal visibility for testing & logs
@@ -123,6 +130,7 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
     Enforces maximum 3 attempts and 5-minute expiry.
     Upon success, destroys the OTP and returns a session token.
     """
+    clean_name = str(name or "").strip()
     mobile = _clean_mobile(mobile_raw)
     otp_code = str(otp_code_raw or "").strip()
 
@@ -172,7 +180,7 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
             }
 
         # OTP Verified Successfully -> Single-Use Consumption
-        stored_name = name or entry.get("name") or "Logistics User"
+        stored_name = clean_name or entry.get("name") or "Logistics User"
         _otp_store.pop(mobile, None)
 
         # Create/Update User Registry
@@ -214,6 +222,13 @@ def direct_login(mobile_raw: str, name: str | None = None) -> dict:
     Validates mobile format, records the user, and issues a session token.
     (Hides OTP step temporarily as requested).
     """
+    clean_name = str(name or "").strip()
+    if not clean_name:
+        return {
+            "success": False,
+            "error": "Please enter your name."
+        }
+
     mobile = _clean_mobile(mobile_raw)
     if len(mobile) != 10 or not mobile[0] in "56789":
         return {
@@ -221,7 +236,7 @@ def direct_login(mobile_raw: str, name: str | None = None) -> dict:
             "error": "Please enter a valid 10-digit Indian mobile number (e.g., 9876543210)."
         }
 
-    stored_name = name or "Logistics User"
+    stored_name = clean_name
 
     # Create/Update User Registry under lock
     with _auth_lock:

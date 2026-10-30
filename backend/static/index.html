@@ -175,7 +175,7 @@
           <!-- Step 1A: Mobile Number & Name -->
           <div id="loginStepMobile" class="space-y-4">
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Your Name (Optional)</label>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Your Name *</label>
               <div class="relative">
                 <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
                 <input type="text" id="loginNameInput" value="Ruchita Patel" placeholder="Enter Full Name" onkeydown="if(event.key==='Enter') handleLoginClick()" class="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none" />
@@ -236,7 +236,7 @@
     <!-- ==================================================================== -->
     <!-- SCREEN 2: UPLOAD LR -->
     <!-- ==================================================================== -->
-    <section id="screen2_upload" class="screen-view max-w-2xl w-full mx-auto space-y-4 h-full min-h-0 flex flex-col justify-center overflow-y-auto py-2" hidden style="display: none !important;">
+    <section id="screen2_upload" class="screen-view max-w-3xl w-full mx-auto space-y-2.5 sm:space-y-3.5 h-full min-h-0 flex flex-col justify-start overflow-y-auto py-1 sm:py-2" hidden style="display: none !important;">
       <div class="flex items-center justify-between shrink-0">
         <div>
           <h2 class="text-xl font-bold text-slate-800">Upload LR</h2>
@@ -282,16 +282,18 @@
       </div>
 
       <!-- Slide 2: Previously Uploaded LR Files -->
-      <div id="previousUploadsSection" class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2 max-h-52 overflow-y-auto">
-        <div class="flex items-center justify-between sticky top-0 bg-white pb-1 z-10 border-b border-slate-100">
+      <div id="previousUploadsSection" class="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col flex-1 min-h-[220px] max-h-[320px] overflow-hidden shrink-0">
+        <!-- Fixed Section Header (Heading + File Count) -->
+        <div class="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 shrink-0">
           <div class="flex items-center space-x-2">
             <i data-lucide="history" class="w-4 h-4 text-sky-600"></i>
             <h3 class="text-xs font-bold text-slate-800">Previously Uploaded LRs</h3>
           </div>
-          <span id="previousUploadsCountBadge" class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full border border-slate-200">0 files</span>
+          <span id="previousUploadsCountBadge" class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-0.5 rounded-full border border-slate-200">0 files</span>
         </div>
 
-        <div id="previousUploadsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-1">
+        <!-- Internally Scrollable Card List -->
+        <div id="previousUploadsList" class="flex-1 min-h-0 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           <!-- Dynamically populated by renderPreviousUploadsWeb() -->
         </div>
       </div>
@@ -1435,7 +1437,7 @@
           <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
         </div>
         <div>
-          <h3 class="text-base font-bold text-slate-900">Remove Consignment LR</h3>
+          <h3 class="text-base font-bold text-slate-900">Remove LR</h3>
           <span class="text-[10px] font-bold uppercase tracking-wider text-red-500 font-semibold">Warning</span>
         </div>
       </div>
@@ -2903,9 +2905,16 @@
       if (mobile.startsWith('91') && mobile.length === 12) mobile = mobile.substring(2);
       if (mobile.startsWith('0') && mobile.length === 11) mobile = mobile.substring(1);
 
-      const name = document.getElementById('loginNameInput').value.trim() || 'Logistics User';
+      const name = document.getElementById('loginNameInput').value.trim();
       const errorDiv = document.getElementById('loginErrorMsg');
       errorDiv.classList.add('hidden');
+
+      if (!name) {
+        errorDiv.innerText = 'Please enter your name.';
+        errorDiv.classList.remove('hidden');
+        document.getElementById('loginNameInput').focus();
+        return;
+      }
 
       if (!mobile || mobile.length !== 10 || !/^[5-9]/.test(mobile)) {
         errorDiv.innerText = 'Please enter a valid 10-digit Indian mobile number.';
@@ -2987,9 +2996,16 @@
     }
     async function requestOtp() {
       const mobile = document.getElementById('loginMobileInput').value.trim();
-      const name = document.getElementById('loginNameInput').value.trim() || 'Logistics User';
+      const name = document.getElementById('loginNameInput').value.trim();
       const errorDiv = document.getElementById('loginErrorMsg');
       errorDiv.classList.add('hidden');
+
+      if (!name) {
+        errorDiv.innerText = 'Please enter your name.';
+        errorDiv.classList.remove('hidden');
+        document.getElementById('loginNameInput').focus();
+        return;
+      }
 
       if (!mobile || mobile.length !== 10) {
         errorDiv.innerText = 'Please enter a valid 10-digit mobile number.';
@@ -3083,7 +3099,7 @@
 
     async function verifyOtp() {
       const mobile = document.getElementById('loginMobileInput').value.trim();
-      const name = document.getElementById('loginNameInput').value.trim() || 'Logistics User';
+      const name = document.getElementById('loginNameInput').value.trim();
       const boxes = document.querySelectorAll('.otp-box');
       const otp = Array.from(boxes).map(b => b.value).join('');
       const errorDiv = document.getElementById('otpErrorMsg');
@@ -4045,9 +4061,9 @@
     // 1. Remove Consignment LR
     function showRemoveLrConfirmModal(lrName, onConfirm) {
       showAppConfirmModal({
-        title: 'Remove Consignment LR',
+        title: 'Remove LR',
         subtitle: 'Confirmation',
-        message: `Remove consignment LR ${lrName} from batch?`,
+        message: `Remove LR ${lrName} from batch?`,
         confirmText: 'Confirm',
         onConfirm: onConfirm
       });
@@ -6474,21 +6490,21 @@
         if (isPdf) {
           mediaPreview = `
             <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-red-50/70 border border-red-200/80 flex flex-col items-center justify-center p-2 text-center group-hover:bg-red-50 transition">
-              <span class="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-xs pointer-events-none">PDF</span>
+              <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-600 text-white shadow-xs pointer-events-none">PDF</span>
               <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-1 shrink-0">
                 <i data-lucide="file-text" class="w-4 h-4 text-red-600"></i>
               </div>
               <span class="text-[10px] font-semibold text-slate-700 line-clamp-2 px-1 break-all leading-tight" title="${r.filename}">
                 ${r.filename}
               </span>
-              ${r.page_count && r.page_count > 1 ? `<span class="mt-1 px-1.5 py-0.2 text-[9px] font-semibold bg-red-100 text-red-700 rounded-full border border-red-200">${r.page_count} Pages</span>` : ''}
+              ${r.page_count && r.page_count > 1 ? `<span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-semibold bg-red-100 text-red-700 rounded-full border border-red-200 shadow-xs">${r.page_count} Pages</span>` : ''}
             </div>
           `;
         } else if (thumbSrc) {
           mediaPreview = `
             <div id="thumb_box_${idx}" class="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200">
               <img src="${thumbSrc}" alt="${r.filename}" class="w-full h-full object-cover" />
-              ${r.page_count && r.page_count > 1 ? `<span class="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-900/75 text-white shadow-xs">${r.page_count} Pgs</span>` : ''}
+              ${r.page_count && r.page_count > 1 ? `<span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-900/75 text-white shadow-xs">${r.page_count} Pgs</span>` : ''}
             </div>
           `;
         } else {
@@ -6502,19 +6518,19 @@
 
         const targetId = encodeURIComponent(r.id || r.saved_filename || r.filename || ('prev_' + idx)).replace(/'/g, "%27");
         return `
-          <div onclick="openPreviousUploadPreview('${targetId}')" class="group relative cursor-pointer bg-white p-2.5 rounded-xl border border-slate-200 hover:border-sky-400 hover:shadow-md transition" title="Click to Open Step 2: LR & Master Verification">
-            <!-- Remove Button (Dismiss from History Strip ONLY) -->
+          <div onclick="openPreviousUploadPreview('${targetId}')" class="group relative cursor-pointer bg-white p-2.5 rounded-xl border border-slate-200 hover:border-sky-400 hover:shadow-md transition flex flex-col justify-between" title="Click to Open Step 2: LR & Master Verification">
+            <!-- Remove Button (Dismiss from History Strip ONLY - Top Right, Zero Collision) -->
             <button type="button"
                     onclick="removePreviousUploadItem(event, '${targetId}')"
-                    class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-slate-900/70 hover:bg-red-600 text-white flex items-center justify-center transition shadow-sm opacity-80 group-hover:opacity-100 z-10 cursor-pointer"
+                    class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-slate-900/75 hover:bg-red-600 text-white flex items-center justify-center transition shadow-sm opacity-85 group-hover:opacity-100 z-10 cursor-pointer"
                     title="Remove from previously uploaded history">
               <i data-lucide="x" class="w-3.5 h-3.5 pointer-events-none"></i>
             </button>
             ${mediaPreview}
-            <div class="mt-2">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-800 truncate" title="${lrNo}">${lrNo.startsWith('LR') ? lrNo : 'LR: ' + lrNo}</span>
-                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded ${isPdf ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-sky-50 text-sky-600 border border-sky-200'}">${isPdf ? 'PDF' : 'IMG'}</span>
+            <div class="mt-2 space-y-0.5">
+              <div class="flex items-center justify-between gap-1.5">
+                <span class="text-xs font-bold text-slate-800 truncate flex-1 min-w-0" title="${lrNo}">${lrNo.startsWith('LR') ? lrNo : 'LR: ' + lrNo}</span>
+                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isPdf ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-sky-50 text-sky-600 border border-sky-200'}">${isPdf ? 'PDF' : 'IMG'}</span>
               </div>
               <p class="text-[10px] text-slate-500 truncate mt-0.5" title="${r.filename}">${r.filename}</p>
               <p class="text-[9px] text-slate-400 mt-1">${dateStr}</p>
@@ -6535,7 +6551,7 @@
             const thumb = cached.preview_image || cached.preview_url || cached.imageSrc;
             if (thumb && !thumb.startsWith('data:application/pdf')) {
               boxEl.className = 'relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200';
-              boxEl.innerHTML = `<img src="${thumb}" alt="${r.filename}" class="w-full h-full object-cover" />`;
+              boxEl.innerHTML = `<img src="${thumb}" alt="${r.filename}" class="w-full h-full object-cover" />` + (r.page_count && r.page_count > 1 ? `<span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-900/75 text-white shadow-xs">${r.page_count} Pgs</span>` : '');
             }
           }
         }
@@ -6601,7 +6617,7 @@
       const msgEl = document.getElementById('removePreviousUploadModalMessage');
       if (msgEl) {
         if (lrLabel && lrLabel !== 'LR Document') {
-          msgEl.innerText = `Are you sure you want to remove consignment LR "${lrLabel}" from Previously Uploaded history? It will remain available in your LR List.`;
+          msgEl.innerText = `Are you sure you want to remove LR "${lrLabel}" from Previously Uploaded history? It will remain available in your LR List.`;
         } else {
           msgEl.innerText = 'Are you sure you want to remove this LR from Previously Uploaded history? It will remain available in your LR List.';
         }

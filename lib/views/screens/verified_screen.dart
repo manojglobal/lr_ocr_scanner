@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
+import '../home_screen.dart';
 import '../widgets/billing_image_viewer.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
@@ -266,11 +267,13 @@ class VerifiedScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
+                            key: const Key('verified_screen_add_more_lr_btn'),
                             onPressed: () {
-                              Navigator.of(context).push(
+                              Navigator.of(context).pushAndRemoveUntil(
                                 MaterialPageRoute(
-                                  builder: (_) => BatchQueueScreen(controller: controller, autoOpenAddMore: true),
+                                  builder: (_) => HomeScreen(controller: controller),
                                 ),
+                                (route) => false,
                               );
                             },
                             icon: const Icon(Icons.add, size: 16),

@@ -87,10 +87,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Simplified direct authentication handler (OTP section hidden temporarily)
   Future<void> _handleDirectLogin() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your name.');
+      return;
+    }
+
     var mobile = _mobileController.text.replaceAll(RegExp(r'\D'), '');
     if (mobile.startsWith('91') && mobile.length == 12) mobile = mobile.substring(2);
     if (mobile.startsWith('0') && mobile.length == 11) mobile = mobile.substring(1);
-    final name = _nameController.text.trim();
 
     if (mobile.length != 10 || !RegExp(r'^[5-9]').hasMatch(mobile)) {
       setState(() => _errorMessage = 'Please enter a valid 10-digit Indian mobile number.');
@@ -254,9 +259,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleSendOtp() async {
-    final mobile = _mobileController.text.trim();
     final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your name.');
+      return;
+    }
 
+    final mobile = _mobileController.text.trim();
     if (mobile.length != 10) {
       setState(() => _errorMessage = 'Please enter a valid 10-digit mobile number.');
       return;
@@ -291,8 +300,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleVerifyOtp() async {
-    final mobile = _mobileController.text.trim();
     final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your name.');
+      return;
+    }
+
+    final mobile = _mobileController.text.trim();
     final otp = _otpControllers.map((c) => c.text).join();
 
     if (otp.length != 6) {
@@ -465,7 +479,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               textInputAction: TextInputAction.next,
                               onSubmitted: (_) => _handleDirectLogin(),
                               decoration: const InputDecoration(
-                                labelText: 'Your Name (Optional)',
+                                labelText: 'Your Name *',
                                 prefixIcon: Icon(Icons.person_outline, size: 20),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                                 contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -506,7 +520,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextField(
                               controller: _nameController,
                               decoration: const InputDecoration(
-                                labelText: 'Your Name',
+                                labelText: 'Your Name *',
                                 prefixIcon: Icon(Icons.person_outline, size: 20),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                                 contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),

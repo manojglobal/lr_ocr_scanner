@@ -24,7 +24,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
     const brandGreen = Color(0xFF16A34A);
 
     final filename = exportResult['filename']?.toString() ?? 'BNF_Bilty_Export.xlsx';
-    final totalLrs = exportResult['total_lrs']?.toString() ?? '${controller.items.length}';
+    final totalLrs = exportResult['total_lrs']?.toString() ?? '${controller.items.where((i) => i.isVerified).length}';
     final userName = exportResult['user_name']?.toString() ?? exportResult['exported_by']?.toString() ?? exportResult['generated_by']?.toString() ?? 'Ruchita Patel';
     final exportedBy = userName;
     final mobile = exportResult['user_mobile']?.toString() ?? exportResult['mobile']?.toString() ?? '';
@@ -403,7 +403,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
     required String timestamp,
   }) {
     final fields = DocumentSchema.grBnf.fields;
-    final items = controller.items;
+    final items = controller.items.where((i) => i.isVerified).toList();
     final sha256Str = exportResult['sha256']?.toString() ?? 'e3b0c44298fc...';
     final truncatedSha = sha256Str.length > 20 ? '${sha256Str.substring(0, 16)}...' : sha256Str;
 

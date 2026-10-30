@@ -219,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final hasSpecificLabel = lrLabel.isNotEmpty && lrLabel.toLowerCase() != 'lr document';
     final dynamicMessage = hasSpecificLabel
         ? 'Are you sure you want to remove LR "$lrLabel" from Previously Uploaded history? It will remain available in your LR List.'
-        : 'Are you sure you want to remove this LR from Previously Uploaded history? It will remain available in your LR List.';
+        : 'Are you sure you want to remove this consignment LR from Previously Uploaded history? It will remain available in your LR List.';
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1461,47 +1461,81 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Recently / Previously Uploaded Horizontal Strip (Slide 2: Upload LR)
                       if (displayRecent.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(Icons.history, size: 16, color: Color(0xFF0284C7)),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Previously Uploaded LRs',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: brandNavy),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x06000000),
+                                blurRadius: 6,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Fixed Section Heading & Count Badge at Top
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.history, size: 16, color: Color(0xFF0284C7)),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Previously Uploaded LRs',
+                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: brandNavy),
+                                        ),
+                                      ],
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                                      ),
+                                      child: Text(
+                                        '${displayRecent.length} files',
+                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            Text(
-                              '${displayRecent.length} files',
-                              style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 140,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: displayRecent.length,
-                            separatorBuilder: (_, _) => const SizedBox(width: 10),
-                            itemBuilder: (ctx, idx) {
-                              final itmData = displayRecent[idx];
-                              final isPdf = itmData['isPdf'] == true;
-                              final fileName = itmData['fileName']?.toString() ?? 'LR Document';
-                              final lrNo = itmData['lrNo']?.toString() ?? '';
-                              final imagePath = itmData['imagePath']?.toString() ?? '';
-                              // itemObj unused
-                              final isVerified = _isItemVerified(itmData);
-                              final dt = DateTime.tryParse(itmData['createdAt']?.toString() ?? '') ?? DateTime.now();
-                              final previewImg = (itmData['preview_image'] ?? itmData['record']?['preview_image'])?.toString() ?? '';
-                              final previewPath = (itmData['preview_path'] ?? itmData['record']?['preview_path'])?.toString() ?? '';
-                              final previewUrl = (itmData['preview_url'] ?? itmData['record']?['preview_url'])?.toString() ?? '';
+                              ),
+                              const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+                              // Internally Scrollable Horizontal Card List
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                child: SizedBox(
+                                  height: 154,
+                                  child: ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    physics: const BouncingScrollPhysics(),
+                                    itemCount: displayRecent.length,
+                                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                                    itemBuilder: (ctx, idx) {
+                                      final itmData = displayRecent[idx];
+                                      final isPdf = itmData['isPdf'] == true;
+                                      final fileName = itmData['fileName']?.toString() ?? 'LR Document';
+                                      final lrNo = itmData['lrNo']?.toString() ?? '';
+                                      final imagePath = itmData['imagePath']?.toString() ?? '';
+                                      final isVerified = _isItemVerified(itmData);
+                                      final dt = DateTime.tryParse(itmData['createdAt']?.toString() ?? '') ?? DateTime.now();
+                                      final previewImg = (itmData['preview_image'] ?? itmData['record']?['preview_image'])?.toString() ?? '';
+                                      final previewPath = (itmData['preview_path'] ?? itmData['record']?['preview_path'])?.toString() ?? '';
+                                      final previewUrl = (itmData['preview_url'] ?? itmData['record']?['preview_url'])?.toString() ?? '';
 
-                              return InkWell(
-                                onTap: () async {
+                                      return InkWell(
+                                        onTap: () async {
                                   BatchItem targetItem;
                                   if (itmData['item'] is BatchItem) {
                                     targetItem = itmData['item'] as BatchItem;
@@ -1643,138 +1677,157 @@ class _HomeScreenState extends State<HomeScreen> {
                                     );
                                   }
                                 },
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  width: 140,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x0A000000),
-                                        blurRadius: 4,
-                                        offset: Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Top Visual Thumbnail Section (72px)
-                                        SizedBox(
-                                          height: 72,
-                                          width: double.infinity,
-                                          child: Stack(
-                                            children: [
-                                              Positioned.fill(
-                                                child: _buildRecentItemThumbnail(
-                                                  isPdf: isPdf,
-                                                  imagePath: imagePath,
-                                                  fileName: fileName,
-                                                  previewImage: previewImg,
-                                                  previewPath: previewPath,
-                                                  previewUrl: previewUrl,
-                                                ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Container(
+                                          width: 140,
+                                          height: 154,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x0A000000),
+                                                blurRadius: 4,
+                                                offset: Offset(0, 2),
                                               ),
-                                              // Status Badge & Delete Button (Top-Right)
-                                              Positioned(
-                                                top: 4,
-                                                right: 4,
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                                      decoration: BoxDecoration(
-                                                        color: (isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2)).withAlpha(240),
-                                                        borderRadius: BorderRadius.circular(4),
-                                                        border: Border.all(
-                                                          color: isVerified ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
-                                                          width: 0.8,
-                                                        ),
-                                                      ),
-                                                      child: Text(
-                                                        isVerified ? 'Verified' : 'Unverified',
-                                                        style: TextStyle(
-                                                          fontSize: 8.5,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: isVerified ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    GestureDetector(
-                                                      onTap: () => _deleteRecentUploadItem(idx, itmData),
-                                                      child: Container(
-                                                        padding: const EdgeInsets.all(4.0),
-                                                        decoration: BoxDecoration(
-                                                          color: Colors.white.withAlpha(240),
-                                                          shape: BoxShape.circle,
-                                                          border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
-                                                        ),
-                                                        child: const Icon(Icons.close, size: 15, color: Color(0xFF64748B)),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              // PDF indicator badge if PDF
-                                              if (isPdf)
-                                                Positioned(
-                                                  top: 4,
-                                                  left: 4,
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.red.shade700.withAlpha(235),
-                                                      borderRadius: BorderRadius.circular(3),
-                                                    ),
-                                                    child: const Text(
-                                                      'PDF',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 8,
-                                                        fontWeight: FontWeight.bold,
-                                                        letterSpacing: 0.3,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
                                             ],
                                           ),
-                                        ),
-                                        // Bottom Metadata Section
-                                        Expanded(
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(12),
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisAlignment: MainAxisAlignment.center,
                                               children: [
-                                                Text(
-                                                  lrNo.isNotEmpty ? 'LR: $lrNo' : fileName,
-                                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: brandNavy),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
+                                                // Top Visual Thumbnail Section (80px)
+                                                SizedBox(
+                                                  height: 80,
+                                                  width: double.infinity,
+                                                  child: Stack(
+                                                    children: [
+                                                      Positioned.fill(
+                                                        child: _buildRecentItemThumbnail(
+                                                          isPdf: isPdf,
+                                                          imagePath: imagePath,
+                                                          fileName: fileName,
+                                                          previewImage: previewImg,
+                                                          previewPath: previewPath,
+                                                          previewUrl: previewUrl,
+                                                        ),
+                                                      ),
+                                                      // Delete Button ONLY (Top-Right, Unobstructed)
+                                                      Positioned(
+                                                        top: 5,
+                                                        right: 5,
+                                                        child: GestureDetector(
+                                                          behavior: HitTestBehavior.opaque,
+                                                          onTap: () => _deleteRecentUploadItem(idx, itmData),
+                                                          child: Container(
+                                                            padding: const EdgeInsets.all(4.0),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.white.withAlpha(240),
+                                                              shape: BoxShape.circle,
+                                                              border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
+                                                              boxShadow: const [
+                                                                BoxShadow(color: Color(0x1A000000), blurRadius: 2),
+                                                              ],
+                                                            ),
+                                                            child: const Icon(Icons.close, size: 14, color: Color(0xFF475569)),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      // PDF Type Indicator Badge (Top-Left)
+                                                      if (isPdf)
+                                                        Positioned(
+                                                          top: 5,
+                                                          left: 5,
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.red.shade700.withAlpha(235),
+                                                              borderRadius: BorderRadius.circular(4),
+                                                            ),
+                                                            child: const Text(
+                                                              'PDF',
+                                                              style: TextStyle(
+                                                                color: Colors.white,
+                                                                fontSize: 8.5,
+                                                                fontWeight: FontWeight.bold,
+                                                                letterSpacing: 0.3,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      // Status Badge (Bottom-Right of Thumbnail, Zero Collision)
+                                                      Positioned(
+                                                        bottom: 5,
+                                                        right: 5,
+                                                        child: Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          decoration: BoxDecoration(
+                                                            color: (isVerified ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2)).withAlpha(240),
+                                                            borderRadius: BorderRadius.circular(4),
+                                                            border: Border.all(
+                                                              color: isVerified ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
+                                                              width: 0.8,
+                                                            ),
+                                                          ),
+                                                          child: Text(
+                                                            isVerified ? 'Verified' : 'Unverified',
+                                                            style: TextStyle(
+                                                              fontSize: 8.5,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: isVerified ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}',
-                                                  style: const TextStyle(fontSize: 8.5, color: Colors.grey),
+                                                // Bottom Metadata Section (74px)
+                                                Expanded(
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Text(
+                                                              lrNo.isNotEmpty ? (lrNo.startsWith('LR') ? lrNo : 'LR: $lrNo') : fileName,
+                                                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: brandNavy),
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                            const SizedBox(height: 1),
+                                                            Text(
+                                                              fileName,
+                                                              style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        Text(
+                                                          '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}',
+                                                          style: const TextStyle(fontSize: 8.5, color: Color(0xFF94A3B8)),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
                                                 ),
                                               ],
                                             ),
                                           ),
                                         ),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   ),
                                 ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
                         ),
                       ],

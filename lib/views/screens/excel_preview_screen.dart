@@ -3,8 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
+import '../home_screen.dart';
 import '../widgets/step_indicator_bar.dart';
-import 'batch_queue_screen.dart';
 
 /// Screen 8: Excel Preview (BNF GR Import Format - 49 Columns).
 class ExcelPreviewScreen extends StatefulWidget {
@@ -27,6 +27,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   bool _isDownloadingAll = false;
   List<Map<String, dynamic>> _exportHistory = [];
   bool _isLoadingHistory = false;
+  // ignore: unused_field
   String _userName = 'Logistics User';
   String _userMobile = '';
 
@@ -460,7 +461,8 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final items = widget.controller.items;
+    final allItems = widget.controller.items;
+    final verifiedItems = allItems.where((i) => i.isVerified).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -503,7 +505,8 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                   ),
                   const Spacer(),
                   Chip(
-                    label: Text('${items.length} LRs', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    key: const Key('excel_preview_record_count_chip'),
+                    label: Text('${verifiedItems.length} LRs', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                     backgroundColor: const Color(0xFFE0F2FE),
                     side: BorderSide.none,
                     padding: EdgeInsets.zero,
@@ -515,8 +518,8 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
 
           Expanded(
             child: _activeSheetIndex == 0
-                ? _buildSheet1BnfTable(items)
-                : _buildSheet2AuditTable(items),
+                ? _buildSheet1BnfTable(verifiedItems)
+                : _buildSheet2AuditTable(allItems),
           ),
 
           // Bottom Action Bar: Add More LR (left) & Generate Excel (right)
@@ -537,14 +540,15 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                 children: [
                   // Bottom-Left: Add More LR matching Sheet 2 layout
                   OutlinedButton.icon(
+                    key: const Key('excel_preview_add_more_lr_btn'),
                     onPressed: () {
-                      Navigator.of(context).push(
+                      Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
-                          builder: (_) => BatchQueueScreen(
+                          builder: (_) => HomeScreen(
                             controller: widget.controller,
-                            autoOpenAddMore: true,
                           ),
                         ),
+                        (route) => false,
                       );
                     },
                     icon: const Icon(Icons.add, size: 18, color: Color(0xFF334155)),
@@ -563,7 +567,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                   // Bottom-Right: Generate Excel (N LRs) matching Sheet 2 layout
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: _isGenerating ? null : _confirmAndGenerateExcel,
+                      onPressed: (_isGenerating || verifiedItems.isEmpty) ? null : _confirmAndGenerateExcel,
                       icon: _isGenerating
                           ? const SizedBox(
                               width: 18,
@@ -574,7 +578,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                       label: Text(
                         _isGenerating
                             ? 'Generating Excel...'
-                            : 'Generate Excel (${items.where((i) => i.isVerified).length} LRs)',
+                            : 'Generate Excel (${verifiedItems.length} LRs)',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -599,7 +603,45 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
 
   Widget _buildSheet1BnfTable(List<BatchItem> items) {
     if (items.isEmpty) {
-      return const Center(child: Text('No documents in queue.'));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.info_outline, color: Color(0xFFD97706), size: 28),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'No Verified LRs Available',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Only verified consignments appear in Preview LR.\nPlease review and verify pending LRs from the LR List first.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back, size: 16),
+                label: const Text('Back to LR List'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return SingleChildScrollView(
