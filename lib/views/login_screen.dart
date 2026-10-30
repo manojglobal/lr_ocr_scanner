@@ -164,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: textController,
                   decoration: InputDecoration(
                     labelText: 'Server Base URL',
-                    hintText: 'http://192.168.1.2:8000',
+                    hintText: 'http://192.168.1.5:8000',
                     border: const OutlineInputBorder(),
                     isDense: true,
                     suffixIcon: IconButton(
@@ -182,9 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   spacing: 6,
                   children: [
                     ActionChip(
-                      label: const Text('PC IP (192.168.1.2:8000)', style: TextStyle(fontSize: 11)),
+                      label: const Text('PC IP (192.168.1.5:8000)', style: TextStyle(fontSize: 11)),
                       onPressed: () {
-                        textController.text = 'http://192.168.1.2:8000';
+                        textController.text = 'http://192.168.1.5:8000';
                         setDialogState(() {});
                       },
                     ),

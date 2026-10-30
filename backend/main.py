@@ -3881,6 +3881,21 @@ async def delete_user_cloud_lr(
         lr_identifiers=ids_to_delete,
         user_id=req_user_id
     )
+
+    # Also soft-delete in file_lifecycle_service so previous_uploads & lifecycle stay synchronized
+    try:
+        user_display = actor.get("user_name") or "Logistics User"
+        for ident in ids_to_delete:
+            ident_clean = str(ident).strip()
+            if ident_clean:
+                file_lifecycle_service.record_file_deletion(
+                    file_id_or_path=ident_clean,
+                    user_name=user_display,
+                    reason="LR deleted from batch by user"
+                )
+    except Exception as e:
+        logger.warning(f"[delete_user_cloud_lr] Lifecycle sync notice: {e}")
+
     return result
 
 @app.post("/api/user-cloud-storage/delete-upload-history")

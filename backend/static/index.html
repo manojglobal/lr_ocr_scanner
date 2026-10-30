@@ -2214,7 +2214,7 @@
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
           if (!k) continue;
-          if (k === 'bnf_user' || k === 'bnf_session_token') continue; // Preserve user auth credentials only (~150 bytes)
+          if (k === 'bnf_user' || k === 'bnf_session_token' || k.startsWith('bnf_tombstones_')) continue; // Preserve auth credentials & deletion tombstones
           if (k.startsWith('bnf_') || k === 'BNF_MASTER_DRIVER_CACHE') {
             keysToRemove.push(k);
           }
@@ -2256,6 +2256,33 @@
       return 'bnf_removed_uploaded_files_' + idKey;
     }
 
+    function getTombstonesStorageKey(user = currentUser) {
+      const u = user || currentUser;
+      const idKey = (u?.mobile || u?.id || u?.name || 'guest').toString().replace(/[^a-zA-Z0-9_]/g, '');
+      return 'bnf_tombstones_' + idKey;
+    }
+
+    function loadPersistentTombstones(user = currentUser) {
+      try {
+        const key = getTombstonesStorageKey(user);
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            arr.forEach(t => { if (t) userDismissedTombstones.add(String(t).trim().toLowerCase()); });
+          }
+        }
+      } catch (_) {}
+    }
+
+    function savePersistentTombstones(user = currentUser) {
+      try {
+        const key = getTombstonesStorageKey(user);
+        const arr = Array.from(userDismissedTombstones);
+        localStorage.setItem(key, JSON.stringify(arr));
+      } catch (_) {}
+    }
+
     function getUserRemovedTombstones(user = currentUser) {
       return Array.from(userDismissedTombstones);
     }
@@ -2266,6 +2293,9 @@
       const itemFn = (item.filename || item.fileName || item.file_name || '').toString().trim().toLowerCase();
       const itemSaved = item.saved_filename ? String(item.saved_filename).trim().toLowerCase() : '';
       const itemFid = (item.file_id || item.upload_id || '').toString().trim().toLowerCase();
+      const d = item.data || {};
+      const itemGrno = (d['grno'] || '').toString().trim().toLowerCase();
+      const itemLrNo = (d['LR No *'] || '').toString().trim().toLowerCase();
       const isGeneric = (s) => !s || s.length < 3 || [
         '-', '--', 'n/a', 'na', 'none', 'null', 'undefined',
         'lr document', 'document', 'item', 'default', 'scan', 'image', 'photo',
@@ -2278,6 +2308,8 @@
         if (itemSaved && itemSaved === t) return true;
         if (itemFid && itemFid === t) return true;
         if (itemFn && !isGeneric(itemFn) && itemFn === t) return true;
+        if (itemGrno && !isGeneric(itemGrno) && itemGrno === t) return true;
+        if (itemLrNo && !isGeneric(itemLrNo) && itemLrNo === t) return true;
       }
       return false;
     }
@@ -2374,11 +2406,13 @@
     }
 
     // --- Account-Based Batch Persistence & 30-Day Auto Purge ---
+    let hasLoadedUserBatchesInitially = false;
     let isLoadingUserBatches = false;
     function loadUserBatches(sessionToken) {
       if (isLoadingUserBatches) return;
       isLoadingUserBatches = true;
       try {
+        loadPersistentTombstones();
         if (!currentUser) {
           verifiedBatch = [];
           deletedBatch = [];
@@ -2409,6 +2443,7 @@
         }
       } finally {
         isLoadingUserBatches = false;
+        hasLoadedUserBatchesInitially = true;
         // Asynchronously sequence cloud JSON DB hydration followed by physical file sync
         if (currentUser && currentUser.mobile) {
           syncUserCloudStorage().then(() => {
@@ -2445,16 +2480,17 @@
         const cloudExcels = Array.isArray(cloud.generated_excels) ? cloud.generated_excels : [];
         const cloudDismissed = Array.isArray(cloud.dismissed_uploads) ? cloud.dismissed_uploads : [];
 
-        // Synchronize cloud dismissals into in-memory tombstones (zero localStorage)
+        // Synchronize cloud dismissals into in-memory tombstones & localStorage
         cloudDismissed.forEach(cd => {
           if (cd) userDismissedTombstones.add(String(cd).trim().toLowerCase());
         });
+        savePersistentTombstones();
 
         // 1. Hydrate active batch from cloud JSON DB (supports cross-device & browser closure)
         if (cloudActive.length > 0) {
-          const merged = [...cloudActive];
+          const merged = cloudActive.filter(ca => ca && !isItemTombstonedByUser(ca));
           (verifiedBatch || []).forEach(localItem => {
-            if (!localItem || !localItem.id) return;
+            if (!localItem || !localItem.id || isItemTombstonedByUser(localItem)) return;
             const exists = merged.some(m => m.id === localItem.id || (m.saved_filename && m.saved_filename === localItem.saved_filename));
             if (!exists) merged.push(localItem);
           });
@@ -3217,6 +3253,7 @@
 
       // Clear local session state
       currentUser = null;
+      hasLoadedUserBatchesInitially = false;
       verifiedBatch = [];
       deletedBatch = [];
       activeItem = null;
@@ -6290,9 +6327,10 @@
               }
             }
 
-            // Also restore server pending uploads into verifiedBatch so LR List is always populated
+            // Also restore server pending uploads into verifiedBatch so LR List is always populated (if not deleted/tombstoned)
             const inBatch = verifiedBatch.some(b => b.filename === srv.filename || b.id === srv.id || (b.saved_filename && b.saved_filename === srv.saved_filename));
             if (!inBatch) {
+              if (isItemTombstonedByUser(srv)) return;
               const cached = getDocImage(srv.id, srv.filename);
               verifiedBatch.push({
                 id: srv.id || ('srv_' + Date.now()),
@@ -7003,7 +7041,7 @@
     }
 
     function renderBatchTable() {
-      if ((!verifiedBatch || verifiedBatch.length === 0) && currentUser && !isLoadingUserBatches) {
+      if (!hasLoadedUserBatchesInitially && (!verifiedBatch || verifiedBatch.length === 0) && currentUser && !isLoadingUserBatches) {
         loadUserBatches();
         return;
       }
@@ -7156,7 +7194,7 @@
                 <button onclick="viewBatchItem(${origIdx})" class="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition cursor-pointer" title="View / Edit LR">
                   <i data-lucide="edit-3" class="w-4 h-4"></i>
                 </button>
-                <button onclick="deleteBatchItem(${origIdx}, '${(item.id || '').replace(/'/g, "\'")}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer" title="Delete">
+                <button id="delBtn_${origIdx}" onclick="deleteBatchItem(${origIdx}, '${(item.id || '').replace(/'/g, "\'")}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer" title="Delete">
                   <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
               </div>
@@ -7187,7 +7225,88 @@
       if (actualIdx < 0 || actualIdx >= verifiedBatch.length) return;
       const target = verifiedBatch[actualIdx];
       const lrName = target.data?.['grno'] || target.data?.['LR No *'] || target.filename || 'item';
-      showRemoveLrConfirmModal(lrName, () => {
+
+      showRemoveLrConfirmModal(lrName, async () => {
+        // Find live index of target in current batch
+        const liveIdx = verifiedBatch.findIndex(b => b === target || (target.id && b.id === target.id));
+        if (liveIdx === -1) return;
+
+        const targetIdentifiers = [
+          target.id,
+          target.saved_filename,
+          target.filename,
+          target.file_id,
+          target.data?.['grno'],
+          target.data?.['LR No *'],
+          target.data?.['BNF LR No']
+        ].filter(Boolean);
+
+        // Visual feedback: show spinner on the delete button if available
+        const delBtn = document.getElementById('delBtn_' + idx) || document.getElementById('delBtn_' + liveIdx);
+        if (delBtn) {
+          delBtn.disabled = true;
+          delBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-rose-500"></i>';
+          if (window.lucide && lucide.createIcons) lucide.createIcons();
+        }
+
+        // 1. Call backend deletion API and verify success
+        if (currentUser) {
+          try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+
+            const res = await fetch('/api/user-cloud-storage/delete-lr', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({
+                lr_identifiers: targetIdentifiers,
+                user_mobile: currentUser.mobile || null,
+                user_id: currentUser.id || null
+              })
+            });
+
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || errData.detail || `Server returned status ${res.status}`);
+            }
+
+            const resJson = await res.json();
+            if (resJson && resJson.success === false) {
+              throw new Error(resJson.error || 'Server rejected deletion request');
+            }
+
+            // Also notify previous uploads endpoint
+            const fileTarget = target.id || target.saved_filename || target.filename;
+            if (fileTarget) {
+              fetch('/api/previous-uploads/delete', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                  file_id_or_name: fileTarget,
+                  user_id: currentUser.id || null,
+                  user_mobile: currentUser.mobile || null,
+                  user_name: currentUser.name || 'Logistics User'
+                })
+              }).catch(() => {});
+            }
+          } catch (apiErr) {
+            console.error('[Delete LR] Server deletion failed:', apiErr);
+            if (delBtn) {
+              delBtn.disabled = false;
+              delBtn.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 text-rose-500"></i>';
+              if (window.lucide && lucide.createIcons) lucide.createIcons();
+            }
+            showAppInfoModal({
+              title: 'Delete Failed',
+              subtitle: 'Error',
+              message: `Could not delete consignment note from server: ${apiErr.message || 'Network error'}. Please check your connection and try again.`,
+              iconType: 'warning'
+            });
+            return;
+          }
+        }
+
+        // 2. Successful backend deletion -> Update frontend state & UI immediately
         const delTimestamp = new Date().toISOString();
         target.deletedAt = delTimestamp;
         const newVer = (target.current_version || 1) + 1;
@@ -7215,29 +7334,19 @@
           details: 'Consignment deleted from batch queue'
         });
 
-        const targetIdentifiers = [
-          target.id,
-          target.saved_filename,
-          target.filename,
-          target.data?.['grno'],
-          target.data?.['LR No *']
-        ].filter(Boolean);
-
-        // 1. Clear activeItem if it was the deleted item
+        // Clear activeItem if it was the deleted item
         if (activeItem && (activeItem.id === target.id || activeItem.filename === target.filename)) {
           activeItem = null;
         }
 
-        // 2. Remove from verifiedBatch in memory
+        // Remove from verifiedBatch in memory
         deletedBatch.push(target);
-        verifiedBatch.splice(actualIdx, 1);
+        const currIdx = verifiedBatch.findIndex(b => b === target || (target.id && b.id === target.id));
+        if (currIdx !== -1) {
+          verifiedBatch.splice(currIdx, 1);
+        }
 
-        // 3. Persist batch to localStorage and trigger cloud sync
-        saveUserBatches();
-        updateBatchBadge();
-        renderBatchTable();
-
-        // 4. Remove from Recent Uploads in memory and UI
+        // Remove from Recent Uploads in memory and UI
         userRecentsCache = userRecentsCache.filter(r => {
           if (!r) return false;
           return !targetIdentifiers.includes(r.id) &&
@@ -7246,45 +7355,26 @@
         });
         renderPreviousUploadsWeb();
 
-        // 5. Register persistent tombstone in memory so server sync never resurrects it
+        // Register persistent tombstone in memory and localStorage so server sync never resurrects it
         targetIdentifiers.forEach(idKey => {
           if (idKey) userDismissedTombstones.add(String(idKey).trim().toLowerCase());
         });
+        savePersistentTombstones();
 
-        // 6. Asynchronously permanently remove from server cloud JSON DB & lifecycle registry
-        if (currentUser) {
-          try {
-            const headers = { 'Content-Type': 'application/json' };
-            if (currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+        // Persist batch state
+        saveUserBatches();
 
-            // Delete permanently from user cloud JSON DB (both active_batch & uploaded_lrs)
-            fetch('/api/user-cloud-storage/delete-lr', {
-              method: 'POST',
-              headers: headers,
-              body: JSON.stringify({
-                lr_identifiers: targetIdentifiers,
-                user_mobile: currentUser.mobile || null,
-                user_id: currentUser.id || null
-              })
-            }).catch(e => console.warn('[UserCloudStorage] Delete LR notice:', e));
+        // Immediately update UI: batch table, verified badge count, and Excel export data
+        renderBatchTable();
+        updateBatchBadge();
+        updateExportButtonsVerificationState();
+        populateExcelPreview();
 
-            // Soft-delete in backend lifecycle tracker
-            const fileTarget = target.id || target.saved_filename || target.filename;
-            if (fileTarget) {
-              fetch('/api/previous-uploads/delete', {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({
-                  file_id_or_name: fileTarget,
-                  user_id: currentUser.id || null,
-                  user_mobile: currentUser.mobile || null,
-                  user_name: currentUser.name || 'Logistics User'
-                })
-              }).catch(e => console.warn('[PreviousUploads] Delete notice:', e));
-            }
-          } catch (e) {
-            console.warn('[Delete LR] Server notification notice:', e);
-          }
+        // Update Excel Preview Modal count and data if modal open
+        const excelCountEl = document.getElementById('excelPreviewRecordCount');
+        if (excelCountEl) {
+          const vOnly = verifiedBatch.filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified);
+          excelCountEl.innerText = `${vOnly.length} ${vOnly.length === 1 ? 'record' : 'records'}`;
         }
 
         if (window.lucide && lucide.createIcons) lucide.createIcons();
@@ -7365,8 +7455,11 @@
 
       // 4. Clear verifiedBatch and persist
       verifiedBatch = [];
+      savePersistentTombstones();
       saveUserBatches();
       updateBatchBadge();
+      updateExportButtonsVerificationState();
+      populateExcelPreview();
       renderBatchTable();
       renderPreviousUploadsWeb();
 

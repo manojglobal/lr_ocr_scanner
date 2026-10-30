@@ -21,7 +21,7 @@ class UserCloudService {
       return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
     }
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('gemini_backend_server_url') ?? 'http://192.168.1.2:8000';
+    final saved = prefs.getString('gemini_backend_server_url') ?? 'http://192.168.1.5:8000';
     final url = saved.trim();
     return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
   }

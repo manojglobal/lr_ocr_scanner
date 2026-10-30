@@ -218,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .trim();
     final hasSpecificLabel = lrLabel.isNotEmpty && lrLabel.toLowerCase() != 'lr document';
     final dynamicMessage = hasSpecificLabel
-        ? 'Are you sure you want to remove consignment LR "$lrLabel" from Previously Uploaded history? It will remain available in your LR List.'
+        ? 'Are you sure you want to remove LR "$lrLabel" from Previously Uploaded history? It will remain available in your LR List.'
         : 'Are you sure you want to remove this LR from Previously Uploaded history? It will remain available in your LR List.';
 
     final confirmed = await showDialog<bool>(
@@ -260,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          'Remove Consignment LR',
+                          'Remove LR',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -1828,7 +1828,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 TextField(
                   controller: textController,
                   decoration: const InputDecoration(
-                    hintText: 'http://192.168.1.2:8000',
+                    hintText: 'http://192.168.1.5:8000',
                     border: OutlineInputBorder(),
                     isDense: true,
                   ),

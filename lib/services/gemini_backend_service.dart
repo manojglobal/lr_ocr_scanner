@@ -8,7 +8,7 @@ import '../models/extraction_result.dart';
 /// Client service that connects to the FastAPI main.py Gemini OCR backend.
 class GeminiBackendService {
   static const String _prefKeyServerUrl = 'gemini_backend_server_url';
-  static const String defaultServerUrl = 'http://192.168.1.2:8000';
+  static const String defaultServerUrl = 'http://192.168.1.5:8000';
 
   String _currentServerUrl = defaultServerUrl;
 
@@ -23,7 +23,13 @@ class GeminiBackendService {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString(_prefKeyServerUrl);
       if (saved != null && saved.isNotEmpty) {
-        _currentServerUrl = saved.trim().replaceAll(RegExp(r'/+$'), '');
+        // Auto-migrate stale LAN IPs to the current Wi-Fi IP
+        if (saved.contains('192.168.1.2') || saved.contains('10.154.')) {
+          _currentServerUrl = defaultServerUrl;
+          await prefs.setString(_prefKeyServerUrl, defaultServerUrl);
+        } else {
+          _currentServerUrl = saved.trim().replaceAll(RegExp(r'/+$'), '');
+        }
       }
     } catch (_) {}
   }

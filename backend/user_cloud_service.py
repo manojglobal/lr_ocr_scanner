@@ -452,17 +452,32 @@ def delete_user_lr_record(
     else:
         target_keys = {str(lr_identifiers).strip()}
 
-    GENERIC_KEYS = {"lr document", "document", "item", "null", "none", "undefined", ""}
-    target_keys = {k for k in target_keys if k and k.lower() not in GENERIC_KEYS}
+    GENERIC_KEYS = {"lr document", "document", "item", "null", "none", "undefined", "-", "--", "n/a", "na", "", "default"}
+    target_keys = {k for k in target_keys if k and k.lower().strip() not in GENERIC_KEYS and len(k.strip()) >= 3}
     if not target_keys:
         return {"success": False, "error": "No valid identifier provided"}
+
+    target_keys_lower = {k.lower().strip() for k in target_keys}
+    import urllib.parse
+    for k in list(target_keys):
+        try:
+            unquoted = urllib.parse.unquote(k).strip().lower()
+            if unquoted:
+                target_keys_lower.add(unquoted)
+        except Exception:
+            pass
 
     def _matches(item: dict) -> bool:
         if not isinstance(item, dict):
             return False
-        for field in ("id", "saved_filename", "filename", "file_name"):
-            val = str(item.get(field) or "").strip()
-            if val and val in target_keys:
+        for field in ("id", "saved_filename", "filename", "file_name", "file_id", "upload_id"):
+            val = str(item.get(field) or "").strip().lower()
+            if val and val in target_keys_lower:
+                return True
+        d = item.get("data") or {}
+        for df in ("grno", "LR No *", "BNF LR No"):
+            val = str(d.get(df) or "").strip().lower()
+            if val and val in target_keys_lower:
                 return True
         return False
 
@@ -482,6 +497,13 @@ def delete_user_lr_record(
         new_uploads = [item for item in uploads_list if not _matches(item)]
         removed_from_uploads = orig_uploads_len - len(new_uploads)
         data["uploaded_lrs"] = new_uploads
+
+        # 3. Add to dismissed_uploads to guarantee persistence across server queries
+        if "dismissed_uploads" not in data or not isinstance(data["dismissed_uploads"], list):
+            data["dismissed_uploads"] = []
+        for k in target_keys:
+            if k and k not in data["dismissed_uploads"]:
+                data["dismissed_uploads"].append(k)
 
         _save_user_db(clean_mob, data)
 
