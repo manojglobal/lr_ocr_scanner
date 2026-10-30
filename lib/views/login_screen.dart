@@ -15,8 +15,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _nameController = TextEditingController(text: 'Ruchita Patel');
-  final TextEditingController _mobileController = TextEditingController(text: '9876543210');
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
   final List<TextEditingController> _otpControllers = List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
 
@@ -477,9 +477,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextField(
                               controller: _nameController,
                               textInputAction: TextInputAction.next,
+                              enableSuggestions: false,
+                              autocorrect: false,
                               onSubmitted: (_) => _handleDirectLogin(),
                               decoration: const InputDecoration(
                                 labelText: 'Your Name *',
+                                hintText: 'Enter Full Name',
                                 prefixIcon: Icon(Icons.person_outline, size: 20),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                                 contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -490,10 +493,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               controller: _mobileController,
                               keyboardType: TextInputType.phone,
                               textInputAction: TextInputAction.done,
+                              enableSuggestions: false,
+                              autocorrect: false,
                               maxLength: 10,
                               onSubmitted: (_) => _handleDirectLogin(),
                               decoration: const InputDecoration(
                                 labelText: 'Mobile Number *',
+                                hintText: 'Enter 10-digit mobile number',
                                 prefixText: '+91 ',
                                 counterText: '',
                                 prefixIcon: Icon(Icons.phone_android, size: 20),
@@ -519,8 +525,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             // Step 1: Name & Mobile
                             TextField(
                               controller: _nameController,
+                              enableSuggestions: false,
+                              autocorrect: false,
                               decoration: const InputDecoration(
                                 labelText: 'Your Name *',
+                                hintText: 'Enter Full Name',
                                 prefixIcon: Icon(Icons.person_outline, size: 20),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                                 contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -530,9 +539,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextField(
                               controller: _mobileController,
                               keyboardType: TextInputType.phone,
+                              enableSuggestions: false,
+                              autocorrect: false,
                               maxLength: 10,
                               decoration: const InputDecoration(
                                 labelText: 'Mobile Number *',
+                                hintText: 'Enter 10-digit mobile number',
                                 prefixText: '+91 ',
                                 counterText: '',
                                 prefixIcon: Icon(Icons.phone_android, size: 20),

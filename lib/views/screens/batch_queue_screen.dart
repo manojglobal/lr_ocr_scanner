@@ -110,6 +110,21 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
     });
   }
 
+  @visibleForTesting
+  void setDateRangeForTesting(DateTime? from, DateTime? to) {
+    setState(() {
+      _dateFrom = from;
+      _dateTo = to;
+    });
+  }
+
+  @visibleForTesting
+  void setShowFiltersForTesting(bool show) {
+    setState(() {
+      _showFilters = show;
+    });
+  }
+
   DateTime? _parseRecordDate(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
 
@@ -964,7 +979,6 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
         final verifiedCount = allItems.length;
 
         final filteredItems = allItems.where((item) {
-          final d = item.record;
 
           // 1. Text Search across LR, Route, City, Goods, Vehicle, Customer, Filename
 
@@ -1022,35 +1036,37 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
             if (!veh.contains(vq)) return false;
           }
 
-          // 4. Date Range Filter
+          // 4. Date Range Filter (Using actual LR Date only; never item.createdAt)
+          final isDateRangeInvalid =
+              _dateFrom != null && _dateTo != null && _dateFrom!.isAfter(_dateTo!);
 
-          if (_dateFrom != null || _dateTo != null) {
-            final dtCandidates = [
-              _parseRecordDate(d['grdt *']),
+          if ((_dateFrom != null || _dateTo != null) && !isDateRangeInvalid) {
+            final rawDateStr = _getField(item, 'grdt *', '').isNotEmpty
+                ? _getField(item, 'grdt *', '')
+                : (_getField(item, 'grdt', '').isNotEmpty
+                    ? _getField(item, 'grdt', '')
+                    : (_getField(item, 'stockdt ', '').isNotEmpty
+                        ? _getField(item, 'stockdt ', '')
+                        : (_getField(item, 'stockdt', '').isNotEmpty
+                            ? _getField(item, 'stockdt', '')
+                            : _getField(item, 'date', ''))));
 
-              _parseRecordDate(d['stockdt ']),
+            final lrDate = _parseRecordDate(rawDateStr);
+            if (lrDate == null) return false;
 
-              _parseRecordDate(d['Loading Start date *']),
+            final normLr = DateTime(lrDate.year, lrDate.month, lrDate.day);
 
-              _parseRecordDate(d['date']),
+            if (_dateFrom != null) {
+              final normFrom =
+                  DateTime(_dateFrom!.year, _dateFrom!.month, _dateFrom!.day);
+              if (normLr.isBefore(normFrom)) return false;
+            }
 
-              item.createdAt,
-            ].whereType<DateTime>().toList();
-
-            if (dtCandidates.isEmpty) return false;
-
-            final matched = dtCandidates.any((dt) {
-              if (_dateFrom != null && dt.isBefore(_dateFrom!)) return false;
-
-              if (_dateTo != null &&
-                  dt.isAfter(_dateTo!.add(const Duration(days: 1)))) {
-                return false;
-              }
-
-              return true;
-            });
-
-            if (!matched) return false;
+            if (_dateTo != null) {
+              final normTo =
+                  DateTime(_dateTo!.year, _dateTo!.month, _dateTo!.day);
+              if (normLr.isAfter(normTo)) return false;
+            }
           }
 
           return true;
@@ -1450,14 +1466,24 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () async {
+                                final last = _dateTo ?? DateTime(2035);
+                                final initial = _dateFrom ??
+                                    (_dateTo != null && DateTime.now().isAfter(_dateTo!)
+                                        ? _dateTo!
+                                        : DateTime.now());
+                                final safeInitial = initial.isAfter(last)
+                                    ? last
+                                    : (initial.isBefore(DateTime(2020))
+                                        ? DateTime(2020)
+                                        : initial);
                                 final d = await showDatePicker(
                                   context: context,
 
-                                  initialDate: _dateFrom ?? DateTime.now(),
+                                  initialDate: safeInitial,
 
                                   firstDate: DateTime(2020),
 
-                                  lastDate: DateTime(2035),
+                                  lastDate: last,
                                 );
 
                                 if (d != null) setState(() => _dateFrom = d);
@@ -1498,12 +1524,22 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () async {
+                                final first = _dateFrom ?? DateTime(2020);
+                                final initial = _dateTo ??
+                                    (_dateFrom != null && DateTime.now().isBefore(_dateFrom!)
+                                        ? _dateFrom!
+                                        : DateTime.now());
+                                final safeInitial = initial.isBefore(first)
+                                    ? first
+                                    : (initial.isAfter(DateTime(2035))
+                                        ? DateTime(2035)
+                                        : initial);
                                 final d = await showDatePicker(
                                   context: context,
 
-                                  initialDate: _dateTo ?? DateTime.now(),
+                                  initialDate: safeInitial,
 
-                                  firstDate: DateTime(2020),
+                                  firstDate: first,
 
                                   lastDate: DateTime(2035),
                                 );
@@ -1542,6 +1578,45 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                             ),
                         ],
                       ),
+
+                      // Date Range Validation Message Banner
+                      if (_dateFrom != null &&
+                          _dateTo != null &&
+                          _dateFrom!.isAfter(_dateTo!)) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          key: const Key('dateRangeValidationBanner'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 14,
+                                color: Color(0xFFDC2626),
+                              ),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Invalid date range: From Date cannot be later than To Date.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ],
                 ),
