@@ -1,3 +1,4 @@
+import '../../services/excel_service.dart';
 import 'package:flutter/material.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
@@ -23,7 +24,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
     const brandBlue = Color(0xFF0284C7);
     const brandGreen = Color(0xFF16A34A);
 
-    final filename = exportResult['filename']?.toString() ?? 'BNF_Bilty_Export.xlsx';
+    final filename = exportResult['filename']?.toString() ?? ExcelService.formatLRReportFilename();
     final totalLrs = exportResult['total_lrs']?.toString() ?? '${controller.items.where((i) => i.isVerified).length}';
     final userName = exportResult['user_name']?.toString() ?? exportResult['exported_by']?.toString() ?? exportResult['generated_by']?.toString() ?? 'Ruchita Patel';
     final exportedBy = userName;

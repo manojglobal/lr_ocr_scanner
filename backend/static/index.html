@@ -1673,6 +1673,22 @@
 
   <!-- Application Logic -->
   <script>
+    // --- Standard LR Report Filename Formatter ---
+    function formatLRReportFilename(d) {
+      const dt = d instanceof Date ? d : new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const day = pad(dt.getDate());
+      const month = pad(dt.getMonth() + 1);
+      const year = dt.getFullYear();
+      const hours = pad(dt.getHours());
+      const minutes = pad(dt.getMinutes());
+      const seconds = pad(dt.getSeconds());
+      return `LR_Report_${day}_${month}_${year}_${hours}_${minutes}_${seconds}.xlsx`;
+    }
+
+    // Globally initialized download metadata object (prevents TDZ/initialization errors)
+    var currentDownloadMeta = { url: '', filename: formatLRReportFilename() };
+
     // --- BNF 49 Logistics Columns (BNF file Modify.xlsx) ---
     const BNF_49_COLUMNS = [
       'branchrefcode',
@@ -4006,6 +4022,9 @@
         } else if (iconType === 'info') {
           iconBg.className = 'w-10 h-10 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0 text-sky-600';
           iconEl.setAttribute('data-lucide', 'info');
+        } else if (iconType === 'success') {
+          iconBg.className = 'w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-600';
+          iconEl.setAttribute('data-lucide', 'check-circle-2');
         } else {
           // Warning (amber)
           iconBg.className = 'w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0 text-amber-600';
@@ -8092,7 +8111,12 @@
           }, 3000);
         }
       } catch (e) {
-        alert(e.message || 'Failed to download consolidated exports.');
+        showAppInfoModal({
+          title: 'Download All LRs',
+          subtitle: 'Error',
+          message: e.message || 'Failed to download consolidated exports.',
+          iconType: 'error'
+        });
         if (btn) {
           btn.disabled = false;
           btn.innerHTML = '<i data-lucide="download" class="w-3.5 h-3.5"></i><span>Download All My Exported LRs (.xlsx)</span>';
@@ -8562,6 +8586,7 @@
       isGeneratingExcel = true;
       const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
       if (verifiedOnly.length === 0) {
+        isGeneratingExcel = false;
         showAppInfoModal({
           title: 'Download Excel',
           subtitle: 'Notice',
@@ -8703,8 +8728,13 @@
         console.error('Backend export-excel-meta error:', err);
         // Immediately stop loading spinner on failure
         stopExportButtonsLoading(false);
-        // Show clear user-facing error message
-        alert(`Failed to download Excel file: ${err.message || 'Server error occurred while exporting Excel. Please try again.'}`);
+        // Show clear user-facing error message using custom popup UI (no native alert)
+        showAppInfoModal({
+          title: 'Excel Download Failed',
+          subtitle: 'Download Error',
+          message: `Failed to download Excel file: ${err.message || 'Server error occurred while exporting Excel. Please try again.'}`,
+          iconType: 'error'
+        });
       } finally {
         isGeneratingExcel = false;
         // Guarantee loading spinner is never stuck
@@ -8717,7 +8747,12 @@
 
     function generateClientExcelWorkbook(exportIso) {
       if (typeof XLSX === 'undefined') {
-        alert('SheetJS library is loading. Please try again.');
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'Excel export library is loading. Please try again in a moment.',
+          iconType: 'info'
+        });
         return;
       }
 
@@ -8755,7 +8790,7 @@
 
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const filename = `BNF_GR_Export_${Date.now()}.xlsx`;
+      const filename = formatLRReportFilename();
       const downloadUrl = URL.createObjectURL(blob);
 
       // Safely populate Screen 9 fields if present
@@ -8847,7 +8882,7 @@
       const user = meta.generated_by || currentUser?.name || 'maurya';
       const mobile = meta.user_mobile || meta.mobile || currentUser?.mobile || '5455855787';
       const timeStr = meta.generated_on || new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-      const filename = meta.filename || currentDownloadMeta.filename || 'BNF_Bilty_Export.xlsx';
+      const filename = meta.filename || currentDownloadMeta.filename || formatLRReportFilename();
       const totalCount = verifiedBatch.length;
       const hashStr = meta.export_id ? `SHA256-${meta.export_id.replace('exp_', '').toUpperCase()}8FBFD` : 'SHA256-0E006244CEF8FBFD';
 
@@ -8901,11 +8936,9 @@
       }
     }
 
-    let currentDownloadMeta = { url: '', filename: 'BNF_Bilty_Export.xlsx' };
-
     function triggerDirectDownload(url, filename) {
       if (!url) return;
-      const safeFilename = filename || 'BNF_Bilty_Export.xlsx';
+      const safeFilename = filename || currentDownloadMeta.filename || formatLRReportFilename();
 
       // 1. Client-side blob/data URL fallback
       if (url.startsWith('blob:') || url.startsWith('data:')) {
@@ -8960,7 +8993,12 @@
         }
       }
       if (!currentDownloadMeta.url || currentDownloadMeta.url === '#') {
-        alert('Download URL not ready.');
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'Download URL is not ready yet. Please wait or generate Excel again.',
+          iconType: 'warning'
+        });
         return;
       }
 
@@ -8985,7 +9023,12 @@
 
     async function handleDownloadExcelClick() {
       if (!currentDownloadMeta.url) {
-        alert('Download URL not ready.');
+        showAppInfoModal({
+          title: 'Download Excel',
+          subtitle: 'Notice',
+          message: 'Download URL is not ready yet. Please wait or generate Excel again.',
+          iconType: 'warning'
+        });
         return;
       }
       const dlBtn = document.getElementById('s9_download_link');

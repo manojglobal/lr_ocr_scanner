@@ -36,6 +36,41 @@ USER_EXCEL_FILENAME = "user_export.xlsx"
 LR_DOC_PREFIX = "LR_"
 USER_EXPORT_PREFIX = "USER_EXPORT_"
 AUDIT_EXPORT_PREFIX = "AUDIT_EXPORT_"
+USER_REPORT_PREFIX = "LR_Report_"
+AUDIT_REPORT_PREFIX = "Audit_LR_Report_"
+
+_filename_reservation_lock = threading.Lock()
+_reserved_audit_filenames = set()
+
+def generate_export_filenames(dt: datetime | None = None) -> tuple[str, str]:
+    """
+    Generates collision-free synchronized user and audit filenames with exact matching timestamps:
+    User: LR_Report_DD_MM_YYYY_HH_MM_SS.xlsx
+    Audit: Audit_LR_Report_DD_MM_YYYY_HH_MM_SS.xlsx
+
+    When multiple exports happen within the same second, an incremental sequence suffix
+    (_1, _2, etc.) is appended consistently to both:
+    User: LR_Report_DD_MM_YYYY_HH_MM_SS_1.xlsx
+    Audit: Audit_LR_Report_DD_MM_YYYY_HH_MM_SS_1.xlsx
+    """
+    now_dt = dt or datetime.now()
+    base_ts = now_dt.strftime("%d_%m_%Y_%H_%M_%S")
+
+    with _filename_reservation_lock:
+        counter = 0
+        while True:
+            suffix = f"_{counter}" if counter > 0 else ""
+            user_name = f"LR_Report_{base_ts}{suffix}.xlsx"
+            audit_name = f"Audit_LR_Report_{base_ts}{suffix}.xlsx"
+
+            audit_path = os.path.join(SNAPSHOTS_EXCEL_DIR, audit_name)
+            if not os.path.exists(audit_path) and audit_name not in _reserved_audit_filenames:
+                _reserved_audit_filenames.add(audit_name)
+                if len(_reserved_audit_filenames) > 2000:
+                    _reserved_audit_filenames.clear()
+                    _reserved_audit_filenames.add(audit_name)
+                return user_name, audit_name
+            counter += 1
 
 
 def safe_atomic_write(target_path: str, data: bytes) -> None:
@@ -99,16 +134,17 @@ def save_snapshot_excel(
     export_id: str,
     lr_count: int = 1,
     lr_tag: str = "",
-    prefix: str = "GR_Import_BNF"
+    prefix: str = "GR_Import_BNF",
+    audit_filename: str | None = None
 ) -> tuple[str, str]:
     """
     Saves the backend snapshot audit Excel file into backend/export/snapshots_excel/
-    using unique, descriptive filenames with matching timestamp and ID.
+    using unique, descriptive filenames with matching timestamp.
     Never overwrites historical files. Easily searchable in CMD/PowerShell.
     Returns (audit_filename, audit_path).
     """
-    exp_tag = export_id if export_id.startswith("EXP_") else f"EXP_{export_id}"
-    audit_filename = f"AUDIT_EXPORT_{prefix}_{exp_tag}{lr_tag}_{lr_count}LRs.xlsx"
+    if not audit_filename:
+        _, audit_filename = generate_export_filenames()
     audit_path = os.path.join(SNAPSHOTS_EXCEL_DIR, audit_filename)
     safe_atomic_write(audit_path, audit_bytes)
     return audit_filename, audit_path
@@ -120,21 +156,27 @@ def save_dual_exports(
     export_id: str,
     lr_count: int = 1,
     lr_tag: str = "",
-    prefix: str = "GR_Import_BNF"
+    prefix: str = "GR_Import_BNF",
+    user_filename: str | None = None,
+    audit_filename: str | None = None
 ) -> tuple[str, str, str, str]:
     """
     Saves backend audit snapshot copy into backend/export/snapshots_excel/.
     Does NOT save user_bytes to disk on backend (streamed dynamically to user).
     Returns (user_filename, "", audit_filename, audit_path).
     """
-    exp_tag = export_id if export_id.startswith("EXP_") else f"EXP_{export_id}"
-    user_filename = f"USER_EXPORT_{prefix}_{exp_tag}{lr_tag}_{lr_count}LRs.xlsx"
+    if not user_filename or not audit_filename:
+        gen_user, gen_audit = generate_export_filenames()
+        user_filename = user_filename or gen_user
+        audit_filename = audit_filename or gen_audit
+
     audit_filename, audit_path = save_snapshot_excel(
         audit_bytes=audit_bytes,
         export_id=export_id,
         lr_count=lr_count,
         lr_tag=lr_tag,
-        prefix=prefix
+        prefix=prefix,
+        audit_filename=audit_filename
     )
     # User-downloaded Excel is NOT saved to disk in backend as requested
     return user_filename, "", audit_filename, audit_path
@@ -150,7 +192,7 @@ def resolve_file_path(filename: str) -> str | None:
     if not filename:
         return None
     safe_name = os.path.basename(filename)
-    is_user_export = safe_name.startswith("USER_EXPORT_")
+    is_user_export = safe_name.startswith("USER_EXPORT_") or safe_name.startswith("LR_Report_")
 
     # 1. Direct path in upload_LR
     p_lr = os.path.join(UPLOAD_LR_DIR, safe_name)
@@ -207,6 +249,12 @@ def resolve_snapshot_path(filename: str) -> str | None:
     p_snap = os.path.join(SNAPSHOTS_EXCEL_DIR, safe_name)
     if os.path.isfile(p_snap):
         return p_snap
+
+    if safe_name.startswith("LR_Report_"):
+        audit_name = f"Audit_{safe_name}"
+        p_audit = os.path.join(SNAPSHOTS_EXCEL_DIR, audit_name)
+        if os.path.isfile(p_audit):
+            return p_audit
 
     audit_name = safe_name if safe_name.startswith("AUDIT_") else f"AUDIT_EXPORT_{safe_name.replace('USER_EXPORT_', '')}"
     p_audit = os.path.join(SNAPSHOTS_EXCEL_DIR, audit_name)

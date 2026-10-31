@@ -1,3 +1,4 @@
+import '../../services/excel_service.dart';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -781,7 +782,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
           final downloadUrl = result['download_url']?.toString();
 
           defaultFilename =
-              result['filename']?.toString() ?? 'BNF_Bilty_Export.xlsx';
+              result['filename']?.toString() ?? ExcelService.formatLRReportFilename();
 
           if (downloadUrl != null && downloadUrl.isNotEmpty) {
             final bytes = await widget.controller.geminiService

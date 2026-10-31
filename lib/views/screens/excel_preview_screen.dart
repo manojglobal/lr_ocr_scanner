@@ -1,3 +1,4 @@
+import '../../services/excel_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/document_schema.dart';
@@ -154,7 +155,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   Future<void> _downloadHistoryFile(Map<String, dynamic> exportItem) async {
     final filename = exportItem['filename']?.toString() ??
         exportItem['file_name']?.toString() ??
-        'BNF_Consignment_Export_${exportItem['export_id']}.xlsx';
+        ExcelService.formatLRReportFilename();
     final downloadUrl = exportItem['download_url']?.toString() ?? '/api/download-export/$filename';
 
     if (mounted) {
@@ -329,7 +330,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
 
         if (result['success'] == true) {
           final downloadUrl = result['download_url']?.toString();
-          final filename = result['filename']?.toString() ?? 'BNF_Bilty_Export.xlsx';
+          final filename = result['filename']?.toString() ?? ExcelService.formatLRReportFilename();
 
           String? savedFilePath;
           // Download generated Excel file from server directly to device storage
@@ -369,7 +370,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
       } else {
         // Fallback to local on-device export with 49-column BNF schema
         final filePath = await widget.controller.exportToExcel(schema: DocumentSchema.grBnf, itemsToExport: items);
-        final defaultFilename = filePath?.split(RegExp(r'[/\\]')).last ?? 'BNF_Bilty_Export.xlsx';
+        final defaultFilename = filePath?.split(RegExp(r'[/\\]')).last ?? ExcelService.formatLRReportFilename();
         if (filePath != null) {
           await widget.controller.excelService.saveFileToDownloads(
             filePath,
@@ -530,49 +531,49 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
           ),
 
           // Bottom Action Bar: Generate Excel only when on Sheet 0 (Excel Preview) and verifiedItems is not empty
-          if (_activeSheetIndex == 0 && verifiedItems.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(15),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _isGenerating ? null : _confirmAndGenerateExcel,
-                    icon: _isGenerating
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.table_chart_outlined, size: 18),
-                    label: Text(
-                      _isGenerating
-                          ? 'Generating Excel...'
-                          : 'Generate Excel (${verifiedItems.length} LRs)',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0284C7), // sky-600
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          // if (_activeSheetIndex == 0 && verifiedItems.isNotEmpty)
+          //   Container(
+          //     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          //     decoration: BoxDecoration(
+          //       color: Colors.white,
+          //       boxShadow: [
+          //         BoxShadow(
+          //           color: Colors.black.withAlpha(15),
+          //           blurRadius: 8,
+          //           offset: const Offset(0, -2),
+          //         ),
+          //       ],
+          //     ),
+          //     child: SafeArea(
+          //       child: SizedBox(
+          //         width: double.infinity,
+          //         child: FilledButton.icon(
+          //           onPressed: _isGenerating ? null : _confirmAndGenerateExcel,
+          //           icon: _isGenerating
+          //               ? const SizedBox(
+          //                   width: 18,
+          //                   height: 18,
+          //                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          //                 )
+          //               : const Icon(Icons.table_chart_outlined, size: 18),
+          //           label: Text(
+          //             _isGenerating
+          //                 ? 'Generating Excel...'
+          //                 : 'Generate Excel (${verifiedItems.length} LRs)',
+          //             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          //             overflow: TextOverflow.ellipsis,
+          //           ),
+          //           style: FilledButton.styleFrom(
+          //             backgroundColor: const Color(0xFF0284C7), // sky-600
+          //             foregroundColor: Colors.white,
+          //             padding: const EdgeInsets.symmetric(vertical: 14),
+          //             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          //             elevation: 2,
+          //           ),
+          //         ),
+          //       ),
+          //     ),
+          //   ),
         ],
       ),
       bottomNavigationBar: StepIndicatorBar(currentStep: 10, controller: widget.controller),
@@ -910,7 +911,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                 final item = _exportHistory[idx];
                 final filename = item['filename']?.toString() ??
                     item['file_name']?.toString() ??
-                    'BNF_Consignment_Export.xlsx';
+                    'LR_Report.xlsx';
                 final timestamp = item['timestamp']?.toString() ??
                     item['generated_on']?.toString() ??
                     item['created_at']?.toString() ??

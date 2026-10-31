@@ -697,6 +697,33 @@ class ExcelService {
     return candidate;
   }
 
+  /// Generates the standard user download filename format:
+  /// LR_Report_DD_MM_YYYY_HH_MM_SS.xlsx
+  /// When multiple exports occur within the same second in [checkDirectory],
+  /// an incremental sequence suffix (_1, _2, etc.) is appended to prevent collisions.
+  static String formatLRReportFilename({DateTime? dateTime, Directory? checkDirectory}) {
+    final dt = dateTime ?? DateTime.now();
+    final day = dt.day.toString().padLeft(2, '0');
+    final month = dt.month.toString().padLeft(2, '0');
+    final year = dt.year.toString();
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final second = dt.second.toString().padLeft(2, '0');
+    final baseName = 'LR_Report_${day}_${month}_${year}_${hour}_${minute}_${second}';
+
+    if (checkDirectory == null) {
+      return '$baseName.xlsx';
+    }
+
+    var candidate = '$baseName.xlsx';
+    int counter = 1;
+    while (File('${checkDirectory.path}/$candidate').existsSync()) {
+      candidate = '${baseName}_$counter.xlsx';
+      counter++;
+    }
+    return candidate;
+  }
+
   /// Saves the generated Excel bytes to scoped storage and returns the created File.
   Future<File> saveExcelFile({
     required List<BatchItem> items,
@@ -727,7 +754,7 @@ class ExcelService {
     final randomSuffix = (DateTime.now().microsecondsSinceEpoch % 1000000).toString().padLeft(6, '0');
     final uniqueExportId = 'EXP_${timestamp}_$randomSuffix';
 
-    final fileName = customFileName ?? 'BNF_${uniqueExportId}_${items.length}LRs.xlsx';
+    final fileName = customFileName ?? formatLRReportFilename(checkDirectory: directory);
     final filePath = '${directory.path}/$fileName';
 
     final file = File(filePath);
@@ -762,7 +789,7 @@ class ExcelService {
     final randomSuffix = (DateTime.now().microsecondsSinceEpoch % 1000000).toString().padLeft(6, '0');
     final uniqueExportId = 'EXP_${timestamp}_$randomSuffix';
 
-    final fileName = customFileName ?? 'BNF_$uniqueExportId.xlsx';
+    final fileName = customFileName ?? formatLRReportFilename(checkDirectory: directory);
     final filePath = '${directory.path}/$fileName';
 
     final file = File(filePath);

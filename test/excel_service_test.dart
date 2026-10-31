@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:excel/excel.dart';
 import 'package:ocr_to_excel/config/document_schema.dart';
@@ -296,6 +297,29 @@ void main() {
       expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 41, rowIndex: 1)).value?.toString(), 'C');
       // 12. dlvtype -> D (Door Delivery)
       expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 42, rowIndex: 1)).value?.toString(), 'D');
+    });
+ 
+    test('formatLRReportFilename generates LR_Report_DD_MM_YYYY_HH_MM_SS.xlsx format and avoids collision', () {
+      final testDt = DateTime(2026, 10, 31, 10, 30, 45);
+      final filename = ExcelService.formatLRReportFilename(dateTime: testDt);
+      expect(filename, 'LR_Report_31_10_2026_10_30_45.xlsx');
+
+      // Test with temp directory collision
+      final tempDir = Directory.systemTemp.createTempSync('lr_test_dir');
+      try {
+        final f1 = ExcelService.formatLRReportFilename(dateTime: testDt, checkDirectory: tempDir);
+        expect(f1, 'LR_Report_31_10_2026_10_30_45.xlsx');
+        File('${tempDir.path}/$f1').writeAsStringSync('dummy');
+
+        final f2 = ExcelService.formatLRReportFilename(dateTime: testDt, checkDirectory: tempDir);
+        expect(f2, 'LR_Report_31_10_2026_10_30_45_1.xlsx');
+        File('${tempDir.path}/$f2').writeAsStringSync('dummy');
+
+        final f3 = ExcelService.formatLRReportFilename(dateTime: testDt, checkDirectory: tempDir);
+        expect(f3, 'LR_Report_31_10_2026_10_30_45_2.xlsx');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
     });
   });
 }

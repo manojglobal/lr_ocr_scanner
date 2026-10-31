@@ -4,31 +4,23 @@
     "mobile": "9876543210",
     "name": "Ruchita Patel",
     "role": "operator",
-    "last_login": "2026-10-30T23:02:23.457789",
+    "last_login": "2026-10-31T09:59:09.408210",
     "created_at": "2026-10-02T20:12:04.551112"
   },
   "8009979716": {
     "id": "96a54452",
     "mobile": "8009979716",
-    "name": "Sahil Maurya",
-    "role": "operator",
-    "last_login": "2026-10-29T15:51:33.163749",
-    "created_at": "2026-10-02T21:29:14.115501"
-  },
-  "9407304217": {
-    "id": "f9fe68a9",
-    "mobile": "9407304217",
     "name": "Maurya",
     "role": "operator",
-    "last_login": "2026-10-22T10:10:38.389389",
-    "created_at": "2026-10-22T10:10:38.389575"
+    "last_login": "2026-10-31T12:07:40.151715",
+    "created_at": "2026-10-02T21:29:14.115501"
   },
   "9876501234": {
     "id": "59cda6b2",
     "mobile": "9876501234",
     "name": "Sahil Maurya",
     "role": "operator",
-    "last_login": "2026-10-30T23:47:23.810135",
+    "last_login": "2026-10-31T12:20:40.371836",
     "created_at": "2026-10-30T23:26:31.089744"
   }
 }

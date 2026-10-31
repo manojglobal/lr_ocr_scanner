@@ -1,3 +1,48 @@
 {
-  
+  "active_batch": [],
+  "uploaded_lrs": [],
+  "generated_excels": [
+    {
+      "export_id": "EXP_20261031_122331_ee8a98",
+      "filename": "LR_Report_31_10_2026_12_23_31.xlsx",
+      "download_url": "/api/download-export/LR_Report_31_10_2026_12_23_31.xlsx",
+      "audit_filename": "Audit_LR_Report_31_10_2026_12_23_31.xlsx",
+      "total_lrs": 1,
+      "file_size_kb": 6.0,
+      "generated_on": "31-Oct-2026 12:23:31 PM",
+      "exported_by": "Test User",
+      "documents": [
+        {
+          "filename": "test_lr_01.jpg",
+          "document_title": "Test Consignment 1",
+          "data": {
+            "grno": "LR-1001",
+            "grdt": "31/10/2026",
+            "cngr": "Acme Corp",
+            "cnge": "Beta Ltd",
+            "Vehicle No *": "MH04AB1234",
+            "Vehicle Type *": "Truck",
+            "Driver Name *": "Ramesh",
+            "Mobile no   *": "9876543210",
+            "Loading Start date *": "31/10/2026",
+            "freight  *": "5000",
+            "cngrgstno *": "27AAAAA0000A1Z5",
+            "cngegstno *": "27BBBBB0000B1Z6"
+          },
+          "comparison_info": null,
+          "created_at": null,
+          "edited_at": null,
+          "exported_at": null,
+          "deleted_at": null,
+          "current_version": 1,
+          "versions": [],
+          "edit_history": []
+        }
+      ]
+    }
+  ],
+  "dismissed_uploads": [],
+  "user_name": "Test User",
+  "updated_at": "2026-10-31T12:23:31+05:30",
+  "user_mobile": "9876543210"
 }

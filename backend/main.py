@@ -3022,9 +3022,15 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         _build_workbook_for_docs,
         docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False
     )
+
+    # Generate synchronized timestamped filenames for user download and backend audit copy
+    user_filename, audit_filename = audit_snapshot.generate_export_filenames(now)
+
     with _USER_EXCEL_CACHE_LOCK:
-        _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
+        _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
+        _USER_EXCEL_BYTES_CACHE[audit_filename] = audit_bytes
         _USER_EXCEL_BYTES_CACHE[export_id] = user_bytes
+        _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
         while len(_USER_EXCEL_BYTES_CACHE) > 50:
             first_k = next(iter(_USER_EXCEL_BYTES_CACHE))
             _USER_EXCEL_BYTES_CACHE.pop(first_k, None)
@@ -3037,10 +3043,10 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         export_id=export_id,
         lr_count=len(docs),
         lr_tag="",
-        prefix="GR_Import_BNF"
+        prefix="GR_Import_BNF",
+        user_filename=user_filename,
+        audit_filename=audit_filename
     )
-    with _USER_EXCEL_CACHE_LOCK:
-        _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
 
     # 4. Register Excel metadata in lifecycle tracker with unified export_id
     excel_meta = file_lifecycle_service.record_file_creation(
@@ -3323,8 +3329,12 @@ async def download_audit_exported_file(filename: str):
     safe_name = os.path.basename(filename)
     file_path = audit_snapshot.resolve_file_path(safe_name)
     if not file_path:
-        audit_name = safe_name.replace("USER_EXPORT_", "AUDIT_EXPORT_") if "USER_EXPORT_" in safe_name else (safe_name if safe_name.startswith("audit_") else f"audit_{safe_name}")
-        file_path = audit_snapshot.resolve_file_path(audit_name)
+        if safe_name.startswith("LR_Report_"):
+            audit_name = f"Audit_{safe_name}"
+            file_path = audit_snapshot.resolve_file_path(audit_name)
+        else:
+            audit_name = safe_name.replace("USER_EXPORT_", "AUDIT_EXPORT_") if "USER_EXPORT_" in safe_name else (safe_name if safe_name.startswith("audit_") else f"audit_{safe_name}")
+            file_path = audit_snapshot.resolve_file_path(audit_name)
     if not file_path:
         file_path = os.path.join(audit_snapshot.EXPORTS_DIR, safe_name)
     if file_path and os.path.exists(file_path):

@@ -1,3 +1,2735 @@
 {
-  
+  "EXP_20261031_103132_d2a7f0": {
+    "file_id": "EXP_20261031_103132_d2a7f0",
+    "file_name": "USER_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T10:31:32+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T10:31:32+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T10:31:32+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T10:31:32+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T10:31:32+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T10:31:32+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_103132_d2a7f0",
+      "user_export_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+      "audit_copy": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 10:31:32 AM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_103132_d2a7f0_audit": {
+    "file_id": "EXP_20261031_103132_d2a7f0_audit",
+    "file_name": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+    "file_size_bytes": 8288,
+    "file_size_kb": 8.1,
+    "sha256": "90f4626d7a70ee47c081b99076c9f1f29af33a8c3335b048aba8c900bd5c3f1d",
+    "created_at": "2026-10-31T10:31:32+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T10:31:32+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": "90f4626d7a70ee47c081b99076c9f1f29af33a8c3335b048aba8c900bd5c3f1d"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T10:31:32+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261031_103132_d2a7f0_1LRs.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 10:31:32 AM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_104458_22d5be": {
+    "file_id": "EXP_20261031_104458_22d5be",
+    "file_name": "USER_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T10:44:58+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T10:44:58+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": null,
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T10:44:58+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T10:44:58+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T10:44:58+05:30",
+        "user": "Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T10:44:58+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_104458_22d5be",
+      "user_export_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+      "audit_copy": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+      "generated_by": "Maurya",
+      "generated_at": "31-Oct-2026 10:44:58 AM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_104458_22d5be_audit": {
+    "file_id": "EXP_20261031_104458_22d5be_audit",
+    "file_name": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+    "file_size_bytes": 8357,
+    "file_size_kb": 8.2,
+    "sha256": "d1b460e513549ba37a26d55f441b01d0f7b6d7910084953d50d9c8ced325eef9",
+    "created_at": "2026-10-31T10:44:58+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": null,
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T10:44:58+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": "d1b460e513549ba37a26d55f441b01d0f7b6d7910084953d50d9c8ced325eef9"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T10:44:58+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261031_104458_22d5be_1LRs.xlsx",
+      "generated_by": "Maurya",
+      "generated_at": "31-Oct-2026 10:44:58 AM"
+    },
+    "current_data": null
+  },
+  "LR_20261031_111603_1df1d5": {
+    "file_id": "LR_20261031_111603_1df1d5",
+    "file_name": "LR_20261031_111603_2ab42d_PDF_Gallery_20261006_182905.pdf",
+    "file_type": "bilty_pdf",
+    "file_path": "export/upload_LR/LR_20261031_111603_2ab42d_PDF_Gallery_20261006_182905.pdf",
+    "file_size_bytes": 162922,
+    "file_size_kb": 159.1,
+    "sha256": "b439a9ce2b68d755e985beae4b2d8d56806b1115cc8e1654031106ee9d13208e",
+    "created_at": "2026-10-31T11:16:03+05:30",
+    "edited_at": null,
+    "exported_at": "31-Oct-2026 11:16:21 AM",
+    "deleted_at": "2026-10-31T12:07:45+05:30",
+    "is_deleted": true,
+    "created_by": "Maurya",
+    "user_id": "96a54452",
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T11:16:03+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261031_111603_2ab42d_PDF_Gallery_20261006_182905.pdf",
+        "snapshot_data": {
+          "grno": "",
+          "grdt": "06/10/2026",
+          "stockdt": "06/10/2026",
+          "Customer Name *": "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)",
+          "custrefcode": "BL652",
+          "branchrefcode": "KOLKATA",
+          "orgrefcode": "KARNPURA SSRM",
+          "destrefcode": "SUGAULI",
+          "collectionstncode": "KARNPURA SSRM",
+          "cngr": "PATANJALI FOODS LTD, KARNPURA, Kaimur (Bhabua), Bihar, 821105, Kaimur ,821105",
+          "cngrgstno": "07AAFCP1505P2Z8",
+          "cnge": "VIJAY ENTERPRISES, MAIN ROAD, SUGAULI BAZAR SUGAULI, India, BIHAR,SUGAULI,845456",
+          "cngegstno": "",
+          "bookedpckgs": "844",
+          "stockpckgs": "844",
+          "packing": "Carton box",
+          "goods": "BISCUITS",
+          "bookedaweight": "6598",
+          "stockaweight": "6598",
+          "bookedcweight": "7000",
+          "stockcweight": "7000",
+          "invoiceno": "8604510293",
+          "invoiedt": "06/10/2026",
+          "valgoods": "725944.00",
+          "ewaybillno": "851750165914",
+          "Valid Upto": "09/10/2026",
+          "Transit Days": "3",
+          "Vehicle No *": "BR44G4606",
+          "Vehicle Type *": "Market",
+          "Loading Start date *": "06/10/2026",
+          "ftl": "FTL",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "grtype": "TBB",
+          "pmark": "",
+          "Driver Name *": "PINTU YADAV",
+          "Mobile no   *": "",
+          "Liscense No *": "UP6020200018827",
+          "Valid Up to *": "04/01/2027",
+          "productcode": "",
+          "Depatment Name": "",
+          "oamount": "0.00",
+          "freight  *": "0",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "0.00",
+          "received": "0.00",
+          "advance": "0.00",
+          "viaborder": "",
+          "Vehicle Category": "Market",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "cngrgstno *": "07AAFCP1505P2Z8",
+          "stockpkgs": "844",
+          "freight": "0",
+          "grno (*)": "",
+          "LR No *": ""
+        },
+        "sha256": "b439a9ce2b68d755e985beae4b2d8d56806b1115cc8e1654031106ee9d13208e"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T11:16:03+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T11:16:21+05:30",
+        "user": "Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_111621_1366ed",
+        "details": "Included in Excel export USER_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:07:45+05:30",
+        "user": "Maurya",
+        "action": "delete",
+        "reason": "LR deleted from batch by user"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 57,
+      "upload_id": "LR_20261031_111603_1df1d5",
+      "lr_no": "",
+      "saved_filename": "LR_20261031_111603_2ab42d_PDF_Gallery_20261006_182905.pdf",
+      "original_filename": "PDF Gallery_20261006_182905.pdf",
+      "snapshot_path": "C:\\Users\\DELL\\OCR_project\\ocr_to_excel\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261031_111603_2ab42d_PDF_Gallery_20261006_182905.pdf",
+      "user_id": "96a54452",
+      "user_mobile": "8009979716",
+      "created_by": "Maurya"
+    },
+    "current_data": {
+      "grno": "",
+      "grdt": "06/10/2026",
+      "stockdt": "06/10/2026",
+      "Customer Name *": "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)",
+      "custrefcode": "BL652",
+      "branchrefcode": "KOLKATA",
+      "orgrefcode": "KARNPURA SSRM",
+      "destrefcode": "SUGAULI",
+      "collectionstncode": "KARNPURA SSRM",
+      "cngr": "PATANJALI FOODS LTD, KARNPURA, Kaimur (Bhabua), Bihar, 821105, Kaimur ,821105",
+      "cngrgstno": "07AAFCP1505P2Z8",
+      "cnge": "VIJAY ENTERPRISES, MAIN ROAD, SUGAULI BAZAR SUGAULI, India, BIHAR,SUGAULI,845456",
+      "cngegstno": "",
+      "bookedpckgs": "844",
+      "stockpckgs": "844",
+      "packing": "Carton box",
+      "goods": "BISCUITS",
+      "bookedaweight": "6598",
+      "stockaweight": "6598",
+      "bookedcweight": "7000",
+      "stockcweight": "7000",
+      "invoiceno": "8604510293",
+      "invoiedt": "06/10/2026",
+      "valgoods": "725944.00",
+      "ewaybillno": "851750165914",
+      "Valid Upto": "09/10/2026",
+      "Transit Days": "3",
+      "Vehicle No *": "BR44G4606",
+      "Vehicle Type *": "Market",
+      "Loading Start date *": "06/10/2026",
+      "ftl": "FTL",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "grtype": "TBB",
+      "pmark": "",
+      "Driver Name *": "PINTU YADAV",
+      "Mobile no   *": "",
+      "Liscense No *": "UP6020200018827",
+      "Valid Up to *": "04/01/2027",
+      "productcode": "",
+      "Depatment Name": "",
+      "oamount": "0.00",
+      "freight  *": "0",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "0.00",
+      "received": "0.00",
+      "advance": "0.00",
+      "viaborder": "",
+      "Vehicle Category": "Market",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "cngrgstno *": "07AAFCP1505P2Z8",
+      "stockpkgs": "844",
+      "freight": "0",
+      "grno (*)": "",
+      "LR No *": ""
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261031_111621_1366ed"
+  },
+  "EXP_20261031_111621_1366ed": {
+    "file_id": "EXP_20261031_111621_1366ed",
+    "file_name": "USER_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T11:16:21+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T11:16:22+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": null,
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T11:16:21+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/USER_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T11:16:21+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T11:16:21+05:30",
+        "user": "Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T11:16:22+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_111621_1366ed",
+      "user_export_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+      "audit_copy": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+      "generated_by": "Maurya",
+      "generated_at": "31-Oct-2026 11:16:21 AM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_111621_1366ed_audit": {
+    "file_id": "EXP_20261031_111621_1366ed_audit",
+    "file_name": "AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+    "file_size_bytes": 8507,
+    "file_size_kb": 8.3,
+    "sha256": "2e5e75125196ffc7cbab270f3f2a18e50cf566cc132c954441e4c5bb37882d3b",
+    "created_at": "2026-10-31T11:16:21+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": null,
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T11:16:21+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/AUDIT_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+        "snapshot_data": null,
+        "sha256": "2e5e75125196ffc7cbab270f3f2a18e50cf566cc132c954441e4c5bb37882d3b"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T11:16:21+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "USER_EXPORT_GR_Import_BNF_EXP_20261031_111621_1366ed_1LRs.xlsx",
+      "generated_by": "Maurya",
+      "generated_at": "31-Oct-2026 11:16:21 AM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_120054_c1027b": {
+    "file_id": "EXP_20261031_120054_c1027b",
+    "file_name": "LR_Report_31_10_2026_12_00_54.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_00_54.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:00:54+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:02:03+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:00:54+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_00_54.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:00:54+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:00:54+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:02:03+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_120054_c1027b",
+      "user_export_filename": "LR_Report_31_10_2026_12_00_54.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_00_54.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:00:54 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_120054_c1027b_audit": {
+    "file_id": "EXP_20261031_120054_c1027b_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_00_54.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_00_54.xlsx",
+    "file_size_bytes": 8289,
+    "file_size_kb": 8.1,
+    "sha256": "6b8c16ec27817cd6e4361d027dd41f67bce8638a986b398210fd93abbe7d1fd1",
+    "created_at": "2026-10-31T12:00:54+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:00:54+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_00_54.xlsx",
+        "snapshot_data": null,
+        "sha256": "6b8c16ec27817cd6e4361d027dd41f67bce8638a986b398210fd93abbe7d1fd1"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:00:54+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_00_54.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:00:54 PM"
+    },
+    "current_data": null
+  },
+  "LR_20261031_120247_b07e07": {
+    "file_id": "LR_20261031_120247_b07e07",
+    "file_name": "LR_20261031_120247_791894_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+    "file_type": "bilty_image",
+    "file_path": "export/upload_LR/LR_20261031_120247_791894_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+    "file_size_bytes": 124933,
+    "file_size_kb": 122.0,
+    "sha256": "adfb076498fd17cc4be97ed1fcee6bbec4ba883babd653d86bb69aa69891ca5e",
+    "created_at": "2026-10-31T12:02:47+05:30",
+    "edited_at": null,
+    "exported_at": "31-Oct-2026 12:20:30 PM",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": "59cda6b2",
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:02:47+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261031_120247_791894_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+        "snapshot_data": {
+          "grno": "30183",
+          "LR No *": "30183",
+          "grdt": "04/02/2026",
+          "stockdt": "04/02/2026",
+          "Customer Name *": "Himalaya Wellness Company",
+          "cngr": "Dhudagarh Howrah (211205)",
+          "cngrgstno": "19AADFT3025B1ZM",
+          "cnge": "Dhudagarh Howrah, P.No-106, P.O Dep.& Morgudi, Cuttack (754025)",
+          "cngegstno": "21AADFT3025B1ZL",
+          "orgrefcode": "Dhudagarh (Howrah)",
+          "destrefcode": "Cuttack",
+          "collectionstncode": "Dhudagarh (Howrah)",
+          "bookedpckgs": "2064",
+          "stockpckgs": "2064",
+          "packing": "Carton box",
+          "goods": "Himalaya Condes as per Invoice No. 5576700440",
+          "bookedaweight": "15000",
+          "stockaweight": "15000",
+          "bookedcweight": "15000",
+          "stockcweight": "15000",
+          "invoiceno": "5576700440",
+          "invoiedt": "04/02/2026",
+          "valgoods": "11228,652.00",
+          "ewaybillno": "871722625215",
+          "Valid Upto": "06/08/2026",
+          "Transit Days": "183",
+          "Vehicle No *": "NL01AD2728",
+          "Vehicle Type *": "32ft Container",
+          "Loading Start date *": "04/02/2026",
+          "ftl": "FTL",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "grtype": "TBB",
+          "pmark": "",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "productcode": "",
+          "custrefcode": "CM001",
+          "Depatment Name": "HIMALAYA-CUTTACK",
+          "branchrefcode": "KOLKATA",
+          "oamount": "0.00",
+          "freight  *": "0",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "0.00",
+          "received": "0.00",
+          "advance": "0.00",
+          "Vehicle Category": "32ft Container",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "stockpkgs": "2064",
+          "freight": "0"
+        },
+        "sha256": "adfb076498fd17cc4be97ed1fcee6bbec4ba883babd653d86bb69aa69891ca5e"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:02:47+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:03:13+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_120312_0c060f",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_03_12.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_120444_8971c6",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_04_44.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121034_867ef6",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_10_34.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121924_a43d5a",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_24.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121929_3c49fa",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_29.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121938_5c8017",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_38.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121955_5f5e9f",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_55.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_122030_fc92c8",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_20_30.xlsx"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 54,
+      "upload_id": "LR_20261031_120247_b07e07",
+      "lr_no": "30183",
+      "saved_filename": "LR_20261031_120247_791894_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+      "original_filename": "WhatsApp Image 2026-09-28 at 7.51.59 PM.jpeg",
+      "snapshot_path": "C:\\Users\\DELL\\OCR_project\\ocr_to_excel\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261031_120247_791894_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+      "user_id": "59cda6b2",
+      "user_mobile": "9876501234",
+      "created_by": "Sahil Maurya"
+    },
+    "current_data": {
+      "grno": "30183",
+      "LR No *": "30183",
+      "grdt": "04/02/2026",
+      "stockdt": "04/02/2026",
+      "Customer Name *": "Himalaya Wellness Company",
+      "cngr": "Dhudagarh Howrah (211205)",
+      "cngrgstno": "19AADFT3025B1ZM",
+      "cnge": "Dhudagarh Howrah, P.No-106, P.O Dep.& Morgudi, Cuttack (754025)",
+      "cngegstno": "21AADFT3025B1ZL",
+      "orgrefcode": "Dhudagarh (Howrah)",
+      "destrefcode": "Cuttack",
+      "collectionstncode": "Dhudagarh (Howrah)",
+      "bookedpckgs": "2064",
+      "stockpckgs": "2064",
+      "packing": "Carton box",
+      "goods": "Himalaya Condes as per Invoice No. 5576700440",
+      "bookedaweight": "15000",
+      "stockaweight": "15000",
+      "bookedcweight": "15000",
+      "stockcweight": "15000",
+      "invoiceno": "5576700440",
+      "invoiedt": "04/02/2026",
+      "valgoods": "11228,652.00",
+      "ewaybillno": "871722625215",
+      "Valid Upto": "06/08/2026",
+      "Transit Days": "183",
+      "Vehicle No *": "NL01AD2728",
+      "Vehicle Type *": "32ft Container",
+      "Loading Start date *": "04/02/2026",
+      "ftl": "FTL",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "grtype": "TBB",
+      "pmark": "",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "productcode": "",
+      "custrefcode": "CM001",
+      "Depatment Name": "HIMALAYA-CUTTACK",
+      "branchrefcode": "KOLKATA",
+      "oamount": "0.00",
+      "freight  *": "0",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "0.00",
+      "received": "0.00",
+      "advance": "0.00",
+      "Vehicle Category": "32ft Container",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "stockpkgs": "2064",
+      "freight": "0"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261031_122030_fc92c8"
+  },
+  "EXP_20261031_120312_0c060f": {
+    "file_id": "EXP_20261031_120312_0c060f",
+    "file_name": "LR_Report_31_10_2026_12_03_12.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_03_12.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:03:13+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:03:13+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:03:13+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_03_12.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:03:13+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:03:13+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_120312_0c060f",
+      "user_export_filename": "LR_Report_31_10_2026_12_03_12.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_03_12.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:03:12 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_120312_0c060f_audit": {
+    "file_id": "EXP_20261031_120312_0c060f_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_03_12.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_03_12.xlsx",
+    "file_size_bytes": 8420,
+    "file_size_kb": 8.2,
+    "sha256": "a387e22242282a5402c3bb77d3f9110c9ba96d6fe3df39d054a061e06f79284e",
+    "created_at": "2026-10-31T12:03:13+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:03:13+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_03_12.xlsx",
+        "snapshot_data": null,
+        "sha256": "a387e22242282a5402c3bb77d3f9110c9ba96d6fe3df39d054a061e06f79284e"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:03:13+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_03_12.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:03:12 PM"
+    },
+    "current_data": null
+  },
+  "LR_20261031_120417_fa54f4": {
+    "file_id": "LR_20261031_120417_fa54f4",
+    "file_name": "LR_20261031_120417_b412db_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+    "file_type": "bilty_image",
+    "file_path": "export/upload_LR/LR_20261031_120417_b412db_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+    "file_size_bytes": 124933,
+    "file_size_kb": 122.0,
+    "sha256": "adfb076498fd17cc4be97ed1fcee6bbec4ba883babd653d86bb69aa69891ca5e",
+    "created_at": "2026-10-31T12:04:17+05:30",
+    "edited_at": null,
+    "exported_at": "31-Oct-2026 12:20:30 PM",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": "59cda6b2",
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:04:17+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261031_120417_b412db_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+        "snapshot_data": {
+          "grno": "30183",
+          "grdt": "04/02/2026",
+          "stockdt": "04/02/2026",
+          "Customer Name *": "Himalaya Wellness Company",
+          "custrefcode": "CM001",
+          "branchrefcode": "KOLKATA",
+          "Counter name": "",
+          "orgrefcode": "Dhulagarh (Howrah)",
+          "destrefcode": "Cuttack",
+          "collectionstncode": "Dhulagarh (Howrah)",
+          "cngr": "Dhulagarh Howrah (211205)",
+          "cngrgstno": "19AADFT3025B1ZM",
+          "cnge": "DNo-106, P.O & P.S-Mansuli Cuttack (754025)",
+          "cngegstno": "21AADFT3025B1ZL",
+          "bookedpckgs": "2064",
+          "stockpckgs": "2064",
+          "packing": "Carton",
+          "goods": "Himalaya Goods as per Invoice",
+          "bookedaweight": "15000",
+          "stockaweight": "15000",
+          "bookedcweight": "15000",
+          "stockcweight": "15000",
+          "invoiceno": "5576700440",
+          "invoiedt": "04/02/2026",
+          "valgoods": "11228652.00",
+          "ewaybillno": "871722625215",
+          "Valid Upto": "06/08/2026",
+          "Transit Days": "2",
+          "Vehicle No *": "NL01AD2728",
+          "Vehicle Type *": "32 FT CONTAINER",
+          "Loading Start date *": "04/02/2026",
+          "ftl": "FTL",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "grtype": "TBB",
+          "pmark": "000223",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "productcode": "",
+          "Depatment Name": "HIMALAYA-CUTTACK",
+          "oamount": "0.00",
+          "freight  *": "0",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "0.00",
+          "received": "0.00",
+          "advance": "0.00",
+          "Vehicle Category": "32 FT CONTAINER",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "stockpkgs": "2064",
+          "freight": "0"
+        },
+        "sha256": "adfb076498fd17cc4be97ed1fcee6bbec4ba883babd653d86bb69aa69891ca5e"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:04:17+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_120444_8971c6",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_04_44.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121034_867ef6",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_10_34.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121924_a43d5a",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_24.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121929_3c49fa",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_29.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121938_5c8017",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_38.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_121955_5f5e9f",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_19_55.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_122030_fc92c8",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_20_30.xlsx"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 54,
+      "upload_id": "LR_20261031_120417_fa54f4",
+      "lr_no": "30183",
+      "saved_filename": "LR_20261031_120417_b412db_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+      "original_filename": "WhatsApp Image 2026-09-28 at 7.51.59 PM.jpeg",
+      "snapshot_path": "C:\\Users\\DELL\\OCR_project\\ocr_to_excel\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261031_120417_b412db_LR_30183_WhatsApp_Image_2026-09-28_at_7.jpg",
+      "user_id": "59cda6b2",
+      "user_mobile": "9876501234",
+      "created_by": "Sahil Maurya"
+    },
+    "current_data": {
+      "grno": "30183",
+      "grdt": "04/02/2026",
+      "stockdt": "04/02/2026",
+      "Customer Name *": "Himalaya Wellness Company",
+      "custrefcode": "CM001",
+      "branchrefcode": "KOLKATA",
+      "Counter name": "",
+      "orgrefcode": "Dhulagarh (Howrah)",
+      "destrefcode": "Cuttack",
+      "collectionstncode": "Dhulagarh (Howrah)",
+      "cngr": "Dhulagarh Howrah (211205)",
+      "cngrgstno": "19AADFT3025B1ZM",
+      "cnge": "DNo-106, P.O & P.S-Mansuli Cuttack (754025)",
+      "cngegstno": "21AADFT3025B1ZL",
+      "bookedpckgs": "2064",
+      "stockpckgs": "2064",
+      "packing": "Carton",
+      "goods": "Himalaya Goods as per Invoice",
+      "bookedaweight": "15000",
+      "stockaweight": "15000",
+      "bookedcweight": "15000",
+      "stockcweight": "15000",
+      "invoiceno": "5576700440",
+      "invoiedt": "04/02/2026",
+      "valgoods": "11228652.00",
+      "ewaybillno": "871722625215",
+      "Valid Upto": "06/08/2026",
+      "Transit Days": "2",
+      "Vehicle No *": "NL01AD2728",
+      "Vehicle Type *": "32 FT CONTAINER",
+      "Loading Start date *": "04/02/2026",
+      "ftl": "FTL",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "grtype": "TBB",
+      "pmark": "000223",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "productcode": "",
+      "Depatment Name": "HIMALAYA-CUTTACK",
+      "oamount": "0.00",
+      "freight  *": "0",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "0.00",
+      "received": "0.00",
+      "advance": "0.00",
+      "Vehicle Category": "32 FT CONTAINER",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "stockpkgs": "2064",
+      "freight": "0"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261031_122030_fc92c8"
+  },
+  "EXP_20261031_120444_8971c6": {
+    "file_id": "EXP_20261031_120444_8971c6",
+    "file_name": "LR_Report_31_10_2026_12_04_44.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_04_44.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:04:44+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:13:40+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_04_44.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:13:40+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_120444_8971c6",
+      "user_export_filename": "LR_Report_31_10_2026_12_04_44.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_04_44.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:04:44 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_120444_8971c6_audit": {
+    "file_id": "EXP_20261031_120444_8971c6_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_04_44.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_04_44.xlsx",
+    "file_size_bytes": 8405,
+    "file_size_kb": 8.2,
+    "sha256": "fb59dfc5892e1a0df85e7311d71168e25e32f246735443e936a54b616ab7e7da",
+    "created_at": "2026-10-31T12:04:44+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_04_44.xlsx",
+        "snapshot_data": null,
+        "sha256": "fb59dfc5892e1a0df85e7311d71168e25e32f246735443e936a54b616ab7e7da"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:04:44+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_04_44.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:04:44 PM"
+    },
+    "current_data": null
+  },
+  "LR_20261031_120801_994da9": {
+    "file_id": "LR_20261031_120801_994da9",
+    "file_name": "LR_20261031_120801_1c2375_LR_2349_PDF_Gallery_20260930_205201.pdf",
+    "file_type": "bilty_pdf",
+    "file_path": "export/upload_LR/LR_20261031_120801_1c2375_LR_2349_PDF_Gallery_20260930_205201.pdf",
+    "file_size_bytes": 168209,
+    "file_size_kb": 164.3,
+    "sha256": "bd6df9d66747e277969c55bf4d9fa4eff2058b95cf1011bda29785e36c73d5dd",
+    "created_at": "2026-10-31T12:08:01+05:30",
+    "edited_at": null,
+    "exported_at": "31-Oct-2026 12:08:21 PM",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": "96a54452",
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:08:01+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261031_120801_1c2375_LR_2349_PDF_Gallery_20260930_205201.pdf",
+        "snapshot_data": {
+          "grno": "2349",
+          "grdt": "30/09/2026",
+          "stockdt": "30/09/2026",
+          "Customer Name": "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)",
+          "custrefcode": "BL652",
+          "branchrefcode": "KOLKATA",
+          "orgrefcode": "KARNPURA SSRM",
+          "destrefcode": "SUPAUL",
+          "collectionstncode": "KARNPURA SSRM",
+          "cngr": "PATANJALI FOODS LTD, DURGAWATT, GT ROAD, KARANPURA, Kaimur (Bhabua), Bihar, 821105, Kaimur, 821105",
+          "cngrgstno": "07AAFCP1505P2Z8",
+          "cnge": "RAGHUNATH STORES, SUPAUL, SUPAUL, BIHAR WARD NO 26, THAKURBARI ROAD, SUPAUL India, BIHAR, SUPAUL, 852131",
+          "cngegstno": "",
+          "bookedpckgs": "860",
+          "stockpckgs": "860",
+          "packing": "Carton box",
+          "goods": "BISCUITS",
+          "bookedaweight": "6623",
+          "stockaweight": "6623",
+          "bookedcweight": "7000",
+          "stockcweight": "7000",
+          "invoiceno": "8604510015",
+          "invoiedt": "30/09/2026",
+          "valgoods": "736848",
+          "ewaybillno": "801747405790",
+          "Valid Upto": "",
+          "Transit Days": "",
+          "Vehicle No": "BR44G3857",
+          "Vehicle Type": "Market",
+          "Loading Start date": "30/09/2026",
+          "ftl": "FTL",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "grtype": "TBB",
+          "pmark": "",
+          "Driver Name": "PHULESH KUMAR",
+          "Mobile no": "",
+          "Liscense No": "BR44 20230001612",
+          "Valid Up to": "01/05/2030",
+          "productcode": "",
+          "Depatment Name": "",
+          "oamount": "0.00",
+          "freight": "0",
+          "cgst": "0.00",
+          "sgst": "0.00",
+          "igst": "0.00",
+          "received": "0.00",
+          "advance": "0.00",
+          "viaborder": "",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "Vehicle Type *": "Market",
+          "Vehicle Category": "Market",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "cngrgstno *": "07AAFCP1505P2Z8",
+          "stockpkgs": "860",
+          "freight  *": "0",
+          "grno (*)": "2349",
+          "LR No *": "2349"
+        },
+        "sha256": "bd6df9d66747e277969c55bf4d9fa4eff2058b95cf1011bda29785e36c73d5dd"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:08:01+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:08:21+05:30",
+        "user": "Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_120821_009781",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_08_21.xlsx"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 62,
+      "upload_id": "LR_20261031_120801_994da9",
+      "lr_no": "2349",
+      "saved_filename": "LR_20261031_120801_1c2375_LR_2349_PDF_Gallery_20260930_205201.pdf",
+      "original_filename": "PDF Gallery_20260930_205201.pdf",
+      "snapshot_path": "C:\\Users\\DELL\\OCR_project\\ocr_to_excel\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261031_120801_1c2375_LR_2349_PDF_Gallery_20260930_205201.pdf",
+      "user_id": "96a54452",
+      "user_mobile": "8009979716",
+      "created_by": "Maurya"
+    },
+    "current_data": {
+      "grno": "2349",
+      "grdt": "30/09/2026",
+      "stockdt": "30/09/2026",
+      "Customer Name": "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)",
+      "custrefcode": "BL652",
+      "branchrefcode": "KOLKATA",
+      "orgrefcode": "KARNPURA SSRM",
+      "destrefcode": "SUPAUL",
+      "collectionstncode": "KARNPURA SSRM",
+      "cngr": "PATANJALI FOODS LTD, DURGAWATT, GT ROAD, KARANPURA, Kaimur (Bhabua), Bihar, 821105, Kaimur, 821105",
+      "cngrgstno": "07AAFCP1505P2Z8",
+      "cnge": "RAGHUNATH STORES, SUPAUL, SUPAUL, BIHAR WARD NO 26, THAKURBARI ROAD, SUPAUL India, BIHAR, SUPAUL, 852131",
+      "cngegstno": "",
+      "bookedpckgs": "860",
+      "stockpckgs": "860",
+      "packing": "Carton box",
+      "goods": "BISCUITS",
+      "bookedaweight": "6623",
+      "stockaweight": "6623",
+      "bookedcweight": "7000",
+      "stockcweight": "7000",
+      "invoiceno": "8604510015",
+      "invoiedt": "30/09/2026",
+      "valgoods": "736848",
+      "ewaybillno": "801747405790",
+      "Valid Upto": "",
+      "Transit Days": "",
+      "Vehicle No": "BR44G3857",
+      "Vehicle Type": "Market",
+      "Loading Start date": "30/09/2026",
+      "ftl": "FTL",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "grtype": "TBB",
+      "pmark": "",
+      "Driver Name": "PHULESH KUMAR",
+      "Mobile no": "",
+      "Liscense No": "BR44 20230001612",
+      "Valid Up to": "01/05/2030",
+      "productcode": "",
+      "Depatment Name": "",
+      "oamount": "0.00",
+      "freight": "0",
+      "cgst": "0.00",
+      "sgst": "0.00",
+      "igst": "0.00",
+      "received": "0.00",
+      "advance": "0.00",
+      "viaborder": "",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "Vehicle Type *": "Market",
+      "Vehicle Category": "Market",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "cngrgstno *": "07AAFCP1505P2Z8",
+      "stockpkgs": "860",
+      "freight  *": "0",
+      "grno (*)": "2349",
+      "LR No *": "2349"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261031_120821_009781"
+  },
+  "EXP_20261031_120821_009781": {
+    "file_id": "EXP_20261031_120821_009781",
+    "file_name": "LR_Report_31_10_2026_12_08_21.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_08_21.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:08:21+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:08:22+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": null,
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:08:21+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_08_21.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:08:21+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:08:21+05:30",
+        "user": "Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:08:22+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_120821_009781",
+      "user_export_filename": "LR_Report_31_10_2026_12_08_21.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_08_21.xlsx",
+      "generated_by": "Maurya",
+      "generated_at": "31-Oct-2026 12:08:21 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_120821_009781_audit": {
+    "file_id": "EXP_20261031_120821_009781_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_08_21.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_08_21.xlsx",
+    "file_size_bytes": 8533,
+    "file_size_kb": 8.3,
+    "sha256": "012dc894d775004f46dec14d352a2977fce6f2a6e196a0ea17c660fbb45675f5",
+    "created_at": "2026-10-31T12:08:21+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Maurya",
+    "user_id": null,
+    "user_mobile": "8009979716",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:08:21+05:30",
+        "action": "create",
+        "user": "Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_08_21.xlsx",
+        "snapshot_data": null,
+        "sha256": "012dc894d775004f46dec14d352a2977fce6f2a6e196a0ea17c660fbb45675f5"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:08:21+05:30",
+        "user": "Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_08_21.xlsx",
+      "generated_by": "Maurya",
+      "generated_at": "31-Oct-2026 12:08:21 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121034_867ef6": {
+    "file_id": "EXP_20261031_121034_867ef6",
+    "file_name": "LR_Report_31_10_2026_12_10_34.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_10_34.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:10:34+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:10:34+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_10_34.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_121034_867ef6",
+      "user_export_filename": "LR_Report_31_10_2026_12_10_34.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_10_34.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:10:34 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121034_867ef6_audit": {
+    "file_id": "EXP_20261031_121034_867ef6_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_10_34.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_10_34.xlsx",
+    "file_size_bytes": 8405,
+    "file_size_kb": 8.2,
+    "sha256": "0936f22ef14f5ed3b1936151f60235d4203e55a36a48270f402d530dd31d6c75",
+    "created_at": "2026-10-31T12:10:34+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_10_34.xlsx",
+        "snapshot_data": null,
+        "sha256": "0936f22ef14f5ed3b1936151f60235d4203e55a36a48270f402d530dd31d6c75"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:10:34+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_10_34.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:10:34 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121924_a43d5a": {
+    "file_id": "EXP_20261031_121924_a43d5a",
+    "file_name": "LR_Report_31_10_2026_12_19_24.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_19_24.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:19:24+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:19:24+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_19_24.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_121924_a43d5a",
+      "user_export_filename": "LR_Report_31_10_2026_12_19_24.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_19_24.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:24 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121924_a43d5a_audit": {
+    "file_id": "EXP_20261031_121924_a43d5a_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_19_24.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_19_24.xlsx",
+    "file_size_bytes": 8405,
+    "file_size_kb": 8.2,
+    "sha256": "6a86ea538fc95ea01675d8e9c138aec58213cf3fe76050ffe3412798ece74dbe",
+    "created_at": "2026-10-31T12:19:24+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_19_24.xlsx",
+        "snapshot_data": null,
+        "sha256": "6a86ea538fc95ea01675d8e9c138aec58213cf3fe76050ffe3412798ece74dbe"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:24+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_19_24.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:24 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121929_3c49fa": {
+    "file_id": "EXP_20261031_121929_3c49fa",
+    "file_name": "LR_Report_31_10_2026_12_19_29.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_19_29.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:19:29+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:19:30+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:29+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_19_29.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:29+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_121929_3c49fa",
+      "user_export_filename": "LR_Report_31_10_2026_12_19_29.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_19_29.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:29 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121929_3c49fa_audit": {
+    "file_id": "EXP_20261031_121929_3c49fa_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_19_29.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_19_29.xlsx",
+    "file_size_bytes": 8405,
+    "file_size_kb": 8.2,
+    "sha256": "20a190d16f8a931fea2b80d31dc0b107a4be40fc03ba191a74aa615eb9600460",
+    "created_at": "2026-10-31T12:19:29+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:29+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_19_29.xlsx",
+        "snapshot_data": null,
+        "sha256": "20a190d16f8a931fea2b80d31dc0b107a4be40fc03ba191a74aa615eb9600460"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:29+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_19_29.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:29 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121938_5c8017": {
+    "file_id": "EXP_20261031_121938_5c8017",
+    "file_name": "LR_Report_31_10_2026_12_19_38.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_19_38.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:19:38+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:19:38+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_19_38.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_121938_5c8017",
+      "user_export_filename": "LR_Report_31_10_2026_12_19_38.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_19_38.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:38 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121938_5c8017_audit": {
+    "file_id": "EXP_20261031_121938_5c8017_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_19_38.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_19_38.xlsx",
+    "file_size_bytes": 8405,
+    "file_size_kb": 8.2,
+    "sha256": "f5b9bda560fd55e02ab38fe92c4d6f5dac656c80a1e13ef8659511f09e83bcb5",
+    "created_at": "2026-10-31T12:19:38+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_19_38.xlsx",
+        "snapshot_data": null,
+        "sha256": "f5b9bda560fd55e02ab38fe92c4d6f5dac656c80a1e13ef8659511f09e83bcb5"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:38+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_19_38.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:38 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121955_5f5e9f": {
+    "file_id": "EXP_20261031_121955_5f5e9f",
+    "file_name": "LR_Report_31_10_2026_12_19_55.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_19_55.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:19:55+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:19:55+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_19_55.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_121955_5f5e9f",
+      "user_export_filename": "LR_Report_31_10_2026_12_19_55.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_19_55.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:55 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_121955_5f5e9f_audit": {
+    "file_id": "EXP_20261031_121955_5f5e9f_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_19_55.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_19_55.xlsx",
+    "file_size_bytes": 8405,
+    "file_size_kb": 8.2,
+    "sha256": "c2c7baa3ad514d1e255d07214b9b515fdad1594e78719e4b1da2dbd7ab5137d7",
+    "created_at": "2026-10-31T12:19:55+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_19_55.xlsx",
+        "snapshot_data": null,
+        "sha256": "c2c7baa3ad514d1e255d07214b9b515fdad1594e78719e4b1da2dbd7ab5137d7"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:19:55+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_19_55.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:19:55 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122030_fc92c8": {
+    "file_id": "EXP_20261031_122030_fc92c8",
+    "file_name": "LR_Report_31_10_2026_12_20_30.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_20_30.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:20:30+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:21:42+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_20_30.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:21:42+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_122030_fc92c8",
+      "user_export_filename": "LR_Report_31_10_2026_12_20_30.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_20_30.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:20:30 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122030_fc92c8_audit": {
+    "file_id": "EXP_20261031_122030_fc92c8_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_20_30.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_20_30.xlsx",
+    "file_size_bytes": 8403,
+    "file_size_kb": 8.2,
+    "sha256": "8b3da4c3eae89be604a0e5d7198484e94db63f73fd050f58212acaf8fd4020a3",
+    "created_at": "2026-10-31T12:20:30+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_20_30.xlsx",
+        "snapshot_data": null,
+        "sha256": "8b3da4c3eae89be604a0e5d7198484e94db63f73fd050f58212acaf8fd4020a3"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:20:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_20_30.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:20:30 PM"
+    },
+    "current_data": null
+  },
+  "LR_20261031_122102_8b889d": {
+    "file_id": "LR_20261031_122102_8b889d",
+    "file_name": "LR_20261031_122102_0f16a0_LR_30122_New_Doc_06-25-2025_16_43.pdf",
+    "file_type": "bilty_pdf",
+    "file_path": "export/upload_LR/LR_20261031_122102_0f16a0_LR_30122_New_Doc_06-25-2025_16_43.pdf",
+    "file_size_bytes": 1869692,
+    "file_size_kb": 1825.9,
+    "sha256": "1ce6fa468b9a4f38bfbda1558926ad4ada7ce42126cad655e77fb9f7c39c7731",
+    "created_at": "2026-10-31T12:21:02+05:30",
+    "edited_at": null,
+    "exported_at": "31-Oct-2026 12:22:16 PM",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": "59cda6b2",
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:21:02+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_20261031_122102_0f16a0_LR_30122_New_Doc_06-25-2025_16_43.pdf",
+        "snapshot_data": {
+          "grno": "30122",
+          "grdt": "29/09/2026",
+          "stockdt": "29/09/2026",
+          "Customer Name *": "Himalaya Wellness Company",
+          "cngr": "M/S. Himalaya Wellness Company, Dhulagarh, Howrah (711302)",
+          "cngrgstno": "29AADFT3025B2ZK",
+          "cnge": "M/S. Himalaya Wellness Company, KNo. 4893, M. R. Ranipur, Patna (800009)",
+          "cngegstno": "29AADFT3025B2ZK",
+          "orgrefcode": "Kolkata - MWH",
+          "destrefcode": "Patna - CFA",
+          "collectionstncode": "Kolkata - MWH",
+          "bookedpckgs": "961",
+          "packing": "Carton box",
+          "goods": "Himalaya goods as per invoice No. 5576700653",
+          "bookedaweight": "7",
+          "bookedcweight": "7",
+          "invoiceno": "5576700653",
+          "invoiedt": "29/09/2026",
+          "valgoods": "3964019.00",
+          "ewaybillno": "811747061243",
+          "Valid Upto": "02/10/2026",
+          "Transit Days": "3",
+          "Vehicle No *": "UP84BT4095",
+          "Vehicle Type *": "20ft 6wheeler container",
+          "Loading Start date *": "29/09/2026",
+          "ftl": "FTL",
+          "staxpaidby": "C",
+          "dlvtype": "D",
+          "grtype": "TBB",
+          "pmark": "000056",
+          "Driver Name *": "",
+          "Mobile no   *": "",
+          "Liscense No *": "",
+          "Valid Up to *": "",
+          "oamount": "0.00",
+          "igst": "0.00",
+          "Vehicle Category": "20ft 6wheeler container",
+          "Depatment Name": "HIMA-KOLKATA",
+          "department": "HIMA-KOLKATA",
+          "Counter": "KOLKATA",
+          "counter": "KOLKATA",
+          "branchrefcode": "KOLKATA",
+          "cngrgstno *": "29AADFT3025B2ZK",
+          "cngegstno *": "29AADFT3025B2ZK",
+          "stockpckgs": "961",
+          "stockpkgs": "961",
+          "stockaweight": "7",
+          "stockcweight": "7",
+          "received": "0",
+          "advance": "0",
+          "custrefcode": "CM001",
+          "freight  *": "0",
+          "freight": "0",
+          "cgst": "0",
+          "sgst": "0"
+        },
+        "sha256": "1ce6fa468b9a4f38bfbda1558926ad4ada7ce42126cad655e77fb9f7c39c7731"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:21:02+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_122129_e0a536",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_21_29.xlsx"
+      },
+      {
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "export_id": "EXP_20261031_122216_dc9a6d",
+        "details": "Included in Excel export LR_Report_31_10_2026_12_22_16.xlsx"
+      }
+    ],
+    "custom_meta": {
+      "extracted_fields": 55,
+      "upload_id": "LR_20261031_122102_8b889d",
+      "lr_no": "30122",
+      "saved_filename": "LR_20261031_122102_0f16a0_LR_30122_New_Doc_06-25-2025_16_43.pdf",
+      "original_filename": "New Doc 06-25-2025 16.43.pdf",
+      "snapshot_path": "C:\\Users\\DELL\\OCR_project\\ocr_to_excel\\ocr_to_excel\\backend\\export\\upload_LR\\LR_20261031_122102_0f16a0_LR_30122_New_Doc_06-25-2025_16_43.pdf",
+      "user_id": "59cda6b2",
+      "user_mobile": "9876501234",
+      "created_by": "Sahil Maurya"
+    },
+    "current_data": {
+      "grno": "30122",
+      "grdt": "29/09/2026",
+      "stockdt": "29/09/2026",
+      "Customer Name *": "Himalaya Wellness Company",
+      "cngr": "M/S. Himalaya Wellness Company, Dhulagarh, Howrah (711302)",
+      "cngrgstno": "29AADFT3025B2ZK",
+      "cnge": "M/S. Himalaya Wellness Company, KNo. 4893, M. R. Ranipur, Patna (800009)",
+      "cngegstno": "29AADFT3025B2ZK",
+      "orgrefcode": "Kolkata - MWH",
+      "destrefcode": "Patna - CFA",
+      "collectionstncode": "Kolkata - MWH",
+      "bookedpckgs": "961",
+      "packing": "Carton box",
+      "goods": "Himalaya goods as per invoice No. 5576700653",
+      "bookedaweight": "7",
+      "bookedcweight": "7",
+      "invoiceno": "5576700653",
+      "invoiedt": "29/09/2026",
+      "valgoods": "3964019.00",
+      "ewaybillno": "811747061243",
+      "Valid Upto": "02/10/2026",
+      "Transit Days": "3",
+      "Vehicle No *": "UP84BT4095",
+      "Vehicle Type *": "20ft 6wheeler container",
+      "Loading Start date *": "29/09/2026",
+      "ftl": "FTL",
+      "staxpaidby": "C",
+      "dlvtype": "D",
+      "grtype": "TBB",
+      "pmark": "000056",
+      "Driver Name *": "",
+      "Mobile no   *": "",
+      "Liscense No *": "",
+      "Valid Up to *": "",
+      "oamount": "0.00",
+      "igst": "0.00",
+      "Vehicle Category": "20ft 6wheeler container",
+      "Depatment Name": "HIMA-KOLKATA",
+      "department": "HIMA-KOLKATA",
+      "Counter": "KOLKATA",
+      "counter": "KOLKATA",
+      "branchrefcode": "KOLKATA",
+      "cngrgstno *": "29AADFT3025B2ZK",
+      "cngegstno *": "29AADFT3025B2ZK",
+      "stockpckgs": "961",
+      "stockpkgs": "961",
+      "stockaweight": "7",
+      "stockcweight": "7",
+      "received": "0",
+      "advance": "0",
+      "custrefcode": "CM001",
+      "freight  *": "0",
+      "freight": "0",
+      "cgst": "0",
+      "sgst": "0"
+    },
+    "is_exported": true,
+    "export_batch_id": "EXP_20261031_122216_dc9a6d"
+  },
+  "EXP_20261031_122129_e0a536": {
+    "file_id": "EXP_20261031_122129_e0a536",
+    "file_name": "LR_Report_31_10_2026_12_21_29.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_21_29.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:21:30+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:21:30+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_21_29.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_122129_e0a536",
+      "user_export_filename": "LR_Report_31_10_2026_12_21_29.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_21_29.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:21:29 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122129_e0a536_audit": {
+    "file_id": "EXP_20261031_122129_e0a536_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_21_29.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_21_29.xlsx",
+    "file_size_bytes": 8368,
+    "file_size_kb": 8.2,
+    "sha256": "3b9649add117292a7c4effcb9019a41ef2b2657fd955157e32b96535c5abbf61",
+    "created_at": "2026-10-31T12:21:30+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_21_29.xlsx",
+        "snapshot_data": null,
+        "sha256": "3b9649add117292a7c4effcb9019a41ef2b2657fd955157e32b96535c5abbf61"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:21:30+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_21_29.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:21:29 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122216_dc9a6d": {
+    "file_id": "EXP_20261031_122216_dc9a6d",
+    "file_name": "LR_Report_31_10_2026_12_22_16.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_22_16.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:22:16+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:22:16+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_22_16.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "user": "Sahil Maurya",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_122216_dc9a6d",
+      "user_export_filename": "LR_Report_31_10_2026_12_22_16.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_22_16.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:22:16 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122216_dc9a6d_audit": {
+    "file_id": "EXP_20261031_122216_dc9a6d_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_22_16.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_22_16.xlsx",
+    "file_size_bytes": 8368,
+    "file_size_kb": 8.2,
+    "sha256": "d6cc67c1aaa1c6f2d1b0cc87633edc6d7863ac624135e144d64c82f571ccb192",
+    "created_at": "2026-10-31T12:22:16+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Sahil Maurya",
+    "user_id": null,
+    "user_mobile": "9876501234",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "action": "create",
+        "user": "Sahil Maurya",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_22_16.xlsx",
+        "snapshot_data": null,
+        "sha256": "d6cc67c1aaa1c6f2d1b0cc87633edc6d7863ac624135e144d64c82f571ccb192"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:22:16+05:30",
+        "user": "Sahil Maurya",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_22_16.xlsx",
+      "generated_by": "Sahil Maurya",
+      "generated_at": "31-Oct-2026 12:22:16 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122331_ee8a98": {
+    "file_id": "EXP_20261031_122331_ee8a98",
+    "file_name": "LR_Report_31_10_2026_12_23_31.xlsx",
+    "file_type": "excel",
+    "file_path": "export/upload_LR/LR_Report_31_10_2026_12_23_31.xlsx",
+    "file_size_bytes": 0,
+    "file_size_kb": 0.0,
+    "sha256": "",
+    "created_at": "2026-10-31T12:23:31+05:30",
+    "edited_at": null,
+    "exported_at": "2026-10-31T12:23:31+05:30",
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Test User",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:23:31+05:30",
+        "action": "create",
+        "user": "Test User",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "upload_LR/LR_Report_31_10_2026_12_23_31.xlsx",
+        "snapshot_data": null,
+        "sha256": ""
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:23:31+05:30",
+        "user": "Test User",
+        "action": "create",
+        "details": "File registered in system"
+      },
+      {
+        "timestamp": "2026-10-31T12:23:31+05:30",
+        "user": "Test User",
+        "action": "export",
+        "destination": "browser_download",
+        "details": {}
+      },
+      {
+        "timestamp": "2026-10-31T12:23:31+05:30",
+        "user": "Logistics User",
+        "action": "export",
+        "destination": "device_download",
+        "details": {}
+      }
+    ],
+    "custom_meta": {
+      "total_records": 1,
+      "format_type": "gr_bnf_49",
+      "export_id": "EXP_20261031_122331_ee8a98",
+      "user_export_filename": "LR_Report_31_10_2026_12_23_31.xlsx",
+      "audit_copy": "Audit_LR_Report_31_10_2026_12_23_31.xlsx",
+      "generated_by": "Test User",
+      "generated_at": "31-Oct-2026 12:23:31 PM"
+    },
+    "current_data": null
+  },
+  "EXP_20261031_122331_ee8a98_audit": {
+    "file_id": "EXP_20261031_122331_ee8a98_audit",
+    "file_name": "Audit_LR_Report_31_10_2026_12_23_31.xlsx",
+    "file_type": "excel_audit",
+    "file_path": "export/snapshots_excel/Audit_LR_Report_31_10_2026_12_23_31.xlsx",
+    "file_size_bytes": 8013,
+    "file_size_kb": 7.8,
+    "sha256": "e8ac26db08697bc3ca535b53dc437ead9b7a2abdafef1982bddc3e8e2899f9f8",
+    "created_at": "2026-10-31T12:23:31+05:30",
+    "edited_at": null,
+    "exported_at": null,
+    "deleted_at": null,
+    "is_deleted": false,
+    "created_by": "Test User",
+    "user_id": null,
+    "user_mobile": "9876543210",
+    "last_edited_by": null,
+    "current_version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "timestamp": "2026-10-31T12:23:31+05:30",
+        "action": "create",
+        "user": "Test User",
+        "details": "File created / uploaded",
+        "diff": null,
+        "snapshot_file": "snapshots_excel/Audit_LR_Report_31_10_2026_12_23_31.xlsx",
+        "snapshot_data": null,
+        "sha256": "e8ac26db08697bc3ca535b53dc437ead9b7a2abdafef1982bddc3e8e2899f9f8"
+      }
+    ],
+    "edit_history": [
+      {
+        "timestamp": "2026-10-31T12:23:31+05:30",
+        "user": "Test User",
+        "action": "create",
+        "details": "File registered in system"
+      }
+    ],
+    "custom_meta": {
+      "is_audit_copy": true,
+      "total_records": 1,
+      "original_filename": "LR_Report_31_10_2026_12_23_31.xlsx",
+      "generated_by": "Test User",
+      "generated_at": "31-Oct-2026 12:23:31 PM"
+    },
+    "current_data": null
+  }
 }
