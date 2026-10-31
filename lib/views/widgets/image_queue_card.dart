@@ -66,7 +66,7 @@ class ImageQueueCard extends StatelessWidget {
                           }
                           final pUrl = item.record['preview_url'] ?? '';
                           if (pUrl.isNotEmpty) {
-                            final fullUrl = pUrl.startsWith('http') ? pUrl : 'http://192.168.1.2:8000${pUrl.startsWith('/') ? pUrl : '/$pUrl'}';
+                            final fullUrl = pUrl.startsWith('http') ? pUrl : 'http://192.168.0.224:8000${pUrl.startsWith('/') ? pUrl : '/$pUrl'}';
                             return Image.network(fullUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _thumbnailFallback(colorScheme));
                           }
                           if (!isPdf && File(item.imagePath).existsSync()) {

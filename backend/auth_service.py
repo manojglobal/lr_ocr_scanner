@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import secrets
+import shutil
 import threading
 from datetime import datetime
 
@@ -11,8 +12,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
+CLOUD_DB_DIR = os.path.join(DATA_DIR, "cloud_db")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(CLOUD_DB_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
 # In-memory stores
 # Active OTPs: { "9876543210": { "otp": "482915", "expires_at": float, "attempts_left": int, "last_sent_at": float, "name": str } }
@@ -30,6 +35,23 @@ def _clean_mobile(mobile: str) -> str:
     elif digits.startswith("0") and len(digits) == 11:
         digits = digits[1:]
     return digits
+
+
+def _validate_mobile(mobile: str) -> tuple[bool, str]:
+    """Validates that a mobile number is a valid 10-digit Indian mobile number."""
+    clean = _clean_mobile(mobile)
+    if len(clean) != 10:
+        return False, "Mobile number must be exactly 10 digits."
+    if clean[0] not in "56789":
+        return False, "Indian mobile number must start with 5, 6, 7, 8, or 9."
+    return True, clean
+
+
+def _normalize_name(name: str | None) -> str:
+    """Normalizes a name string by trimming whitespace and collapsing internal spaces."""
+    if not name:
+        return ""
+    return re.sub(r"\s+", " ", str(name).strip())
 
 
 def _load_users() -> dict:
@@ -61,23 +83,223 @@ def _save_users(users: dict):
                     pass
 
 
+# =========================================================================
+# DEVELOPER CLI USER MANAGEMENT OPERATIONS (Create, Edit, Delete, Count)
+# =========================================================================
+
+def get_total_users_count() -> int:
+    """Returns the total number of registered users."""
+    return len(_load_users())
+
+
+def get_all_users() -> dict:
+    """Returns a dictionary of all registered users."""
+    return dict(_load_users())
+
+
+def get_user_by_mobile(mobile_raw: str) -> dict | None:
+    """Fetches a registered user record by mobile number."""
+    clean = _clean_mobile(mobile_raw)
+    users = _load_users()
+    return dict(users[clean]) if clean in users else None
+
+
+def create_user_record(name: str, mobile_raw: str) -> dict:
+    """
+    Developer Operation: Create a new user account with Name and Mobile Number.
+    Enforces uniqueness: One mobile number = One account.
+    """
+    clean_name = _normalize_name(name)
+    if not clean_name:
+        return {"success": False, "error": "User name cannot be empty."}
+
+    valid, clean_mobile = _validate_mobile(mobile_raw)
+    if not valid:
+        return {"success": False, "error": clean_mobile}
+
+    with _auth_lock:
+        users = _load_users()
+        if clean_mobile in users:
+            existing = users[clean_mobile]
+            return {
+                "success": False,
+                "error": f"User with mobile +91 {clean_mobile} already exists ({existing.get('name', 'Unknown')})."
+            }
+
+        user_id = str(uuid.uuid4())[:8]
+        user_record = {
+            "id": user_id,
+            "mobile": clean_mobile,
+            "name": clean_name,
+            "role": "operator",
+            "last_login": None,
+            "created_at": datetime.now().isoformat()
+        }
+        users[clean_mobile] = user_record
+        _save_users(users)
+
+    print(f"[USER CREATED] Name: {clean_name} | Mobile: +91 {clean_mobile} | ID: {user_id}")
+    return {"success": True, "user": user_record}
+
+
+def edit_user_record(
+    mobile_raw: str,
+    new_name: str | None = None,
+    new_mobile_raw: str | None = None
+) -> dict:
+    """
+    Developer Operation: Update an existing user's Name or Mobile Number.
+    Safely migrates user cloud database if mobile number changes.
+    """
+    clean_mobile = _clean_mobile(mobile_raw)
+    with _auth_lock:
+        users = _load_users()
+        if clean_mobile not in users:
+            return {
+                "success": False,
+                "error": f"User with mobile +91 {clean_mobile} not found."
+            }
+
+        user_record = users[clean_mobile]
+        old_mobile = clean_mobile
+        target_mobile = clean_mobile
+
+        # 1. Update Name if specified
+        if new_name is not None:
+            clean_new_name = _normalize_name(new_name)
+            if not clean_new_name:
+                return {"success": False, "error": "Name cannot be empty."}
+            user_record["name"] = clean_new_name
+
+        # 2. Update Mobile if specified and different
+        if new_mobile_raw is not None:
+            valid, clean_new_mob = _validate_mobile(new_mobile_raw)
+            if not valid:
+                return {"success": False, "error": clean_new_mob}
+
+            if clean_new_mob != clean_mobile:
+                if clean_new_mob in users:
+                    return {
+                        "success": False,
+                        "error": f"Mobile number +91 {clean_new_mob} is already assigned to another user."
+                    }
+
+                # Migrate user key
+                target_mobile = clean_new_mob
+                user_record["mobile"] = clean_new_mob
+                del users[clean_mobile]
+                users[clean_new_mob] = user_record
+
+                # Migrate associated cloud database file if it exists
+                old_db_path = os.path.join(CLOUD_DB_DIR, f"{old_mobile}.json")
+                new_db_path = os.path.join(CLOUD_DB_DIR, f"{clean_new_mob}.json")
+                if os.path.isfile(old_db_path):
+                    try:
+                        shutil.move(old_db_path, new_db_path)
+                        print(f"[AuthService] Migrated cloud DB from {old_mobile}.json to {clean_new_mob}.json")
+                    except Exception as e:
+                        print(f"[AuthService] Warning migrating cloud DB: {e}")
+
+                # Invalidate old sessions for old mobile
+                for t, sess in list(_sessions.items()):
+                    if sess.get("mobile") == old_mobile:
+                        sess["mobile"] = clean_new_mob
+
+        _save_users(users)
+
+    print(f"[USER UPDATED] Mobile: +91 {target_mobile} | Name: {user_record.get('name')}")
+    return {"success": True, "user": user_record}
+
+
+def delete_user_record(mobile_raw: str, archive_data: bool = True) -> dict:
+    """
+    Developer Operation: Permanently remove a selected user account.
+    Terminates active sessions and safely archives cloud data to prevent orphaned files.
+    """
+    clean_mobile = _clean_mobile(mobile_raw)
+    with _auth_lock:
+        users = _load_users()
+        if clean_mobile not in users:
+            return {
+                "success": False,
+                "error": f"User with mobile +91 {clean_mobile} not found."
+            }
+
+        deleted_user = users.pop(clean_mobile)
+        _save_users(users)
+
+        # Invalidate active sessions
+        terminated_sessions = 0
+        for token, sess in list(_sessions.items()):
+            if sess.get("mobile") == clean_mobile:
+                del _sessions[token]
+                terminated_sessions += 1
+
+        # Clear active OTPs
+        _otp_store.pop(clean_mobile, None)
+
+        # Archive cloud database to avoid orphaned files
+        if archive_data:
+            user_db_path = os.path.join(CLOUD_DB_DIR, f"{clean_mobile}.json")
+            if os.path.isfile(user_db_path):
+                archive_dir = os.path.join(BACKUP_DIR, "archived_users")
+                os.makedirs(archive_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                archived_path = os.path.join(archive_dir, f"{clean_mobile}_{timestamp}.json")
+                try:
+                    shutil.move(user_db_path, archived_path)
+                    print(f"[AuthService] Archived user cloud DB to: {archived_path}")
+                except Exception as e:
+                    print(f"[AuthService] Warning archiving user cloud DB: {e}")
+
+    print(f"[USER DELETED] Name: {deleted_user.get('name')} | Mobile: +91 {clean_mobile} | Terminated Sessions: {terminated_sessions}")
+    return {
+        "success": True,
+        "message": f"User '{deleted_user.get('name')}' (+91 {clean_mobile}) was successfully deleted.",
+        "user": deleted_user
+    }
+
+
+# =========================================================================
+# PUBLIC AUTHENTICATION & LOGIN GATES (Strict Pre-Registration Required)
+# =========================================================================
+
 def send_otp(mobile_raw: str, name: str | None = None) -> dict:
     """
     Generates a cryptographically secure 6-digit OTP for the mobile number.
+    Strictly verifies that BOTH the mobile number and name match the developer-registered account.
     Enforces a 30-second resend cooldown and 5-minute expiration.
     """
-    clean_name = str(name or "").strip()
+    clean_name = _normalize_name(name)
     if not clean_name:
         return {
             "success": False,
             "error": "Please enter your name."
         }
 
-    mobile = _clean_mobile(mobile_raw)
-    if len(mobile) != 10 or not mobile[0] in "56789":
+    valid, mobile = _validate_mobile(mobile_raw)
+    if not valid:
         return {
             "success": False,
             "error": "Please enter a valid 10-digit Indian mobile number (e.g., 9876543210)."
+        }
+
+    # Strict Security Gate: Only pre-registered users can request an OTP
+    users = _load_users()
+    if mobile not in users:
+        return {
+            "success": False,
+            "error": f"Access denied. Mobile number (+91 {mobile}) is not registered. Please contact your administrator."
+        }
+
+    user_record = users[mobile]
+    registered_name = _normalize_name(user_record.get("name", ""))
+
+    # Strict Name Matching: Both mobile number and name must match the developer-registered account
+    if clean_name.lower() != registered_name.lower():
+        return {
+            "success": False,
+            "error": "Access denied. The entered name does not match the registered account for this mobile number."
         }
 
     now = time.time()
@@ -102,7 +324,7 @@ def send_otp(mobile_raw: str, name: str | None = None) -> dict:
             "expires_at": expires_at,
             "attempts_left": 3,
             "last_sent_at": now,
-            "name": clean_name or (existing.get("name") if existing else "")
+            "name": registered_name
         }
 
     # Terminal visibility for testing & logs
@@ -119,26 +341,47 @@ def send_otp(mobile_raw: str, name: str | None = None) -> dict:
         "message": f"OTP successfully sent to +91 {mobile}.",
         "mobile": mobile,
         "resend_cooldown": 30,
-        "expires_in_seconds": 300,
-        "dev_otp": otp_code  # For frictionless testing in pair-programming / development
+        "expires_in_seconds": 300
     }
 
 
 def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> dict:
     """
     Verifies the submitted 6-digit OTP against active records.
+    Strictly verifies that BOTH the mobile number and name match the developer-registered account.
     Enforces maximum 3 attempts and 5-minute expiry.
     Upon success, destroys the OTP and returns a session token.
     """
-    clean_name = str(name or "").strip()
-    mobile = _clean_mobile(mobile_raw)
+    clean_name = _normalize_name(name)
+    valid, mobile = _validate_mobile(mobile_raw)
     otp_code = str(otp_code_raw or "").strip()
 
-    if not mobile or len(mobile) != 10:
+    if not clean_name:
+        return {"success": False, "error": "Please enter your name."}
+
+    if not valid:
         return {"success": False, "error": "Invalid mobile number."}
 
     if not otp_code or len(otp_code) != 6:
         return {"success": False, "error": "Please enter a valid 6-digit numeric OTP."}
+
+    # Strict Security Gate: Only pre-registered users can verify OTP & log in
+    users = _load_users()
+    if mobile not in users:
+        return {
+            "success": False,
+            "error": f"Access denied. Mobile number (+91 {mobile}) is not registered. Please contact your administrator."
+        }
+
+    user_record = users[mobile]
+    registered_name = _normalize_name(user_record.get("name", ""))
+
+    # Strict Name Matching: Both mobile number and name must match the developer-registered account
+    if clean_name.lower() != registered_name.lower():
+        return {
+            "success": False,
+            "error": "Access denied. The entered name does not match the registered account for this mobile number."
+        }
 
     with _auth_lock:
         entry = _otp_store.get(mobile)
@@ -163,8 +406,8 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
                 "error": "Maximum retry limit exceeded. Please request a fresh OTP."
             }
 
-        # Check match (also allows '123456' as master test OTP in development mode)
-        if entry["otp"] != otp_code and otp_code != "123456":
+        # Verify OTP code matches the cryptographically generated code
+        if entry["otp"] != otp_code:
             entry["attempts_left"] -= 1
             rem = entry["attempts_left"]
             if rem <= 0:
@@ -180,21 +423,17 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
             }
 
         # OTP Verified Successfully -> Single-Use Consumption
-        stored_name = clean_name or entry.get("name") or "Logistics User"
         _otp_store.pop(mobile, None)
 
-        # Create/Update User Registry
+        # Retrieve registered user and update last_login (No public auto-registration / name alteration)
         users = _load_users()
-        user_id = users.get(mobile, {}).get("id") or str(uuid.uuid4())[:8]
-        user_record = {
-            "id": user_id,
-            "mobile": mobile,
-            "name": stored_name,
-            "role": "operator",
-            "last_login": datetime.now().isoformat(),
-            "created_at": users.get(mobile, {}).get("created_at") or datetime.now().isoformat()
-        }
-        users[mobile] = user_record
+        user_record = users.get(mobile, user_record)
+        user_id = user_record.get("id") or str(uuid.uuid4())[:8]
+        user_record["id"] = user_id
+        user_record["last_login"] = datetime.now().isoformat()
+        # Authoritative registered name preserved strictly
+        stored_name = registered_name or user_record.get("name", "Logistics User")
+        user_record["name"] = stored_name
         _save_users(users)
 
         # Issue Session Token
@@ -203,7 +442,7 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
             "user_id": user_id,
             "mobile": mobile,
             "name": stored_name,
-            "role": "operator",
+            "role": user_record.get("role", "operator"),
             "login_at": datetime.now().isoformat()
         }
 
@@ -218,39 +457,50 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
 
 def direct_login(mobile_raw: str, name: str | None = None) -> dict:
     """
-    Simplified direct authentication while maintaining secure cryptographic session tokens.
-    Validates mobile format, records the user, and issues a session token.
-    (Hides OTP step temporarily as requested).
+    Direct authentication endpoint for pre-registered users.
+    Strictly verifies that BOTH the mobile number and name match the developer-registered account.
     """
-    clean_name = str(name or "").strip()
+    clean_name = _normalize_name(name)
     if not clean_name:
         return {
             "success": False,
             "error": "Please enter your name."
         }
 
-    mobile = _clean_mobile(mobile_raw)
-    if len(mobile) != 10 or not mobile[0] in "56789":
+    valid, mobile = _validate_mobile(mobile_raw)
+    if not valid:
         return {
             "success": False,
             "error": "Please enter a valid 10-digit Indian mobile number (e.g., 9876543210)."
         }
 
-    stored_name = clean_name
+    # Strict Security Gate: Only pre-registered users can log in
+    users = _load_users()
+    if mobile not in users:
+        return {
+            "success": False,
+            "error": f"Access denied. Mobile number (+91 {mobile}) is not registered. Please contact your administrator."
+        }
 
-    # Create/Update User Registry under lock
+    user_record = users[mobile]
+    registered_name = _normalize_name(user_record.get("name", ""))
+
+    # Strict Name Matching: Both mobile number and name must match the developer-registered account
+    if clean_name.lower() != registered_name.lower():
+        return {
+            "success": False,
+            "error": "Access denied. The entered name does not match the registered account for this mobile number."
+        }
+
     with _auth_lock:
         users = _load_users()
-        user_id = users.get(mobile, {}).get("id") or str(uuid.uuid4())[:8]
-        user_record = {
-            "id": user_id,
-            "mobile": mobile,
-            "name": stored_name,
-            "role": "operator",
-            "last_login": datetime.now().isoformat(),
-            "created_at": users.get(mobile, {}).get("created_at") or datetime.now().isoformat()
-        }
-        users[mobile] = user_record
+        user_record = users.get(mobile, user_record)
+        user_id = user_record.get("id") or str(uuid.uuid4())[:8]
+        user_record["id"] = user_id
+        user_record["last_login"] = datetime.now().isoformat()
+        # Authoritative registered name preserved strictly (cannot be altered by login)
+        stored_name = registered_name or user_record.get("name", "Logistics User")
+        user_record["name"] = stored_name
         _save_users(users)
 
         # Issue Session Token
@@ -259,7 +509,7 @@ def direct_login(mobile_raw: str, name: str | None = None) -> dict:
             "user_id": user_id,
             "mobile": mobile,
             "name": stored_name,
-            "role": "operator",
+            "role": user_record.get("role", "operator"),
             "login_at": datetime.now().isoformat()
         }
 
@@ -289,4 +539,3 @@ def logout_session(token: str | None) -> bool:
     clean_token = token.replace("Bearer ", "").strip()
     with _auth_lock:
         return _sessions.pop(clean_token, None) is not None
-

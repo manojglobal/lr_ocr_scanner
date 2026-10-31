@@ -114,7 +114,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (res['success'] == true) {
       final token = res['token']?.toString();
-      final userName = name.isNotEmpty ? name : 'Logistics User';
+      final userObj = res['user'] is Map ? (res['user'] as Map<String, dynamic>) : null;
+      final serverName = userObj?['name']?.toString().trim();
+      final userName = (serverName != null && serverName.isNotEmpty)
+          ? serverName
+          : (name.isNotEmpty ? name : 'Logistics User');
       widget.controller.setActiveUser(
         mobile,
         name: userName,
@@ -169,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: textController,
                   decoration: InputDecoration(
                     labelText: 'Server Base URL',
-                    hintText: 'http://192.168.1.5:8000',
+                    hintText: 'http://192.168.0.224:8000',
                     border: const OutlineInputBorder(),
                     isDense: true,
                     suffixIcon: IconButton(
@@ -187,9 +191,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   spacing: 6,
                   children: [
                     ActionChip(
-                      label: const Text('PC IP (192.168.1.5:8000)', style: TextStyle(fontSize: 11)),
+                      label: const Text('PC IP (192.168.0.224:8000)', style: TextStyle(fontSize: 11)),
                       onPressed: () {
-                        textController.text = 'http://192.168.1.5:8000';
+                        textController.text = 'http://192.168.0.224:8000';
                         setDialogState(() {});
                       },
                     ),
@@ -287,12 +291,9 @@ class _LoginScreenState extends State<LoginScreen> {
       });
       _startTimer(res['resend_cooldown'] as int? ?? 30);
 
-      // Auto-fill dev_otp if provided
-      if (res['dev_otp'] != null) {
-        final devOtp = res['dev_otp'].toString();
-        for (int i = 0; i < devOtp.length && i < 6; i++) {
-          _otpControllers[i].text = devOtp[i];
-        }
+      // Clear OTP boxes for manual user entry
+      for (final c in _otpControllers) {
+        c.clear();
       }
     } else {
       setState(() => _errorMessage = res['error']?.toString() ?? 'Failed to send OTP');
@@ -326,13 +327,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (res['success'] == true) {
       final token = res['token']?.toString();
+      final userObj = res['user'] is Map ? (res['user'] as Map<String, dynamic>) : null;
+      final serverName = userObj?['name']?.toString().trim();
+      final userName = (serverName != null && serverName.isNotEmpty)
+          ? serverName
+          : (name.isNotEmpty ? name : 'Logistics User');
       widget.controller.setActiveUser(
         mobile,
-        name: name.isNotEmpty ? name : 'Logistics User',
+        name: userName,
         sessionToken: token,
       );
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('bnf_user_name', name.isNotEmpty ? name : 'Logistics User');
+      await prefs.setString('bnf_user_name', userName);
       await prefs.setString('bnf_user_mobile', mobile);
       if (token != null) {
         await prefs.setString('bnf_user_token', token);
@@ -413,10 +419,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
                               GestureDetector(
+                                onTap: _showServerConfigDialog,
                                 onLongPress: _showServerConfigDialog,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -432,6 +442,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Text(
                                         'Secure Logistics Portal',
                                         style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: _showServerConfigDialog,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(30),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.wifi_tethering, size: 12, color: Colors.cyanAccent),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Server IP',
+                                        style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold),
                                       ),
                                     ],
                                   ),

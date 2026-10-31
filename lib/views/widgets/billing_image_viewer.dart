@@ -138,7 +138,7 @@ class BillingImageViewer extends StatefulWidget {
     if (path == null || path.isEmpty) return null;
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     if (isLocalFilePath(path)) return null;
-    final server = (serverUrl != null && serverUrl.trim().isNotEmpty) ? serverUrl.trim() : 'http://192.168.1.2:8000';
+    final server = (serverUrl != null && serverUrl.trim().isNotEmpty) ? serverUrl.trim() : 'http://192.168.0.224:8000';
     final prefix = server.endsWith('/') ? server.substring(0, server.length - 1) : server;
     final relPath = path.startsWith('/') ? path : '/$path';
     return '$prefix$relPath';
