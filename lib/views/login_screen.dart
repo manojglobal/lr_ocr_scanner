@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/gemini_backend_service.dart';
 import '../state/batch_controller.dart';
 import 'home_screen.dart';
 
@@ -41,7 +40,63 @@ class _LoginScreenState extends State<LoginScreen> {
     final mobile = prefs.getString('bnf_user_mobile');
     final name = prefs.getString('bnf_user_name') ?? 'Logistics User';
     final token = prefs.getString('bnf_user_token');
-    if (mobile != null && mobile.isNotEmpty && token != null && token.isNotEmpty) {
+    final expiresAt = prefs.getInt('bnf_session_expires_at');
+
+    if (mobile == null || mobile.isEmpty || token == null || token.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Check if session has expired past 24 hours
+    if (expiresAt != null && now > expiresAt) {
+      await _clearStoredSession(prefs);
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Session expired after 24 hours. Please log in again.';
+        });
+      }
+      return;
+    }
+
+    // Authoritative session verification against backend /api/auth/me
+    setState(() => _isLoading = true);
+    final authCheck = await widget.controller.geminiService.validateSession(token);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (authCheck['valid'] == true) {
+      // Backend confirmed session is valid and active
+      final userObj = authCheck['user'] is Map ? (authCheck['user'] as Map<String, dynamic>) : null;
+      final serverName = userObj?['name']?.toString().trim();
+      final resolvedName = (serverName != null && serverName.isNotEmpty) ? serverName : name;
+
+      widget.controller.setActiveUser(mobile, name: resolvedName, sessionToken: token);
+      if (serverName != null && serverName.isNotEmpty) {
+        await prefs.setString('bnf_user_name', serverName);
+      }
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomeScreen(controller: widget.controller)),
+        );
+      }
+      return;
+    }
+
+    // If backend was reachable and actively rejected the token (e.g. 401/403/revoked/deleted user)
+    if (authCheck['offline'] != true) {
+      await _clearStoredSession(prefs);
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Session expired or invalidated. Please log in again.';
+        });
+      }
+      return;
+    }
+
+    // Backend is temporarily offline/unreachable:
+    // Allow entry only if local 24-hour expiration hasn't passed
+    if (expiresAt != null && now <= expiresAt) {
       widget.controller.setActiveUser(mobile, name: name, sessionToken: token);
       if (mounted) {
         Navigator.pushReplacement(
@@ -49,7 +104,23 @@ class _LoginScreenState extends State<LoginScreen> {
           MaterialPageRoute(builder: (_) => HomeScreen(controller: widget.controller)),
         );
       }
+      return;
     }
+
+    // If no expiration timestamp was recorded or it expired, require login
+    await _clearStoredSession(prefs);
+    if (mounted) {
+      setState(() {
+        _errorMessage = 'Session expired. Please log in again.';
+      });
+    }
+  }
+
+  Future<void> _clearStoredSession(SharedPreferences prefs) async {
+    await prefs.remove('bnf_user_name');
+    await prefs.remove('bnf_user_mobile');
+    await prefs.remove('bnf_user_token');
+    await prefs.remove('bnf_session_expires_at');
   }
 
   @override
@@ -130,6 +201,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (token != null) {
         await prefs.setString('bnf_user_token', token);
       }
+      final expiresAt = DateTime.now().millisecondsSinceEpoch + (24 * 60 * 60 * 1000);
+      await prefs.setInt('bnf_session_expires_at', expiresAt);
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -140,126 +213,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       setState(() => _errorMessage = res['error']?.toString() ?? 'Login failed. Please try again.');
     }
-  }
-
-  void _showServerConfigDialog() {
-    final textController = TextEditingController(text: widget.controller.geminiService.serverUrl);
-    bool isPinging = false;
-    String? pingResult;
-    bool? isOnline;
-
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.hub_outlined, color: Colors.indigo),
-              SizedBox(width: 8),
-              Text('Server IP Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Set the local IP of your computer running main.py:',
-                  style: TextStyle(fontSize: 12, color: Colors.black87),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: textController,
-                  decoration: InputDecoration(
-                    labelText: 'Server Base URL',
-                    hintText: 'http://192.168.0.224:8000',
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.restart_alt, size: 18),
-                      tooltip: 'Reset to default IP',
-                      onPressed: () {
-                        textController.text = GeminiBackendService.defaultServerUrl;
-                        setDialogState(() {});
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    ActionChip(
-                      label: const Text('PC IP (192.168.0.224:8000)', style: TextStyle(fontSize: 11)),
-                      onPressed: () {
-                        textController.text = 'http://192.168.0.224:8000';
-                        setDialogState(() {});
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: isPinging
-                          ? null
-                          : () async {
-                              setDialogState(() {
-                                isPinging = true;
-                                pingResult = null;
-                                isOnline = null;
-                              });
-                              await widget.controller.geminiService.updateServerUrl(textController.text);
-                              final ok = await widget.controller.geminiService.checkHealth();
-                              if (ctx.mounted) {
-                                setDialogState(() {
-                                  isPinging = false;
-                                  isOnline = ok;
-                                  pingResult = ok ? 'Connected! (Server Online)' : 'Cannot reach server. Check Wi-Fi & IP.';
-                                });
-                              }
-                            },
-                      icon: isPinging
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.wifi_tethering, size: 16),
-                      label: const Text('Test Connection'),
-                    ),
-                    const SizedBox(width: 8),
-                    if (pingResult != null)
-                      Expanded(
-                        child: Text(
-                          pingResult!,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isOnline == true ? Colors.green.shade700 : Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                await widget.controller.geminiService.updateServerUrl(textController.text);
-                if (mounted) setState(() {});
-                if (ctx.mounted) Navigator.of(ctx).pop();
-              },
-              child: const Text('Save & Apply'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _handleSendOtp() async {
@@ -343,6 +296,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (token != null) {
         await prefs.setString('bnf_user_token', token);
       }
+      final expiresAt = DateTime.now().millisecondsSinceEpoch + (24 * 60 * 60 * 1000);
+      await prefs.setInt('bnf_session_expires_at', expiresAt);
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -419,56 +374,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Wrap(
-                            alignment: WrapAlignment.spaceBetween,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              GestureDetector(
-                                onTap: _showServerConfigDialog,
-                                onLongPress: _showServerConfigDialog,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withAlpha(40),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.shield, size: 12, color: Colors.cyanAccent),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Secure Logistics Portal',
-                                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha(40),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.shield, size: 12, color: Colors.cyanAccent),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Secure Logistics Portal',
+                                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                                 ),
-                              ),
-                              GestureDetector(
-                                onTap: _showServerConfigDialog,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withAlpha(30),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.wifi_tethering, size: 12, color: Colors.cyanAccent),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Server IP',
-                                        style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 8),
                           const Text(

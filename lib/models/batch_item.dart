@@ -185,7 +185,7 @@ class BatchItem {
       return record[key]!.trim();
     }
     if (key == 'grno (*)' || key == 'LR No *' || key == 'grno') {
-      for (final a in ['grno (*)', 'LR No *', 'grno', 'LR No', 'lrno', 'biltyno']) {
+      for (final a in ['grno (*)', 'LR No *', 'grno', 'LR No', 'lrno', 'biltyno', 'Consignment Note No', 'consignment note no', 'Consignment Note', 'C Note No']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'grdt *' || key == 'grdt') {
@@ -197,11 +197,11 @@ class BatchItem {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'cngr *' || key == 'cngr') {
-      for (final a in ['cngr *', 'cngr', 'Customer Name *', 'consignor']) {
+      for (final a in ['cngr *', 'cngr', 'Consignor Name & Address', 'consignor name & address', 'Consignor Name and Address', 'Customer Name *', 'consignor', 'sender']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'cnge *' || key == 'cnge') {
-      for (final a in ['cnge *', 'cnge', 'consignee']) {
+      for (final a in ['cnge *', 'cnge', 'Consignee Name & Address', 'consignee name & address', 'Consignee Name and Address', 'consignee', 'receiver']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'cngrgstno *' || key == 'cngrgstno') {
@@ -213,7 +213,7 @@ class BatchItem {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'Vehicle No *' || key == 'Vehicle No') {
-      for (final a in ['Vehicle No *', 'Vehicle No', 'vehno', 'vehicle_no']) {
+      for (final a in ['Vehicle No *', 'Vehicle No', 'vehno', 'vehicle_no', 'Tempo/Truck No', 'tempo/truck no', 'tempo truck no', 'truck no']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'Vehicle Type *' || key == 'Vehicle Category') {
@@ -259,8 +259,12 @@ class BatchItem {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
       return '0.00';
+    } else if (key == 'goods') {
+      for (final a in ['goods', 'Description (Said to Contain)', 'description (said to contain)', 'Description', 'description', 'Said to Contain', 'commodity']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
     } else if (key == 'pckgs' || key == 'bookedpckgs' || key == 'stockpckgs' || key == 'stockpkgs' || key == 'packages' || key == 'pkgs') {
-      for (final a in ['pckgs', 'bookedpckgs', 'stockpckgs', 'stockpkgs', 'packages', 'pkgs', 'quantity', 'qty']) {
+      for (final a in ['pckgs', 'bookedpckgs', 'stockpckgs', 'stockpkgs', 'No. of Packages', 'no. of packages', 'No of Packages', 'packages', 'pkgs', 'quantity', 'qty']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'aweight' || key == 'bookedaweight' || key == 'stockaweight') {

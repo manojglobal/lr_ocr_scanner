@@ -312,6 +312,20 @@ def _clean_mobile(mobile: Any) -> str:
     return digits
 
 
+def _strip_heavy_media(obj: Any) -> Any:
+    """Recursively removes large raw base64 image strings from JSON payloads to ensure high performance and user sync."""
+    if isinstance(obj, dict):
+        cleaned = {}
+        for k, v in obj.items():
+            if k in ("preview_image", "thumbnail_image", "imageSrc", "raw_image_bytes") and isinstance(v, str) and (v.startswith("data:image/") or len(v) > 500):
+                continue
+            cleaned[k] = _strip_heavy_media(v)
+        return cleaned
+    elif isinstance(obj, list):
+        return [_strip_heavy_media(item) for item in obj]
+    return obj
+
+
 def _extract_docs_from_xlsx(filename: str) -> list:
     """Extracts consignment data rows from exported Excel workbook for UI display."""
     if not filename:
@@ -547,11 +561,13 @@ def record_export_audit(audit_entry: dict):
         if "user" not in audit_entry:
             audit_entry["user"] = audit_entry.get("exported_by") or audit_entry.get("user_name") or "Logistics User"
 
+        audit_entry = _strip_heavy_media(audit_entry)
         logs.insert(0, audit_entry)
         # Keep last 500 exports
         if len(logs) > 500:
             logs = logs[:500]
 
+        logs = _strip_heavy_media(logs)
         safe_atomic_write(AUDIT_LOG_FILE, json.dumps(logs, indent=2).encode("utf-8"))
 
 
@@ -623,6 +639,8 @@ def get_user_audit_history(user_mobile: str | None = None, limit: int = 100) -> 
                 logs = json.load(f)
 
             target_mobile = _clean_mobile(user_mobile) if user_mobile else ""
+            if not target_mobile:
+                return []
             user_logs = []
             available_files = []
             if os.path.isdir(SNAPSHOTS_EXCEL_DIR):
@@ -704,7 +722,7 @@ def get_user_audit_history(user_mobile: str | None = None, limit: int = 100) -> 
                 except Exception as e_prune:
                     print(f"[Audit Snapshot] Notice during history pruning: {e_prune}")
 
-            return user_logs[:limit]
+            return _strip_heavy_media(user_logs[:limit])
         except Exception:
             return []
 

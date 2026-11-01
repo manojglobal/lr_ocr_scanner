@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'services/app_config_service.dart';
 import 'state/batch_controller.dart';
 import 'views/login_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppConfigService.instance.initialize();
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return Material(
       color: const Color(0xFFF8FAFC),

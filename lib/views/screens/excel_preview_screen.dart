@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../../services/excel_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +28,8 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   bool _isDownloadingAll = false;
   List<Map<String, dynamic>> _exportHistory = [];
   bool _isLoadingHistory = false;
+  bool _hasHistoryError = false;
+  String? _historyErrorMessage;
   // ignore: unused_field
   String _userName = 'Logistics User';
   String _userMobile = '';
@@ -35,8 +38,9 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   void initState() {
     super.initState();
     _activeSheetIndex = widget.initialTab;
-    _loadUserInfo();
-    _fetchExportHistory();
+    _loadCachedHistoryAndUserInfo().then((_) {
+      _fetchExportHistory();
+    });
   }
 
   @override
@@ -47,37 +51,60 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     }
   }
 
-  Future<void> _loadUserInfo() async {
+  Future<void> _loadCachedHistoryAndUserInfo() async {
     final prefs = await SharedPreferences.getInstance();
     final name = widget.controller.activeUserName ?? prefs.getString('bnf_user_name') ?? 'Logistics User';
     final mobile = widget.controller.activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? '';
+    final cached = prefs.getString('bnf_exported_batches');
+    List<Map<String, dynamic>> cachedList = [];
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cached) as List<dynamic>;
+        cachedList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } catch (_) {}
+    }
     if (mounted) {
       setState(() {
         _userName = name;
         _userMobile = mobile;
+        if (cachedList.isNotEmpty && _exportHistory.isEmpty) {
+          _exportHistory = cachedList;
+        }
       });
     }
   }
 
+  Future<void> _loadUserInfo() async {
+    await _loadCachedHistoryAndUserInfo();
+  }
+
   Future<void> _fetchExportHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final mobile = widget.controller.activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? _userMobile;
     setState(() {
       _isLoadingHistory = true;
+      _hasHistoryError = false;
+      _historyErrorMessage = null;
     });
     try {
       final history = await widget.controller.geminiService.getExportHistory(
-        mobile: widget.controller.activeUserMobile ?? _userMobile,
+        mobile: mobile,
         sessionToken: widget.controller.sessionToken,
       );
       if (mounted) {
         setState(() {
           _exportHistory = history;
           _isLoadingHistory = false;
+          _hasHistoryError = false;
         });
+        await prefs.setString('bnf_exported_batches', jsonEncode(history));
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _isLoadingHistory = false;
+          _hasHistoryError = true;
+          _historyErrorMessage = e.toString().replaceFirst('Exception: ', '');
         });
       }
     }
@@ -888,6 +915,38 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                   height: 24,
                   child: CircularProgressIndicator(strokeWidth: 2.5),
                 ),
+              ),
+            )
+          else if (_hasHistoryError && _exportHistory.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.wifi_off_rounded, size: 36, color: Color(0xFFDC2626)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Failed to load export history',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _historyErrorMessage ?? 'Could not connect to server. Please try again.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _fetchExportHistory,
+                    icon: const Icon(Icons.refresh, size: 14),
+                    label: const Text('Retry', style: TextStyle(fontSize: 12)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0284C7),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
+                  ),
+                ],
               ),
             )
           else if (_exportHistory.isEmpty)

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/batch_item.dart';
+import 'app_config_service.dart';
 
 /// Service that handles seamless synchronization with FastAPI user cloud storage
 /// (/api/user-cloud-storage).
@@ -20,10 +21,7 @@ class UserCloudService {
       final url = customBaseUrl.trim();
       return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
     }
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('gemini_backend_server_url') ?? 'http://192.168.0.224:8000';
-    final url = saved.trim();
-    return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    return AppConfigService.instance.baseUrl;
   }
 
   /// Fetches active batch and user cloud records for [mobile].

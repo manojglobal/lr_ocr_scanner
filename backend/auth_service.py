@@ -19,10 +19,12 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(CLOUD_DB_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+SESSION_TTL_SECONDS = 86400  # Exactly 24 hours
+
 # In-memory stores
 # Active OTPs: { "9876543210": { "otp": "482915", "expires_at": float, "attempts_left": int, "last_sent_at": float, "name": str } }
 _otp_store = {}
-# Active Sessions: { "token_abc": { "user_id": "...", "mobile": "...", "name": "...", "created_at": float } }
+# Active Sessions: { "token_abc": { "token": "...", "user_id": "...", "mobile": "...", "name": "...", "created_at_epoch": float, "expires_at_epoch": float } }
 _sessions = {}
 _auth_lock = threading.RLock()
 
@@ -81,6 +83,56 @@ def _save_users(users: dict):
                     os.remove(temp_file)
                 except Exception:
                     pass
+
+
+def _load_sessions() -> dict:
+    with _auth_lock:
+        if os.path.exists(SESSIONS_FILE):
+            try:
+                with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        return data
+            except Exception as e:
+                print(f"[AuthService] Warning loading sessions.json: {e}")
+        return {}
+
+
+def _save_sessions(sessions: dict):
+    with _auth_lock:
+        temp_file = f"{SESSIONS_FILE}.tmp_{uuid.uuid4().hex}"
+        try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(sessions, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_file, SESSIONS_FILE)
+        except Exception as e:
+            print(f"[AuthService] Error saving sessions.json: {e}")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+
+
+def _prune_expired_sessions(sessions: dict) -> bool:
+    """Removes sessions that are older than 24 hours."""
+    now = time.time()
+    expired_keys = [
+        k for k, s in list(sessions.items())
+        if float(s.get("expires_at_epoch", 0)) < now
+    ]
+    for k in expired_keys:
+        del sessions[k]
+    return len(expired_keys) > 0
+
+
+# Initialize in-memory sessions from disk and prune expired records
+with _auth_lock:
+    _sessions.update(_load_sessions())
+    if _prune_expired_sessions(_sessions):
+        _save_sessions(_sessions)
 
 
 # =========================================================================
@@ -200,10 +252,14 @@ def edit_user_record(
                     except Exception as e:
                         print(f"[AuthService] Warning migrating cloud DB: {e}")
 
-                # Invalidate old sessions for old mobile
+                # Update active sessions for old mobile
+                sessions_updated = False
                 for t, sess in list(_sessions.items()):
                     if sess.get("mobile") == old_mobile:
                         sess["mobile"] = clean_new_mob
+                        sessions_updated = True
+                if sessions_updated:
+                    _save_sessions(_sessions)
 
         _save_users(users)
 
@@ -234,6 +290,8 @@ def delete_user_record(mobile_raw: str, archive_data: bool = True) -> dict:
             if sess.get("mobile") == clean_mobile:
                 del _sessions[token]
                 terminated_sessions += 1
+        if terminated_sessions > 0:
+            _save_sessions(_sessions)
 
         # Clear active OTPs
         _otp_store.pop(clean_mobile, None)
@@ -436,22 +494,30 @@ def verify_otp(mobile_raw: str, otp_code_raw: str, name: str | None = None) -> d
         user_record["name"] = stored_name
         _save_users(users)
 
-        # Issue Session Token
-        session_token = f"bnf_{uuid.uuid4().hex}"
+        # Issue 24-Hour Session Token
+        now = time.time()
+        expires_at = now + SESSION_TTL_SECONDS
+        session_token = f"bnf_{secrets.token_hex(24)}"
         _sessions[session_token] = {
+            "token": session_token,
             "user_id": user_id,
             "mobile": mobile,
             "name": stored_name,
             "role": user_record.get("role", "operator"),
-            "login_at": datetime.now().isoformat()
+            "login_at": datetime.now().isoformat(),
+            "created_at_epoch": now,
+            "expires_at_epoch": expires_at
         }
+        _save_sessions(_sessions)
 
-    print(f"[AUTH SUCCESS] User logged in: {stored_name} (+91 {mobile}) | Token: {session_token[:12]}...")
+    print(f"[AUTH SUCCESS] User logged in: {stored_name} (+91 {mobile}) | Token: {session_token[:12]}... (24h valid)")
 
     return {
         "success": True,
         "token": session_token,
-        "user": user_record
+        "user": user_record,
+        "expires_at": expires_at,
+        "expires_in": SESSION_TTL_SECONDS
     }
 
 
@@ -503,33 +569,75 @@ def direct_login(mobile_raw: str, name: str | None = None) -> dict:
         user_record["name"] = stored_name
         _save_users(users)
 
-        # Issue Session Token
-        session_token = f"bnf_{uuid.uuid4().hex}"
+        # Issue 24-Hour Session Token
+        now = time.time()
+        expires_at = now + SESSION_TTL_SECONDS
+        session_token = f"bnf_{secrets.token_hex(24)}"
         _sessions[session_token] = {
+            "token": session_token,
             "user_id": user_id,
             "mobile": mobile,
             "name": stored_name,
             "role": user_record.get("role", "operator"),
-            "login_at": datetime.now().isoformat()
+            "login_at": datetime.now().isoformat(),
+            "created_at_epoch": now,
+            "expires_at_epoch": expires_at
         }
+        _save_sessions(_sessions)
 
-    print(f"[AUTH SUCCESS - DIRECT] User logged in: {stored_name} (+91 {mobile}) | Token: {session_token[:12]}...")
+    print(f"[AUTH SUCCESS - DIRECT] User logged in: {stored_name} (+91 {mobile}) | Token: {session_token[:12]}... (24h valid)")
 
     return {
         "success": True,
         "token": session_token,
-        "user": user_record
+        "user": user_record,
+        "expires_at": expires_at,
+        "expires_in": SESSION_TTL_SECONDS
     }
 
 
 def get_session_user(token: str | None) -> dict | None:
-    """Retrieves authenticated user from session token."""
+    """
+    Retrieves authenticated user from session token.
+    Enforces strict 24-hour expiration and developer account active verification.
+    """
     if not token or not isinstance(token, str):
         return None
     clean_token = token.replace("Bearer ", "").strip()
+    if not clean_token:
+        return None
+
+    now = time.time()
     with _auth_lock:
         entry = _sessions.get(clean_token)
-        return dict(entry) if entry else None
+        if not entry:
+            # Fallback check from sessions.json in case saved by another process/worker
+            _sessions.update(_load_sessions())
+            entry = _sessions.get(clean_token)
+
+        if not entry:
+            return None
+
+        # 1. Enforce 24-Hour Expiration Check
+        expires_at = float(entry.get("expires_at_epoch", 0))
+        if expires_at <= 0 or now > expires_at:
+            print(f"[AuthService] Session expired for {entry.get('mobile')} (Token: {clean_token[:10]}...)")
+            _sessions.pop(clean_token, None)
+            _save_sessions(_sessions)
+            return None
+
+        # 2. Enforce Developer Active Account Check
+        users = _load_users()
+        mobile = entry.get("mobile")
+        if mobile not in users:
+            print(f"[AuthService] Session revoked for deleted/inactive user: {mobile}")
+            _sessions.pop(clean_token, None)
+            _save_sessions(_sessions)
+            return None
+
+        res = dict(entry)
+        res["remaining_seconds"] = max(0, int(expires_at - now))
+        return res
 
 
 def logout_session(token: str | None) -> bool:
@@ -538,4 +646,9 @@ def logout_session(token: str | None) -> bool:
         return False
     clean_token = token.replace("Bearer ", "").strip()
     with _auth_lock:
-        return _sessions.pop(clean_token, None) is not None
+        removed = _sessions.pop(clean_token, None)
+        if removed is not None:
+            _save_sessions(_sessions)
+            print(f"[AuthService] Session logged out & revoked: {clean_token[:10]}...")
+            return True
+        return False

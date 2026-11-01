@@ -181,7 +181,7 @@ class EditableDataTable extends StatelessWidget {
 
                       // Dynamic / Schema Field Cells (Editable)
                       ...effectiveFields.map((field) {
-                        final value = item.record[field.key] ?? '';
+                        final value = item.resolveField(field.key);
                         final isMissing = field.isRequired && value.trim().isEmpty;
 
                         return DataCell(

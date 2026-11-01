@@ -16,7 +16,6 @@ import '../services/gemini_backend_service.dart';
 import '../services/image_service.dart';
 import '../services/image_preprocessor.dart';
 import '../services/ocr_service.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../services/permission_service.dart';
 import '../services/file_lifecycle_service.dart';
 import '../services/master_data_service.dart';
@@ -78,7 +77,89 @@ class BatchProcessingController extends ChangeNotifier {
 
   bool _fallbackNotificationPending = false;
   String? _fallbackNoticeMessage;
-  bool _duplicateNoticePending = false;
+  bool _invalidLrNoticePending = false;
+  String? _invalidLrNoticeMessage;
+  String? _lastInvalidLrId;
+  String? _lastInvalidLrFileName;
+  bool _connectionErrorNoticePending = false;
+  String? _connectionErrorNoticeMessage;
+
+  bool get invalidLrNoticePending => _invalidLrNoticePending;
+  String? get invalidLrNoticeMessage => _invalidLrNoticeMessage;
+  String? get lastInvalidLrId => _lastInvalidLrId;
+  String? get lastInvalidLrFileName => _lastInvalidLrFileName;
+  bool get connectionErrorNoticePending => _connectionErrorNoticePending;
+  String? get connectionErrorNoticeMessage => _connectionErrorNoticeMessage;
+
+  void triggerInvalidLrNotice(String message, {String? rejectedId, String? rejectedFileName}) {
+    _invalidLrNoticePending = true;
+    _invalidLrNoticeMessage = message;
+    _lastInvalidLrId = rejectedId;
+    _lastInvalidLrFileName = rejectedFileName;
+    notifyListeners();
+  }
+
+  void acknowledgeInvalidLrNotice() {
+    _invalidLrNoticePending = false;
+    _invalidLrNoticeMessage = null;
+    _lastInvalidLrId = null;
+    _lastInvalidLrFileName = null;
+  }
+
+  /// Removes an invalid, rejected, or discarded upload from local history caches,
+  /// SharedPreferences, and temp storage.
+  void purgeFromPreviousUploads({
+    String? id,
+    String? fileName,
+    String? imagePath,
+    String? savedFilename,
+  }) {
+    final cleanId = id?.trim().toLowerCase() ?? '';
+    final cleanFn = fileName?.trim().toLowerCase() ?? '';
+    final cleanPath = imagePath?.trim().toLowerCase() ?? '';
+    final cleanSaved = savedFilename?.trim().toLowerCase() ?? '';
+
+    _previousUploadsCache.removeWhere((r) {
+      final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim().toLowerCase();
+      final rFn = (r['fileName'] ?? r['filename'] ?? '').toString().trim().toLowerCase();
+      final rPath = (r['imagePath'] ?? r['file_path'] ?? '').toString().trim().toLowerCase();
+      final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
+
+      if (cleanId.isNotEmpty && rId.isNotEmpty && cleanId == rId) return true;
+      if (cleanFn.isNotEmpty && rFn.isNotEmpty && cleanFn == rFn) return true;
+      if (cleanPath.isNotEmpty && rPath.isNotEmpty && cleanPath == rPath) return true;
+      if (cleanSaved.isNotEmpty && rSv.isNotEmpty && cleanSaved == rSv) return true;
+      return false;
+    });
+
+    SharedPreferences.getInstance().then((p) {
+      p.setString('bnf_recent_uploaded_lrs', jsonEncode(_previousUploadsCache));
+    }).catchError((_) {});
+
+    try {
+      if (imagePath != null && imagePath.isNotEmpty) {
+        if (cleanPath.contains('scans') && cleanPath.endsWith('.pdf')) {
+          final f = File(imagePath);
+          if (f.existsSync()) {
+            f.deleteSync();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  void triggerConnectionErrorNotice(String message) {
+    _connectionErrorNoticePending = true;
+    _connectionErrorNoticeMessage = message;
+    notifyListeners();
+  }
+
+  void acknowledgeConnectionErrorNotice() {
+    _connectionErrorNoticePending = false;
+    _connectionErrorNoticeMessage = null;
+    notifyListeners();
+  }
+bool _duplicateNoticePending = false;
   String? _duplicateNoticeMessage;
   List<Map<String, dynamic>> _previousUploadsCache = [];
 
@@ -121,7 +202,15 @@ class BatchProcessingController extends ChangeNotifier {
   }
 
   void setPreviousUploadsCache(List<Map<String, dynamic>> list) {
-    _previousUploadsCache = List<Map<String, dynamic>>.from(list);
+    _previousUploadsCache = list
+        .where((m) =>
+          m['error_code'] != 'INVALID_LR' &&
+          m['isInvalidLr'] != true &&
+          m['status'] != 'failed' &&
+          m['status'] != 'pending'
+        )
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   /// Computes a SHA-256 hash string for an image file.
@@ -878,6 +967,8 @@ class BatchProcessingController extends ChangeNotifier {
   /// Sequential processing of all pending queue items.
   /// After all items complete, automatically saves an Excel file so the user
   /// always has an up-to-date export without needing to manually tap "Export".
+  Future<void> processQueue() => _processQueue();
+
   Future<void> _processQueue() async {
     if (_isProcessing) {
       await _processingCompleter?.future;
@@ -940,76 +1031,84 @@ class BatchProcessingController extends ChangeNotifier {
                   )
                   .timeout(const Duration(seconds: 90));
 
-              if (serverResult.status != ExtractionStatus.failed) {
+                            if (serverResult.status != ExtractionStatus.failed) {
                 parseResult = serverResult;
                 rawOcrText = serverResult.rawText;
                 activeOcrEngine = 'server';
                 if (isOrangeYellow) {
                   parseResult.data['BNF LR No'] = '';
                 }
+              } else if (serverResult.isInvalidLr || serverResult.errorCode == 'INVALID_LR') {
+                debugPrint('Invalid LR rejected by server for item . Discarding.');
+                final rejectedId = item.id;
+                final rejectedFn = item.fileName;
+                final rejectedPath = item.imagePath;
+                final rejectedSaved = item.record['saved_filename']?.toString() ?? '';
+                _items.removeWhere((i) => i.id == item.id);
+                purgeFromPreviousUploads(
+                  id: rejectedId,
+                  fileName: rejectedFn,
+                  imagePath: rejectedPath,
+                  savedFilename: rejectedSaved,
+                );
+                triggerInvalidLrNotice(
+                  'Invalid LR – Please upload a valid LR document.',
+                  rejectedId: rejectedId,
+                  rejectedFileName: rejectedFn,
+                );
+                continue;
               } else {
-                debugPrint('Server OCR failed: ${serverResult.message}. Switching to ML fallback.');
+                debugPrint('Server validation failed: . Discarding item.');
+                final rejectedId = item.id;
+                final rejectedFn = item.fileName;
+                final rejectedPath = item.imagePath;
+                final rejectedSaved = item.record['saved_filename']?.toString() ?? '';
+                _items.removeWhere((i) => i.id == item.id);
+                purgeFromPreviousUploads(
+                  id: rejectedId,
+                  fileName: rejectedFn,
+                  imagePath: rejectedPath,
+                  savedFilename: rejectedSaved,
+                );
+                triggerConnectionErrorNotice('Unable to reach the validation server. Please check your network connection and try again.');
+                notifyListeners();
+                continue;
               }
             } catch (serverErr) {
-              debugPrint('Server OCR unavailable ($serverErr). Switching to ML fallback.');
+              debugPrint('Server OCR unavailable (). Discarding item.');
+              final rejectedId = item.id;
+              final rejectedFn = item.fileName;
+              final rejectedPath = item.imagePath;
+              final rejectedSaved = item.record['saved_filename']?.toString() ?? '';
+              _items.removeWhere((i) => i.id == item.id);
+              purgeFromPreviousUploads(
+                id: rejectedId,
+                fileName: rejectedFn,
+                imagePath: rejectedPath,
+                savedFilename: rejectedSaved,
+              );
+              triggerConnectionErrorNotice('Unable to reach the validation server. Please check your network connection and try again.');
+              notifyListeners();
+              continue;
             }
           }
 
-          // 2. Automatic Fallback: On-Device ML Kit OCR if server is unavailable or returned failure
           if (parseResult == null) {
-            activeOcrEngine = 'ml_fallback';
-            _fallbackNotificationPending = true;
-            _fallbackNoticeMessage =
-                'There is a technical issue with the server. You can contact the admin or continue. The results may be inaccurate.';
-            _statusMessage = 'Extracting (${item.fileName})...';
+            final rejectedId = item.id;
+            final rejectedFn = item.fileName;
+            final rejectedPath = item.imagePath;
+            final rejectedSaved = item.record['saved_filename']?.toString() ?? '';
+            _items.removeWhere((i) => i.id == item.id);
+            purgeFromPreviousUploads(
+              id: rejectedId,
+              fileName: rejectedFn,
+              imagePath: rejectedPath,
+              savedFilename: rejectedSaved,
+            );
+            triggerConnectionErrorNotice('Unable to reach the validation server. Please check your network connection and try again.');
             notifyListeners();
-
-            // Extract pages for multi-page document fallback
-            List<String> pagePaths = [];
-            final rawPages = item.record['preview_pages'];
-            if (rawPages != null && rawPages.isNotEmpty) {
-              try {
-                final decoded = jsonDecode(rawPages);
-                if (decoded is List) {
-                  pagePaths = decoded.map((e) => e.toString()).toList();
-                }
-              } catch (_) {}
-            }
-
-            if (pagePaths.isNotEmpty) {
-              final textBuffer = StringBuffer();
-              final allBlocks = <TextBlock>[];
-              for (int pIdx = 0; pIdx < pagePaths.length; pIdx++) {
-                final pText = await _ocrService.recognizeTextFromPath(pagePaths[pIdx]);
-                if (pText.text.isNotEmpty) {
-                  textBuffer.writeln('--- PAGE ${pIdx + 1} ---');
-                  textBuffer.writeln(pText.text);
-                  allBlocks.addAll(pText.blocks);
-                }
-              }
-              final fullText = textBuffer.toString();
-              rawOcrText = fullText;
-              final fullRecognizedText = RecognizedText(text: fullText, blocks: allBlocks);
-              parseResult = _parserService.parseRecognizedText(
-                fullRecognizedText,
-                schema: _currentSchema,
-                isOrangeYellow: isOrangeYellow,
-              );
-            } else {
-              // ML Kit On-Device Recognition
-              final recognizedText =
-                  await _ocrService.recognizeTextFromPath(item.imagePath);
-
-              // Parse against active schema with image type awareness
-              parseResult = _parserService.parseRecognizedText(
-                recognizedText,
-                schema: _currentSchema,
-                isOrangeYellow: isOrangeYellow,
-              );
-              rawOcrText = recognizedText.text;
-            }
+            continue;
           }
-
           // Retain multi-page scan metadata and preserve original local device photos
           if (item.record['preview_pages'] != null) {
             parseResult.data['local_preview_pages'] = item.record['preview_pages']!;
@@ -1032,8 +1131,18 @@ class BatchProcessingController extends ChangeNotifier {
             fileName: item.fileName,
             excludeItemId: item.id,
           )) {
-            debugPrint('Duplicate LR detected post-OCR for item ${item.id}. Rejecting.');
+            debugPrint('Duplicate LR detected post-OCR for item . Rejecting.');
+            final dupId = item.id;
+            final dupFn = item.fileName;
+            final dupPath = item.imagePath;
+            final dupSaved = item.record['saved_filename']?.toString() ?? '';
             _items.removeWhere((i) => i.id == item.id);
+            purgeFromPreviousUploads(
+              id: dupId,
+              fileName: dupFn,
+              imagePath: dupPath,
+              savedFilename: dupSaved,
+            );
             triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
             notifyListeners();
             continue;

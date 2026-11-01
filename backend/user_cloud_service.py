@@ -31,6 +31,20 @@ def _get_user_db_path(mobile: str) -> str:
     return os.path.join(CLOUD_DB_DIR, f"{clean_mob}.json")
 
 
+def _strip_heavy_media(obj: Any) -> Any:
+    """Recursively removes large raw base64 image strings from JSON payloads to ensure high performance and user sync."""
+    if isinstance(obj, dict):
+        cleaned = {}
+        for k, v in obj.items():
+            if k in ("preview_image", "thumbnail_image", "imageSrc", "raw_image_bytes") and isinstance(v, str) and (v.startswith("data:image/") or len(v) > 500):
+                continue
+            cleaned[k] = _strip_heavy_media(v)
+        return cleaned
+    elif isinstance(obj, list):
+        return [_strip_heavy_media(item) for item in obj]
+    return obj
+
+
 def _load_user_db(mobile: str, user_id: str | None = None, user_name: str | None = None) -> dict:
     """Loads user JSON DB or initializes default structure."""
     clean_mob = _clean_mobile(mobile) or "guest"
@@ -54,7 +68,10 @@ def _load_user_db(mobile: str, user_id: str | None = None, user_name: str | None
                         data["user_id"] = user_id
                     if user_name and not data.get("user_name"):
                         data["user_name"] = user_name
-                    return data
+
+                    # Auto-prune any legacy raw base64 images so user DB remains fast and lightweight (~30KB)
+                    cleaned = _strip_heavy_media(data)
+                    return cleaned
         except Exception as e:
             print(f"[UserCloudService] Notice reading user DB {db_path}: {e}")
 
@@ -76,6 +93,7 @@ def _save_user_db(mobile: str, data: dict) -> bool:
     db_path = _get_user_db_path(clean_mob)
     temp_path = f"{db_path}.tmp"
 
+    data = _strip_heavy_media(data)
     data["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
     data["user_mobile"] = clean_mob
 
@@ -319,7 +337,7 @@ def record_generated_excel(mobile: str, excel_entry: dict, user_id: str | None =
             "file_size_kb": excel_entry.get("file_size_kb") or 45,
             "generated_on": excel_entry.get("generated_on") or excel_entry.get("generated_at") or now_iso,
             "exported_by": excel_entry.get("generated_by") or excel_entry.get("user_name") or user_name or "Logistics User",
-            "documents": excel_entry.get("documents") or []
+            "documents": _strip_heavy_media(excel_entry.get("documents") or [])
         }
 
         if existing_idx >= 0:

@@ -8,9 +8,9 @@ import re
 import socket
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -215,6 +215,42 @@ TEMPLATE_STOCK_38 = _resolve_project_file("ImportGRStockExcelFormat.xlsx")
 DEFAULT_HANDWRITTEN_OCR_PROMPT = """
 You are the Master OCR and Document Information Scraping Engine for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and its enterprise logistics clients.
 Inspect ALL pages in the provided document dossier thoroughly (including Consignment Note Bilty, Commercial Tax Invoices, GST E-Way Bills, Vehicle RC Form 23A, and Commercial Driving Licences DL) and map the extracted data strictly into the 49 standardized columns:
+
+### STEP 0: MANDATORY DOCUMENT AUTHENTICITY VALIDATION (FAIL-SAFE)
+You MUST evaluate whether the image or document dossier is a genuine Logistics Consignment / Freight Transport document (Lorry Receipt, Bilty, or Consignment Note).
+
+CRITICAL CLASSIFICATION RULES:
+1. GENUINE LR / BILTY / CONSIGNMENT NOTE:
+   - Contains a Consignment Note / Lorry Receipt (LR) / Bilty (or C-Note / G.R. / Goods Receipt) from a transporter (e.g., Box N Freight, Patanjali Parivahan, Unicharm, Himalaya, Gold Plus, or third-party Indian logistics carriers).
+   - Even if handwritten, faint carbon copy, low-light, folded, stamped, or customer-specific format, it is a genuine LR.
+   - If the dossier is a multi-page document containing an LR plus attached E-Way Bill, Tax Invoice, Gate Pass, or Driver License, it is VALID.
+   - Set:
+     * `has_consignment_note`: true
+     * `is_valid_lr`: true
+     * `document_type`: "lorry_receipt" or "bilty" or "consignment_note"
+
+2. STANDALONE NON-LR LOGISTICS DOCUMENTS (STRICTLY INVALID BY THEMSELVES):
+   - Standalone E-Way Bill (Form GST EWB-01) WITHOUT any LR or Bilty in the document dossier -> REJECT.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "standalone_eway_bill", `rejection_reason`: "Standalone E-Way bill without LR/Bilty".
+   - Standalone Gate Pass / Security Movement Slip WITHOUT any LR or Bilty -> REJECT.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "standalone_gate_pass", `rejection_reason`: "Standalone Gate Pass without LR/Bilty".
+   - Standalone Commercial Tax Invoice / Packing List WITHOUT any LR or Bilty -> REJECT.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "standalone_invoice", `rejection_reason`: "Standalone Tax Invoice without LR/Bilty".
+
+3. UNRELATED / NON-LOGISTICS DOCUMENTS (STRICTLY INVALID):
+   - Selfies, human portraits, faces, photos of people or random physical objects.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "selfie", `rejection_reason`: "Selfie / photo of person".
+   - Mobile screenshots of WhatsApp chats, apps, social media, games, homescreen.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "screenshot", `rejection_reason`: "Phone screenshot".
+   - Blank or underexposed photos with no document text, plain blank paper/floors/walls.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "blank", `rejection_reason`: "Blank image with no document content".
+   - Non-freight receipts: restaurant bills, food slips, grocery store shopping receipts, personal letters, school notes.
+     Set `has_consignment_note`: false, `is_valid_lr`: false, `document_type`: "unrelated", `rejection_reason`: "Unrelated non-freight document".
+
+4. MULTI-SIGNAL INDICATORS:
+   - Set `has_parties_or_movement`: true if consignor, consignee, origin, or destination are present.
+   - Set `has_cargo_or_vehicle`: true if package count, cargo description, weight, or vehicle plate are present.
+   - Set `has_freight_terms`: true if freight amount, payment terms (TBB/To Pay/Paid), or transport rate are present.
 
 ### STEP 1: AUTOMATIC COMPANY & DOCUMENT PROFILE IDENTIFICATION
 Visually examine the document header, company logo, billing parties, and stamps to classify the customer profile:
@@ -461,6 +497,43 @@ E. GENERIC BNF & OTHER CLIENTS (MANI-FEST)
 - For orange/yellow paper bilties: BNF LR No is permanently removed / blank.
 - Capture driver credentials ONLY if explicitly written or attached; never invent.
 - Under FTL freight contracts, return 0 for freight.
+
+### STEP 2.5: CANONICAL 49-COLUMN KEY NAMES FOR KEY_VALUE_PAIRS
+When outputting `key_value_pairs`, every extracted field MUST use the standardized canonical BNF schema key names below (NEVER use raw form labels like 'Consignment Note No', 'Tempo/Truck No', 'Consignor Name & Address', 'Description (Said to Contain)', 'No. of Packages'):
+- "grno" and "LR No *": Primary Consignment / LR Tracking Number (e.g. bold 5-digit number like 30035, 33118).
+- "grdt" and "grdt *": Consignment booking date (strictly DD/MM/YYYY, e.g. 05/08/2026).
+- "Vehicle No *": Indian motor vehicle registration plate (e.g. PB13AR4739, MH43Y5002).
+- "Vehicle Type *": Vehicle body type (e.g. Market, 32 FT, 22 FT).
+- "Customer Name *": Corporate billed entity (e.g. Himalaya Wellness Company, UNICHARM INDIA PVT. LTD., PATANJALI FOODS LTD).
+- "cngr" and "cngr *": Consignor name & full address.
+- "cnge" and "cnge *": Consignee name & destination address.
+- "cngrgstno" and "cngrgstno *": Consignor 15-character GSTIN.
+- "cngegstno" and "cngegstno *": Consignee 15-character GSTIN.
+- "orgrefcode": Origin station / city from 'From' box (e.g. HYDERABAD, Bangalore).
+- "destrefcode": Destination station / city from 'To' box (e.g. Haryana (Ambada), Kolkata).
+- "goods": Commodity description / material from 'Description (Said to Contain)'.
+- "bookedpckgs" and "stockpckgs": Integer package count from 'No. of Packages'.
+- "bookedaweight" and "stockaweight": Actual weight in KG.
+- "bookedcweight" and "stockcweight": Charged weight in KG.
+- "invoiceno": Commercial invoice number.
+- "invoiedt": Commercial invoice date (DD/MM/YYYY).
+- "valgoods": Declared invoice goods value (numeric without commas).
+- "ewaybillno": 12-digit GST E-Way Bill number.
+- "Valid Upto": E-Way Bill validity expiry date (DD/MM/YYYY).
+- "Transit Days": Days difference between booking date and E-Way validity.
+- "grtype": Payment terms ('TBB', 'TO PAY', 'PAID').
+- "pmark": Container seal number (digits only, e.g. 001678).
+- "packing": Packaging format (Box, Bag, Cartons, Barrels).
+- "Driver Name *": Driver full name from attached DL.
+- "Mobile no   *": Driver 10-digit mobile number.
+- "Liscense No *": Driver commercial licence number from attached DL.
+- "Valid Up to *": Driver DL transport validity expiry date (DD/MM/YYYY).
+- "Loading Start date *": Booking date (DD/MM/YYYY).
+- "freight  *": Freight amount (0 if FTL contract).
+- "oamount": Other charges (0.00 if absent).
+- "ftl": Load type (FTL, LTL, N).
+- "staxpaidby": GST paying party (C, E, T).
+- "dlvtype": Delivery type (D, G).
 
 ### STEP 3: STRICT ZERO-HALLUCINATION ENFORCEMENT
 1. If any field is classified as absent or is not visibly present in the document/attachments, return strictly empty string "" (or 0.00 / 0 for numeric amounts).
@@ -747,6 +820,25 @@ def is_orange_yellow_image(pil_img: Image.Image) -> bool:
             if r > 115 and g > 90 and (r - b > 35 or g - b > 30):
                 orange_yellow_count += 1
         return (orange_yellow_count / len(pixels)) > 0.15
+    except Exception:
+        return False
+
+
+def is_blank_or_solid_image(pil_img: Image.Image) -> bool:
+    """
+    Safe check: only returns True if image is a pure, solid monochrome digital block
+    with near-zero pixel variation across the entire image (std dev < 1.5 on 0-255 scale).
+    Never rejects faded carbon-copies, low-light photos, or faint handwriting.
+    """
+    try:
+        thumb = pil_img.convert("L").resize((64, 64))
+        pixels = list(thumb.getdata())
+        if not pixels:
+            return True
+        mean = sum(pixels) / len(pixels)
+        variance = sum((p - mean) ** 2 for p in pixels) / len(pixels)
+        std_dev = variance ** 0.5
+        return std_dev < 1.5
     except Exception:
         return False
 
@@ -1256,8 +1348,45 @@ class KeyValuePair(BaseModel):
 
 class GeminiOCRResponse(BaseModel):
     document_title: str
+    is_valid_lr: bool = False
+    document_type: str = "unknown"
+    has_consignment_note: bool = False
+    has_parties_or_movement: bool = False
+    has_cargo_or_vehicle: bool = False
+    has_freight_terms: bool = False
+    rejection_reason: str = ""
     key_value_pairs: list[KeyValuePair]
     confidence_notes: str
+
+
+def _to_gemini_compatible_schema(pydantic_cls_or_dict):
+    """
+    Transforms a Pydantic model or schema dictionary into a Google Gemini-compatible
+    schema by recursively stripping unsupported schema properties (e.g. 'default', 'title', '$schema', '$defs')
+    while preserving field types, properties, items, required fields, and enums.
+    Preserves Pydantic defaults on the application Python class.
+    """
+    from google.generativeai.types import content_types
+    if isinstance(pydantic_cls_or_dict, type) and issubclass(pydantic_cls_or_dict, BaseModel):
+        raw_schema = content_types._schema_for_class(pydantic_cls_or_dict)
+    elif isinstance(pydantic_cls_or_dict, dict):
+        raw_schema = pydantic_cls_or_dict
+    else:
+        return pydantic_cls_or_dict
+
+    def _clean_node(node):
+        if not isinstance(node, dict):
+            if isinstance(node, list):
+                return [_clean_node(item) for item in node]
+            return node
+        cleaned = {}
+        for k, v in node.items():
+            if k in ("default", "title", "$schema", "definitions", "$defs"):
+                continue
+            cleaned[k] = _clean_node(v)
+        return cleaned
+
+    return _clean_node(raw_schema)
 
 
 class ParsedDocument(BaseModel):
@@ -1408,6 +1537,35 @@ def download_apk():
     raise HTTPException(status_code=404, detail="APK build not found on server.")
 
 
+# --- ROUTE 3B: Centralized Remote Configuration Endpoint ---
+@app.get("/api/config")
+def get_server_config():
+    """
+    Returns the centralized server configuration including active base URL,
+    websocket URL, fallback endpoints, and minimum app requirements.
+    """
+    config_path = os.path.join(BASE_DIR, "server_config.json")
+    if not os.path.exists(config_path):
+        config_path = os.path.join(os.path.dirname(BASE_DIR), "server_config.json")
+    
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to read server_config.json: {e}")
+
+    local_ip = get_local_ip()
+    return {
+        "server_url": f"http://{local_ip}:8000",
+        "websocket_url": f"ws://{local_ip}:8000/ws",
+        "fallback_urls": [f"http://{local_ip}:8000"],
+        "config_version": 1,
+        "app_min_version": "1.0.0",
+        "maintenance_mode": False
+    }
+
+
 def _resolve_user_from_request(
     authorization: str | None = None,
     user_id: str | None = None,
@@ -1460,6 +1618,340 @@ def _resolve_user_from_request(
         "user_mobile": resolved_mobile,
         "user_name": resolved_name or "Logistics User"
     }
+
+
+
+def canonicalize_extracted_data(data_dict: dict) -> dict:
+    """
+    Normalizes extracted OCR fields from any prompt or document format into
+    canonical keys compatible with:
+    1. GR_BNF_49_HEADERS (49 Columns)
+    2. GR_STOCK_38_HEADERS (38 Columns)
+    3. Web BNF table column lookup (getBnfFieldValue)
+    4. Android BatchItem and EditableDataTable (resolveField & direct key lookup)
+    """
+    if not isinstance(data_dict, dict):
+        return {}
+
+    norm_map = {}
+    for k, v in data_dict.items():
+        if v is not None and str(v).strip() != "":
+            clean_k = re.sub(r'[^a-zA-Z0-9]', '', str(k)).lower()
+            norm_map[clean_k] = str(v).strip()
+
+    def get_val(*candidates, default=""):
+        for c in candidates:
+            if c in data_dict and data_dict[c] is not None and str(data_dict[c]).strip() != "":
+                return str(data_dict[c]).strip()
+            clean_c = re.sub(r'[^a-zA-Z0-9]', '', str(c)).lower()
+            if clean_c in norm_map and norm_map[clean_c] != "":
+                return norm_map[clean_c]
+        return default
+
+    # 1. LR / Consignment Note Number
+    raw_lr = get_val(
+        "grno (*)", "grno", "LR No *", "LR No", "lrno", "bilty no", "biltyno", "bilty number",
+        "consignment note no", "consignment note number", "consignment note", "consignment no",
+        "c note no", "c note", "c-note", "cn no", "cn number", "lr #", "lr number", "gr number",
+        "bilty_no"
+    )
+    cleaned_lr = _clean_grno(raw_lr)
+    if cleaned_lr:
+        data_dict["grno"] = cleaned_lr
+        data_dict["grno (*)"] = cleaned_lr
+        data_dict["LR No *"] = cleaned_lr
+        data_dict["LR No"] = cleaned_lr
+        data_dict["lrno"] = cleaned_lr
+        data_dict["biltyno"] = cleaned_lr
+
+    # 2. Consignment Booking Date
+    raw_date = get_val(
+        "grdt *", "grdt", "stockdt", "stockdt ", "date", "bkg date", "booking date",
+        "lr date", "bilty date", "consignment date", "loading start date *", "loading start date",
+        "dispatch date"
+    )
+    formatted_date = _format_date_ddmmyyyy(raw_date)
+    if formatted_date:
+        data_dict["grdt"] = formatted_date
+        data_dict["grdt *"] = formatted_date
+        data_dict["stockdt"] = formatted_date
+        data_dict["stockdt "] = formatted_date
+        if not data_dict.get("Loading Start date *"):
+            data_dict["Loading Start date *"] = formatted_date
+
+    # 3. Vehicle Number
+    raw_veh = get_val(
+        "Vehicle No *", "Vehicle No", "vehno", "tempo/truck no", "tempo / truck no",
+        "tempo truck no", "truck no", "truck no.", "lorry no", "vehicle number", "veh no",
+        "reg no", "registration no", "rc no", "tempo no", "vehicle_no"
+    )
+    if raw_veh:
+        clean_veh = re.sub(r'\s+', '', str(raw_veh)).upper()
+        data_dict["Vehicle No *"] = clean_veh
+        data_dict["Vehicle No"] = clean_veh
+        data_dict["vehno"] = clean_veh
+
+    # 4. Vehicle Type
+    raw_veh_type = get_val(
+        "Vehicle Type *", "Vehicle Type", "vehicle category", "truck type", "lorry type",
+        "body type", "category", default="Market"
+    )
+    if not raw_veh_type or str(raw_veh_type).strip().lower() in ("none", "null", "nan", "") or str(raw_veh_type).strip().upper() == "MARKET":
+        veh_type_val = "Market"
+    else:
+        veh_type_val = str(raw_veh_type).strip()
+    data_dict["Vehicle Type *"] = veh_type_val
+    data_dict["Vehicle Type"] = veh_type_val
+    data_dict["Vehicle Category"] = veh_type_val
+
+    # 5. Consignor (cngr)
+    raw_cngr = get_val(
+        "cngr *", "cngr", "consignor name & address", "consignor name and address",
+        "consignor's name & address", "consignor name", "consignor", "sender", "shipper",
+        "from party", "consignor address"
+    )
+    if raw_cngr:
+        data_dict["cngr *"] = raw_cngr
+        data_dict["cngr"] = raw_cngr
+
+    # 6. Consignee (cnge)
+    raw_cnge = get_val(
+        "cnge *", "cnge", "consignee name & address", "consignee name and address",
+        "consignee's name & address", "consignee name", "consignee", "receiver",
+        "to party", "consignee address"
+    )
+    if raw_cnge:
+        data_dict["cnge *"] = raw_cnge
+        data_dict["cnge"] = raw_cnge
+
+    # 7. Customer Name
+    raw_cust = get_val(
+        "Customer Name *", "Customer Name", "customer name", "customer", "billed to",
+        "party name", "account name", "corporate billed account", "client name"
+    )
+    if not raw_cust:
+        cngr_low = str(raw_cngr or "").lower()
+        cnge_low = str(raw_cnge or "").lower()
+        if "himalaya" in cngr_low or "himalaya" in cnge_low:
+            raw_cust = "Himalaya Wellness Company"
+        elif any(w in cngr_low or w in cnge_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
+            raw_cust = "UNICHARM INDIA PVT. LTD."
+        elif "patanjali" in cngr_low or "patanjali" in cnge_low:
+            raw_cust = "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)"
+        elif any(w in cngr_low or w in cnge_low for w in ["gold plus", "gold_plus", "goldplus"]):
+            raw_cust = "GOLD PLUS FLOAT GLASS PRIVATE LIMITED"
+        elif raw_cngr:
+            raw_cust = raw_cngr.split(",")[0].split("-")[0].strip()
+    if raw_cust:
+        data_dict["Customer Name *"] = raw_cust
+        data_dict["Customer Name"] = raw_cust
+        data_dict["customer"] = raw_cust
+
+    # 8. Consignor GSTIN & Consignee GSTIN
+    raw_cngr_gst = get_val("cngrgstno *", "cngrgstno", "consignor gst", "consignor gstin", "cngr gst", "sender gst")
+    if raw_cngr_gst:
+        data_dict["cngrgstno *"] = raw_cngr_gst
+        data_dict["cngrgstno"] = raw_cngr_gst
+    raw_cnge_gst = get_val("cngegstno *", "cngegstno", "consignee gst", "consignee gstin", "cnge gst", "receiver gst")
+    if raw_cnge_gst:
+        data_dict["cngegstno *"] = raw_cnge_gst
+        data_dict["cngegstno"] = raw_cnge_gst
+
+    # 9. Origin & Destination
+    raw_org = get_val("orgrefcode", "from", "from city", "origin", "origin station", "booking station", "from station")
+    if raw_org:
+        data_dict["orgrefcode"] = raw_org
+    raw_dest = get_val("destrefcode", "to", "to city", "destination", "destination station", "delivery station", "to station")
+    if raw_dest:
+        data_dict["destrefcode"] = raw_dest
+
+    # 10. Goods Description
+    raw_goods = get_val(
+        "goods", "description (said to contain)", "description", "said to contain",
+        "nature of goods", "commodity", "item description", "material", "goods description"
+    )
+    if raw_goods:
+        data_dict["goods"] = raw_goods
+
+    # 11. Packages
+    raw_pkgs = get_val(
+        "pckgs", "bookedpckgs", "stockpckgs", "stockpkgs", "no. of packages", "no of packages",
+        "no. of pkgs", "no of pkgs", "total packages", "packages", "pkgs", "quantity", "qty",
+        "total cases", "cases", "no of articles"
+    )
+    if raw_pkgs:
+        cleaned_pkgs = re.sub(r'[^0-9\+]', '', str(raw_pkgs)).strip()
+        if not cleaned_pkgs:
+            cleaned_pkgs = str(raw_pkgs).strip()
+        data_dict["pckgs"] = cleaned_pkgs
+        data_dict["bookedpckgs"] = cleaned_pkgs
+        data_dict["stockpckgs"] = cleaned_pkgs
+        data_dict["stockpkgs"] = cleaned_pkgs
+
+    # 12. Actual & Charged Weights
+    raw_awt = get_val(
+        "aweight", "bookedaweight", "stockaweight", "actual wt(kgs)", "actual weight",
+        "actual wt", "gross weight", "act wt", "weight", "net weight"
+    )
+    if raw_awt:
+        data_dict["aweight"] = str(raw_awt)
+        data_dict["bookedaweight"] = str(raw_awt)
+        data_dict["stockaweight"] = str(raw_awt)
+
+    raw_cwt = get_val(
+        "cweight", "bookedcweight", "stockcweight", "charged weight", "charged wt",
+        "total charged weight", "chg wt", default=raw_awt
+    )
+    if raw_cwt:
+        data_dict["cweight"] = str(raw_cwt)
+        data_dict["bookedcweight"] = str(raw_cwt)
+        data_dict["stockcweight"] = str(raw_cwt)
+
+    # 13. Invoice No & Date
+    raw_inv = get_val("invoiceno", "invoice no", "invoice no.", "invoice number", "bill no", "inv no", "tax invoice no")
+    if raw_inv:
+        data_dict["invoiceno"] = raw_inv
+
+    raw_invdt = get_val("invoiedt", "invoice date", "bill date", "inv date", "tax invoice date", default=formatted_date)
+    if raw_invdt:
+        data_dict["invoiedt"] = _format_date_ddmmyyyy(raw_invdt)
+
+    # 14. Declared Value of Goods
+    raw_val = get_val(
+        "valgoods", "declared value", "value of goods", "value as per invoice",
+        "goods value", "invoice value", "total invoice amount", "invoice amount", "total value"
+    )
+    if raw_val:
+        data_dict["valgoods"] = re.sub(r'[^0-9\.]', '', str(raw_val).replace(',', ''))
+
+    # 15. E-Way Bill Number
+    raw_ewb = get_val("ewaybillno", "e-way bill no", "e-way bill no.", "eway bill no", "e-way bill", "ewb no", "ewaybill")
+    if raw_ewb:
+        data_dict["ewaybillno"] = re.sub(r'[^0-9]', '', str(raw_ewb))
+
+    # 16. E-Way Bill Validity
+    raw_ewb_upto = get_val("Valid Upto", "valid upto", "valid upto (ewb)", "ewb valid upto", "e-way bill valid upto", "eway validity")
+    if raw_ewb_upto:
+        data_dict["Valid Upto"] = _format_date_ddmmyyyy(raw_ewb_upto)
+
+    # 17. Transit Days
+    calc_td = _calculate_transit_days(data_dict.get("grdt", ""), data_dict.get("Valid Upto", ""))
+    if calc_td:
+        data_dict["Transit Days"] = str(calc_td)
+    else:
+        raw_td = get_val("Transit Days", "transit days", "transit_days")
+        if raw_td:
+            data_dict["Transit Days"] = str(raw_td)
+
+    # 18. Payment Terms (grtype)
+    raw_grtype = get_val("grtype", "grtype(Don’t know)", "grtype(don't know)", "freight terms", "payment terms", "payment type", "pay type", "freight term")
+    if raw_grtype:
+        u_gt = str(raw_grtype).strip().upper()
+        if "TO PAY" in u_gt or "TOPAY" in u_gt or u_gt == "T":
+            norm_gt = "TO PAY"
+        elif "TBB" in u_gt:
+            norm_gt = "TBB"
+        elif "PAID" in u_gt:
+            norm_gt = "PAID"
+        else:
+            norm_gt = str(raw_grtype).strip()
+        data_dict["grtype"] = norm_gt
+        data_dict["grtype(Don’t know)"] = norm_gt
+
+    # 19. Freight, Charges, Taxes
+    raw_fr = get_val("freight  *", "freight", "freight charge", "basic freight", "total freight", "freight amount")
+    data_dict["freight  *"] = str(raw_fr) if raw_fr else "0"
+    data_dict["freight"] = str(raw_fr) if raw_fr else "0"
+
+    raw_oamt = get_val("oamount", "other charges", "other amount", "hamali", "unloading charges", "loading charges", "aoc", "misc")
+    if raw_oamt and str(raw_oamt).strip() not in ("", "0", "0.00", "None", "null", "nan"):
+        data_dict["oamount"] = str(raw_oamt).strip()
+    else:
+        data_dict["oamount"] = "0.00"
+
+    data_dict["cgst"] = str(get_val("cgst", "cgst amount", default="0"))
+    data_dict["sgst"] = str(get_val("sgst", "sgst amount", default="0"))
+    data_dict["igst"] = "0.00"
+    data_dict["received"] = str(get_val("received", "amount received", default="0"))
+    data_dict["advance"] = str(get_val("advance", "advance amount", default="0"))
+
+    # 20. FTL, staxpaidby, dlvtype
+    raw_ftl = get_val("ftl", "full truck load", "ftl flag", "load type")
+    if raw_ftl:
+        u_ftl = str(raw_ftl).strip().upper()
+        if u_ftl in ("FTL", "LTL", "Y", "N"):
+            data_dict["ftl"] = u_ftl
+        elif "FTL" in u_ftl or "32 FT" in u_ftl or "7 MT" in u_ftl or "FULL" in u_ftl or u_ftl.startswith("Y"):
+            data_dict["ftl"] = "FTL"
+        elif "LTL" in u_ftl or "PART" in u_ftl or u_ftl.startswith("N"):
+            data_dict["ftl"] = "LTL"
+        else:
+            data_dict["ftl"] = u_ftl
+    else:
+        data_dict["ftl"] = "N"
+
+    raw_stax = get_val("staxpaidby", "service tax paid by", "stax paid by", "gst paid by")
+    if raw_stax:
+        u_stax = str(raw_stax).strip().upper()
+        data_dict["staxpaidby"] = "E" if (u_stax.startswith("E") or "CONSIGNEE" in u_stax) else ("T" if (u_stax.startswith("T") or "TRANSPORTER" in u_stax) else "C")
+    else:
+        is_to_pay = "TO PAY" in str(data_dict.get("grtype") or "").upper()
+        data_dict["staxpaidby"] = "E" if is_to_pay else "C"
+
+    raw_dlv = get_val("dlvtype", "delivery type", "dlv type", "delivery mode")
+    if raw_dlv:
+        u_dlv = str(raw_dlv).strip().upper()
+        data_dict["dlvtype"] = "D" if (u_dlv.startswith("D") or "DOOR" in u_dlv) else "G"
+    else:
+        data_dict["dlvtype"] = "G"
+
+    # 21. Station & Customer references
+    raw_cntr = get_val("Counter name", "Counter", "counter name", "counter", "booking counter", "branchrefcode")
+    if raw_cntr:
+        data_dict["Counter name"] = raw_cntr
+        data_dict["Counter"] = raw_cntr
+        data_dict["counter"] = raw_cntr
+        data_dict["branchrefcode"] = raw_cntr
+
+    if not data_dict.get("collectionstncode"):
+        coll = data_dict.get("orgrefcode") or data_dict.get("branchrefcode") or data_dict.get("Counter") or ""
+        if coll:
+            data_dict["collectionstncode"] = coll
+        else:
+            data_dict["collectionstncode"] = data_dict.get("destrefcode", "") if ("TO PAY" in str(data_dict.get("grtype", "")).upper()) else ""
+
+    if not data_dict.get("custrefcode"):
+        data_dict["custrefcode"] = get_val("custrefcode", "party code", "customer code", default="CM001")
+
+    # 22. Seal (pmark)
+    pmark_raw = get_val("pmark", "private mark", "seal no", "seal", "container seal", "brand mark")
+    if pmark_raw:
+        data_dict["pmark"] = _clean_pmark(pmark_raw)
+
+    # 23. Driver compliance fields
+    data_dict["Driver Name *"] = get_val("Driver Name *", "driver name", "driver", "pilot", default="")
+    data_dict["Mobile no   *"] = get_val("Mobile no   *", "mobile no *", "mobile no", "driver mobile", default="")
+    data_dict["Liscense No *"] = get_val("Liscense No *", "license no *", "license no", "dl no", default="")
+    raw_dl_up = get_val("Valid Up to *", "valid up to *", "valid up to", "dl valid till", "license valid", default="")
+    data_dict["Valid Up to *"] = _format_date_ddmmyyyy(raw_dl_up) if raw_dl_up else ""
+
+    # Sanitize dummy mobile numbers
+    if str(data_dict.get("Mobile no   *") or "").strip() in ("9999999999", "0000000000", "99999 99999"):
+        data_dict["Mobile no   *"] = ""
+
+    # 24. Packaging & Product Code
+    raw_pack = get_val("packing", "packaging", "package type", "packaging format")
+    if raw_pack:
+        data_dict["packing"] = raw_pack
+    raw_prod = get_val("productcode", "product code", "hsn", "hsn code")
+    if raw_prod:
+        data_dict["productcode"] = raw_prod
+
+    # 25. Contract weights & border
+    for extra_k in ("Order Weight", "Contract wt", "Extra Mt", "viaborder"):
+        data_dict[extra_k] = get_val(extra_k, default="")
+
+    return data_dict
 
 
 # --- ROUTE 4: Image Extraction API (Web & Android) ---
@@ -1612,6 +2104,19 @@ async def extract_handwriting(
             else:
                 print("[DocType] Classified as White printed consignment page")
 
+            if is_blank_or_solid_image(pil_img):
+                print(f"[Validation Rejected] File '{file.filename}' rejected: solid monochrome/blank image.")
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "success": False,
+                        "error_code": "INVALID_LR",
+                        "title": "Invalid LR",
+                        "message": "Invalid LR – Please upload a valid LR document.",
+                        "detail": "Invalid LR – Please upload a valid LR document."
+                    }
+                )
+
             orig_w, orig_h = pil_img.size
 
             # Preserve high resolution for legible handwriting while keeping within API boundaries
@@ -1653,7 +2158,7 @@ async def extract_handwriting(
                 gemini_parts,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
-                    response_schema=GeminiOCRResponse,
+                    response_schema=_to_gemini_compatible_schema(GeminiOCRResponse),
                     temperature=0.0,
                 ),
                 safety_settings=SAFETY_SETTINGS,
@@ -1672,6 +2177,67 @@ async def extract_handwriting(
 
         kv_pairs = raw_result.get("key_value_pairs", [])
         data_dict = {item["key"]: item["value"] for item in kv_pairs}
+
+        # Canonicalize all fields to 49 BNF schema & standard aliases
+        data_dict = canonicalize_extracted_data(data_dict)
+
+        # === FAIL-SAFE GENUINE LR VALIDATION GATE ===
+        is_valid_lr = bool(raw_result.get("is_valid_lr", False))
+        has_consignment = bool(raw_result.get("has_consignment_note", False))
+        doc_type = str(raw_result.get("document_type", "unknown")).lower()
+        rejection_reason = str(raw_result.get("rejection_reason", "")).strip()
+
+        # Multi-signal verification across extracted key-value pairs
+        has_lr_no = bool(str(data_dict.get("LR No *") or data_dict.get("grno") or data_dict.get("BNF LR No") or "").strip())
+        has_parties = bool(
+            raw_result.get("has_parties_or_movement")
+            or str(data_dict.get("cngr *") or data_dict.get("cngr") or "").strip()
+            or str(data_dict.get("cnge *") or data_dict.get("cnge") or "").strip()
+            or str(data_dict.get("Customer Name *") or "").strip()
+            or str(data_dict.get("orgrefcode") or "").strip()
+            or str(data_dict.get("destrefcode") or "").strip()
+        )
+        has_cargo = bool(
+            raw_result.get("has_cargo_or_vehicle")
+            or str(data_dict.get("Vehicle No *") or data_dict.get("truckno") or "").strip()
+            or str(data_dict.get("stockpckgs") or data_dict.get("bookedpckgs") or data_dict.get("packages") or "").strip()
+            or str(data_dict.get("stockaweight") or data_dict.get("bookedaweight") or "").strip()
+            or str(data_dict.get("goods") or "").strip()
+        )
+        has_freight = bool(
+            raw_result.get("has_freight_terms")
+            or str(data_dict.get("grtype") or data_dict.get("staxpaidby") or "").strip()
+            or str(data_dict.get("valgoods") or data_dict.get("invoiceno") or "").strip()
+        )
+
+        supporting_signals_count = sum([has_parties, has_cargo, has_freight, has_lr_no])
+
+        is_rejected_type = any(
+            t in doc_type for t in [
+                "standalone_eway", "standalone_invoice", "standalone_gate_pass",
+                "selfie", "screenshot", "blank", "unrelated"
+            ]
+        )
+
+        is_genuine_lr = (
+            is_valid_lr
+            and has_consignment
+            and not is_rejected_type
+            and supporting_signals_count >= 2
+        )
+
+        if not is_genuine_lr:
+            print(f"[Validation Rejected] File '{file.filename}' rejected: is_valid={is_valid_lr}, has_consignment={has_consignment}, doc_type='{doc_type}', signals={supporting_signals_count}, reason='{rejection_reason}'")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "error_code": "INVALID_LR",
+                    "title": "Invalid LR",
+                    "message": "Invalid LR – Please upload a valid LR document.",
+                    "detail": "Invalid LR – Please upload a valid LR document."
+                }
+            )
 
         # Ensure Driver details remain strictly empty if absent from the document (driver_master auto-fetch disabled)
         for drv_key in ("Driver Name *", "Mobile no   *", "Liscense No *", "Valid Up to *"):
@@ -1762,6 +2328,7 @@ async def extract_handwriting(
                         break
                 data_dict["Counter"] = selected_counter
                 data_dict["counter"] = selected_counter
+                data_dict["Counter name"] = selected_counter
                 data_dict["branchrefcode"] = selected_counter
             except Exception as e_cntr:
                 print(f"[Master] Counter auto-lookup notice: {e_cntr}")
@@ -1956,6 +2523,9 @@ async def extract_handwriting(
         for date_key in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *"):
             if data_dict.get(date_key):
                 data_dict[date_key] = _format_date_ddmmyyyy(data_dict[date_key])
+
+        # Final canonicalization pass ensuring all 49 BNF columns and aliases are fully populated
+        data_dict = canonicalize_extracted_data(data_dict)
 
         # Sync kv_pairs with fully enriched data_dict
         kv_pairs = [{"key": k, "value": v} for k, v in data_dict.items()]
@@ -2586,10 +3156,20 @@ class DirectLoginRequest(BaseModel):
 
 
 @app.post("/api/auth/login")
-async def api_direct_login(req: DirectLoginRequest):
+async def api_direct_login(req: DirectLoginRequest, response: Response, request: Request):
     res = auth_service.direct_login(req.mobile, req.name)
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error"))
+    token = res.get("token")
+    if token:
+        response.set_cookie(
+            key="bnf_session_token",
+            value=token,
+            max_age=86400,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.is_secure
+        )
     return res
 
 
@@ -2602,24 +3182,42 @@ async def api_send_otp(req: SendOtpRequest):
 
 
 @app.post("/api/auth/verify-otp")
-async def api_verify_otp(req: VerifyOtpRequest):
+async def api_verify_otp(req: VerifyOtpRequest, response: Response, request: Request):
     res = auth_service.verify_otp(req.mobile, req.otp, req.name)
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error"))
+    token = res.get("token")
+    if token:
+        response.set_cookie(
+            key="bnf_session_token",
+            value=token,
+            max_age=86400,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.is_secure
+        )
     return res
 
 
 @app.get("/api/auth/me")
-async def api_get_me(authorization: str | None = Header(default=None)):
-    user = auth_service.get_session_user(authorization)
+async def api_get_me(request: Request, authorization: str | None = Header(default=None)):
+    token = authorization or request.cookies.get("bnf_session_token")
+    user = auth_service.get_session_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return {"authenticated": True, "user": user}
+    return {
+        "authenticated": True,
+        "user": user,
+        "expires_at": user.get("expires_at_epoch"),
+        "remaining_seconds": user.get("remaining_seconds")
+    }
 
 
 @app.post("/api/auth/logout")
-async def api_logout(authorization: str | None = Header(default=None)):
-    auth_service.logout_session(authorization)
+async def api_logout(response: Response, request: Request, authorization: str | None = Header(default=None)):
+    token = authorization or request.cookies.get("bnf_session_token")
+    auth_service.logout_session(token)
+    response.delete_cookie(key="bnf_session_token")
     return {"success": True, "message": "Logged out successfully"}
 
 
@@ -3366,16 +3964,24 @@ async def get_export_audit_history(
         if session_user:
             target_mobile = session_user.get("mobile")
 
-    if target_mobile:
-        # Automatically prune any Excel exports whose physical files were deleted from the backend disk
-        valid_excels = user_cloud_service.prune_user_deleted_excels(target_mobile)
-        if isinstance(valid_excels, list) and len(valid_excels) > 0:
-            return {
-                "success": True,
-                "count": len(valid_excels),
-                "history": valid_excels,
-                "user_mobile": target_mobile
-            }
+    if not target_mobile:
+        # Strictly enforce user data isolation: unauthenticated requests must never access any user's history
+        return {
+            "success": True,
+            "count": 0,
+            "history": [],
+            "user_mobile": ""
+        }
+
+    # Automatically prune any Excel exports whose physical files were deleted from the backend disk
+    valid_excels = user_cloud_service.prune_user_deleted_excels(target_mobile)
+    if isinstance(valid_excels, list) and len(valid_excels) > 0:
+        return {
+            "success": True,
+            "count": len(valid_excels),
+            "history": valid_excels,
+            "user_mobile": target_mobile
+        }
 
     logs = audit_snapshot.get_user_audit_history(user_mobile=target_mobile, limit=100)
     if logs and target_mobile:
@@ -3495,25 +4101,29 @@ async def get_previous_uploads(
         if not req_user_id and not req_mobile:
             return {"success": True, "total": 0, "uploads": []}
 
-        # Check user's dedicated cloud JSON DB first for user isolation and cross-device sync
-        if req_mobile:
-            cloud_data = user_cloud_service.get_user_cloud_data(req_mobile)
+        clean_req_mob = user_cloud_service._clean_mobile(req_mobile)
+        items_map = {}
+        dismissed_set = set()
+
+        # 1. Check user's dedicated cloud JSON DB first for user isolation and cross-device sync
+        if clean_req_mob:
+            cloud_data = user_cloud_service.get_user_cloud_data(clean_req_mob)
+            dismissed_set = set(str(d).strip().lower() for d in cloud_data.get("dismissed_uploads", []))
             cloud_uploads = cloud_data.get("uploaded_lrs")
             if isinstance(cloud_uploads, list):
-                dismissed_set = set(str(d).strip().lower() for d in cloud_data.get("dismissed_uploads", []))
-                active_uploads = [
-                    u for u in cloud_uploads
-                    if not any(str(u.get(k) or "").strip().lower() in dismissed_set for k in ("id", "saved_filename", "filename", "file_name", "file_id"))
-                ]
-                return {
-                    "success": True,
-                    "total": len(active_uploads),
-                    "uploads": active_uploads
-                }
+                for u in cloud_uploads:
+                    if not isinstance(u, dict):
+                        continue
+                    if any(str(u.get(k) or "").strip().lower() in dismissed_set for k in ("id", "saved_filename", "filename", "file_name", "file_id", "lrNo")):
+                        continue
+                    if u.get("error_code") == "INVALID_LR" or str(u.get("status", "")).lower() == "failed" or u.get("is_valid_lr") is False:
+                        continue
+                    key = str(u.get("saved_filename") or u.get("filename") or u.get("id") or "").strip().lower()
+                    if key:
+                        items_map[key] = dict(u)
 
+        # 2. Query file lifecycle service and disk files strictly isolated to this authenticated user
         all_metadata = file_lifecycle_service.get_all_metadata(include_deleted=False, limit=200)
-        items = []
-        seen_filenames = set()
 
         for meta in all_metadata:
             if meta.get("is_deleted", False):
@@ -3521,17 +4131,19 @@ async def get_previous_uploads(
             if only_pending and (meta.get("is_exported", False) or meta.get("exported_at")):
                 continue
 
-            # User ownership check: must match user_id or user_mobile
+            # Strict user isolation check: must match user_id or user_mobile
             custom_meta = meta.get("custom_meta") or {}
-            meta_user_id = meta.get("user_id") or custom_meta.get("user_id") or ""
-            meta_mobile = meta.get("user_mobile") or custom_meta.get("user_mobile") or ""
+            meta_user_id = str(meta.get("user_id") or custom_meta.get("user_id") or "").strip()
+            meta_mobile = str(meta.get("user_mobile") or custom_meta.get("user_mobile") or "").strip()
+            clean_meta_mob = user_cloud_service._clean_mobile(meta_mobile)
 
             match_user = False
             if req_user_id and meta_user_id and req_user_id == meta_user_id:
                 match_user = True
-            elif req_mobile and meta_mobile and req_mobile == meta_mobile:
+            elif clean_req_mob and clean_meta_mob and clean_req_mob == clean_meta_mob:
                 match_user = True
 
+            # If this record does not belong to the authenticated user, strictly skip it
             if not match_user:
                 continue
 
@@ -3540,7 +4152,7 @@ async def get_previous_uploads(
                 continue
 
             saved_name = meta.get("file_name") or ""
-            if not saved_name or saved_name in seen_filenames:
+            if not saved_name:
                 continue
 
             full_path = os.path.join(UPLOAD_LR_DIR, saved_name)
@@ -3548,15 +4160,26 @@ async def get_previous_uploads(
                 continue
 
             orig_name = custom_meta.get("original_filename") or saved_name
+            if custom_meta.get("is_valid_lr") is False or custom_meta.get("error_code") == "INVALID_LR":
+                continue
 
             # Exclude dummy mock placeholders
             lower_orig = orig_name.lower()
             if any(t in lower_orig for t in ("dummy", "mock", "placeholder", "fake_doc")):
                 continue
 
-            seen_filenames.add(saved_name)
-            is_pdf = file_type == "bilty_pdf" or saved_name.lower().endswith(".pdf") or orig_name.lower().endswith(".pdf")
             file_id = meta.get("file_id") or f"lr_{int(os.path.getmtime(full_path))}"
+            lr_no = custom_meta.get("lr_no") or ""
+            data_payload = meta.get("current_data") or {}
+            if not data_payload and meta.get("versions"):
+                data_payload = meta["versions"][-1].get("snapshot_data") or {}
+            if not lr_no:
+                lr_no = data_payload.get("LR No *") or data_payload.get("grno") or ""
+
+            if any(str(x).strip().lower() in dismissed_set for x in (file_id, saved_name, orig_name, lr_no) if x):
+                continue
+
+            is_pdf = file_type == "bilty_pdf" or saved_name.lower().endswith(".pdf") or orig_name.lower().endswith(".pdf")
 
             preview_url = None
             preview_pages = []
@@ -3575,13 +4198,7 @@ async def get_previous_uploads(
             else:
                 preview_url = f"/uploads/{saved_name}"
 
-            data_payload = meta.get("current_data") or {}
-            if not data_payload and meta.get("versions"):
-                data_payload = meta["versions"][-1].get("snapshot_data") or {}
-
-            lr_no = custom_meta.get("lr_no") or data_payload.get("LR No *") or data_payload.get("grno") or ""
-
-            items.append({
+            item_entry = {
                 "id": file_id,
                 "filename": orig_name,
                 "saved_filename": saved_name,
@@ -3594,12 +4211,32 @@ async def get_previous_uploads(
                 "lrNo": lr_no,
                 "createdAt": meta.get("created_at") or datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat(),
                 "data": data_payload
-            })
+            }
 
-            if len(items) >= limit:
-                break
+            key = saved_name.strip().lower()
+            orig_key = orig_name.strip().lower()
+            id_key = file_id.strip().lower()
 
-        return {"success": True, "total": len(items), "uploads": items}
+            match_key = None
+            for k in (key, orig_key, id_key):
+                if k in items_map:
+                    match_key = k
+                    break
+
+            if match_key:
+                existing = items_map[match_key]
+                items_map[match_key] = {
+                    **item_entry,
+                    **existing,
+                    "preview_url": existing.get("preview_url") or preview_url,
+                    "file_url": existing.get("file_url") or item_entry["file_url"],
+                    "data": {**item_entry["data"], **(existing.get("data") or {})}
+                }
+            else:
+                items_map[key] = item_entry
+
+        combined_items = list(items_map.values())[:limit]
+        return {"success": True, "total": len(combined_items), "uploads": combined_items}
     except Exception as e:
         print(f"[Previous Uploads API Error] {e}")
         return {"success": False, "total": 0, "uploads": [], "error": str(e)}
