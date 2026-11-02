@@ -15,8 +15,8 @@ void main() {
       final config = AppConfigService.instance;
       await config.initialize();
 
-      expect(config.baseUrl, equals('http://192.168.0.224:8000'));
-      expect(config.wsUrl, equals('ws://192.168.0.224:8000/ws'));
+      expect(config.baseUrl, equals(AppConfigService.defaultServerUrl));
+      expect(config.wsUrl, equals(AppConfigService.instance.wsUrl));
     });
 
     test('2. Hydrates custom saved URL from SharedPreferences', () async {

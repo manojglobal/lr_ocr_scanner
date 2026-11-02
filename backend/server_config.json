@@ -1,8 +1,8 @@
 {
-  "server_url": "http://192.168.0.224:8000",
-  "websocket_url": "ws://192.168.0.224:8000/ws",
+  "server_url": "http://192.168.1.5:8000",
+  "websocket_url": "ws://192.168.1.5:8000/ws",
   "fallback_urls": [
-    "http://192.168.0.224:8000"
+    "http://192.168.1.5:8000"
   ],
   "config_version": 1,
   "app_min_version": "1.0.0",
