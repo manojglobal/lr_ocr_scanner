@@ -181,7 +181,20 @@ GR_STOCK_38_HEADERS = [
     "invoiedt", "valgoods", "viaborder"
 ]
 
-GR_BNF_49_HEADERS = [
+LR_FORMAT_49_HEADERS = [
+    "Branch", "GrNo", "GrDate", "GrType", "Customer", "CustomerDepartment",
+    "Countername", "TransitDays", "Origen", "Destination", "Consignor",
+    "ConsignorGST", "Consignee", "ConsigneeGST", "ProductName", "Packing",
+    "PMark", "Goods", "VehicleNo", "VehicleTypeName", "DriverName",
+    "DriverMobileNo", "DrivingLicenseNo", "DrivingValidUpto", "LoadingStartDate",
+    "Freight", "OtherAmount", "CGST", "SGST", "IGST", "Received", "Advance",
+    "CollectionBranch", "FTL", "PCS", "OrderWeight", "ActualWeight",
+    "ChargableWeight", "ContractWeight", "ExtraMt", "CustomerRefcode",
+    "staxpaidby", "DeliveryType", "EwayBillNo", "ValidUpto", "InvoiceNo",
+    "InvoieDate", "ValueOfGoods", "viaborder"
+]
+GR_BNF_49_HEADERS = LR_FORMAT_49_HEADERS
+_OLD_GR_BNF_49_HEADERS = [
     "branchrefcode", "grno (*)", "grdt *", "grtype", "Customer Name *",
     "Depatment Name", "Counter name", "Transit Days", "orgrefcode", "destrefcode",
     "cngr *", "cnge *", "cngrgstno *", "cngegstno *", "productcode", "packing",
@@ -1289,20 +1302,67 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         "invoiceno": invno,
         "invoiedt": invdt,
         "valgoods": valgoods,
-        "viaborder": get_val("viaborder")
+        "viaborder": get_val("viaborder"),
+        # LR_Format.xlsx exact headers
+        "Branch": branch or counter_name or "",
+        "GrNo": grno or lrno,
+        "GrDate": grdt,
+        "GrType": grtype,
+        "Customer": customer,
+        "CustomerDepartment": dept,
+        "Countername": counter_name,
+        "TransitDays": transit_days,
+        "Origen": org,
+        "Destination": dest,
+        "Consignor": cngr,
+        "ConsignorGST": cngrgst,
+        "Consignee": cnge,
+        "ConsigneeGST": cngegst,
+        "ProductName": get_val("productcode", "productname", "product name", default="Surface-FTL"),
+        "Packing": packing,
+        "PMark": pmark,
+        "Goods": goods,
+        "VehicleNo": vehno,
+        "VehicleTypeName": vehtype,
+        "DriverName": driver,
+        "DriverMobileNo": mobile,
+        "DrivingLicenseNo": license,
+        "DrivingValidUpto": valid_up_to,
+        "LoadingStartDate": loading_date,
+        "Freight": freight,
+        "OtherAmount": oamount,
+        "CGST": cgst,
+        "SGST": sgst,
+        "IGST": igst,
+        "Received": received,
+        "Advance": advance,
+        "CollectionBranch": coll_stn,
+        "FTL": ftl,
+        "PCS": pkgs,
+        "OrderWeight": order_wt,
+        "ActualWeight": aweight,
+        "ChargableWeight": cweight,
+        "ContractWeight": contract_wt,
+        "ExtraMt": extra_mt,
+        "CustomerRefcode": custref,
+        "DeliveryType": dlvtype,
+        "EwayBillNo": eway,
+        "InvoiceNo": invno,
+        "InvoieDate": invdt,
+        "ValueOfGoods": valgoods
     }
 
     norm_val_map = {clean(k): v for k, v in val_map.items()}
     row = []
     for h in headers:
-        if h == "igst":
+        if h in ("igst", "IGST"):
             row.append("0.00")
             continue
         v = val_map.get(h)
         if v is None and h is not None:
             v = norm_val_map.get(clean(str(h)))
-        if h in ("grno", "grno (*)", "LR No *", "LR No"):
-            cleaned_lr = _clean_grno(v or val_map.get("grno (*)") or val_map.get("LR No *") or val_map.get("grno"))
+        if h in ("grno", "grno (*)", "LR No *", "LR No", "GrNo"):
+            cleaned_lr = _clean_grno(v or val_map.get("GrNo") or val_map.get("grno (*)") or val_map.get("LR No *") or val_map.get("grno"))
             is_patanjali_data = (
                 "patanjali" in str(val_map.get("Customer Name *") or "").lower()
                 or "patanjali" in str(val_map.get("cngr") or "").lower()
@@ -1316,9 +1376,9 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
                 v = cleaned_lr
             else:
                 v = None
-        if h == "pmark":
+        if h in ("pmark", "PMark"):
             v = _clean_pmark(v) or None
-        if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *"):
+        if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *", "GrDate", "DrivingValidUpto", "LoadingStartDate", "InvoieDate"):
             v = _format_date_ddmmyyyy(v) or None
         if v is not None and isinstance(v, str):
             v_str = v.strip()
@@ -1535,6 +1595,21 @@ def download_apk():
             headers={"Content-Disposition": 'attachment; filename="ocr_to_excel.apk"'}
         )
     raise HTTPException(status_code=404, detail="APK build not found on server.")
+
+
+# --- ROUTE 3A: Excel Template Download ---
+@app.get("/download-template")
+@app.get("/api/template/download")
+def download_excel_template():
+    tpl_file = _resolve_project_file("docs", "LR_Format.xlsx")
+    if tpl_file and os.path.exists(tpl_file):
+        return FileResponse(
+            tpl_file,
+            filename="LR_Format.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="LR_Format.xlsx"'}
+        )
+    raise HTTPException(status_code=404, detail="Template file LR_Format.xlsx not found.")
 
 
 # --- ROUTE 3B: Centralized Remote Configuration Endpoint ---

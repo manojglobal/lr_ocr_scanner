@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
+import '../../services/app_config_service.dart';
 
 /// Card widget displaying a single image item in the processing queue.
 class ImageQueueCard extends StatelessWidget {
@@ -66,7 +67,7 @@ class ImageQueueCard extends StatelessWidget {
                           }
                           final pUrl = item.record['preview_url'] ?? '';
                           if (pUrl.isNotEmpty) {
-                            final fullUrl = pUrl.startsWith('http') ? pUrl : 'http://192.168.0.224:8000${pUrl.startsWith('/') ? pUrl : '/$pUrl'}';
+                            final fullUrl = pUrl.startsWith('http') ? pUrl : '${AppConfigService.instance.baseUrl}${pUrl.startsWith('/') ? pUrl : '/$pUrl'}';
                             return Image.network(fullUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _thumbnailFallback(colorScheme));
                           }
                           if (!isPdf && File(item.imagePath).existsSync()) {

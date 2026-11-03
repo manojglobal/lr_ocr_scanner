@@ -63,7 +63,7 @@ void main() {
 
       // 3. Verify page title and intake actions remain intact
       expect(find.text('BOX N FREIGHT'), findsOneWidget);
-      expect(find.text('Upload Consignment Notes (LRs)'), findsOneWidget);
+      expect(find.text('Upload LR'), findsWidgets);
       expect(find.text('Capture Image'), findsOneWidget);
       expect(find.text('Select Image'), findsOneWidget);
 

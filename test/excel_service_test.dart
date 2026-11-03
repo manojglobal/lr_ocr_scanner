@@ -204,11 +204,14 @@ void main() {
       final sheet = decodedExcel.sheets['Sheet1']!;
 
       expect(sheet.maxColumns, 49);
-      // Clean User Export: Header row is at Row 0 (0 metadata rows)
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), 'branchrefcode');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0)).value?.toString(), 'grno (*)');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 18, rowIndex: 0)).value?.toString(), 'Vehicle No *');
-      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 20, rowIndex: 0)).value?.toString(), 'Driver Name *');
+      // Clean User Export: Header row is at Row 0 (0 metadata rows, exactly matching docs/LR_Format.xlsx)
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value?.toString(), 'Branch');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0)).value?.toString(), 'GrNo');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 0)).value?.toString(), 'GrDate');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: 0)).value?.toString(), 'ConsignorGST');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 12, rowIndex: 0)).value?.toString(), 'Consignee');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 18, rowIndex: 0)).value?.toString(), 'VehicleNo');
+      expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 20, rowIndex: 0)).value?.toString(), 'DriverName');
 
       // Data row 1 (Row 1)
       expect(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 1)).value?.toString(), '88412');

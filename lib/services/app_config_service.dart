@@ -12,7 +12,7 @@ class AppConfigService extends ChangeNotifier {
 
   static const String prefKeyServerUrl = 'gemini_backend_server_url';
   static const String prefKeyRemoteConfigUrl = 'app_remote_config_url';
-  static const String defaultServerUrl = 'http://192.168.1.5:8000';
+  static const String defaultServerUrl = 'http://122.179.131.232:9015';
 
   /// Primary remote configuration endpoints.
   /// You can update the server IP in this JSON file without modifying Flutter code or rebuilding the APK.
@@ -22,7 +22,7 @@ class AppConfigService extends ChangeNotifier {
   ];
 
   String _baseUrl = defaultServerUrl;
-  String _wsUrl = 'ws://192.168.1.5:8000/ws';
+  String _wsUrl = 'ws://122.179.131.232:9015/ws';
   bool _isInitialized = false;
   bool _isFetchingRemote = false;
 

@@ -12,6 +12,58 @@ import 'file_lifecycle_service.dart';
 /// Pure Dart Excel generator that compiles batch OCR items into a styled .xlsx workbook
 /// with dynamic table and structure layout for ANY image without requiring predefined templates.
 class ExcelService {
+  /// Canonical 49-column LR format matching docs/LR_Format.xlsx exactly (0 asterisks in Excel export)
+  static const List<String> lrFormat49Headers = [
+    'Branch',
+    'GrNo',
+    'GrDate',
+    'GrType',
+    'Customer',
+    'CustomerDepartment',
+    'Countername',
+    'TransitDays',
+    'Origen',
+    'Destination',
+    'Consignor',
+    'ConsignorGST',
+    'Consignee',
+    'ConsigneeGST',
+    'ProductName',
+    'Packing',
+    'PMark',
+    'Goods',
+    'VehicleNo',
+    'VehicleTypeName',
+    'DriverName',
+    'DriverMobileNo',
+    'DrivingLicenseNo',
+    'DrivingValidUpto',
+    'LoadingStartDate',
+    'Freight',
+    'OtherAmount',
+    'CGST',
+    'SGST',
+    'IGST',
+    'Received',
+    'Advance',
+    'CollectionBranch',
+    'FTL',
+    'PCS',
+    'OrderWeight',
+    'ActualWeight',
+    'ChargableWeight',
+    'ContractWeight',
+    'ExtraMt',
+    'CustomerRefcode',
+    'staxpaidby',
+    'DeliveryType',
+    'EwayBillNo',
+    'ValidUpto',
+    'InvoiceNo',
+    'InvoieDate',
+    'ValueOfGoods',
+    'viaborder',
+  ];
   /// Generates the raw bytes for the .xlsx spreadsheet from the batch items.
   List<int> generateExcelBytes({
     required List<BatchItem> items,
@@ -61,7 +113,8 @@ class ExcelService {
     // Mode 1: Predefined Schema (e.g. Invoice, Receipt)
     // =========================================================================
     if (schema.fields.isNotEmpty) {
-      final isLogisticsGr = schema.id == 'gr_stock_38' || schema.id == 'gr_bnf_49' || schema.id == 'gr_bnf_50';
+      final isBnf49 = schema.id == 'gr_bnf_49' || schema.id == 'gr_bnf_50';
+      final isLogisticsGr = isBnf49 || schema.id == 'gr_stock_38';
       final String sheetName = isLogisticsGr ? 'Sheet1' : 'Batch OCR Export';
       final defaultSheet = excel.getDefaultSheet();
       if (defaultSheet != null && defaultSheet != sheetName) {
@@ -70,14 +123,16 @@ class ExcelService {
       existingSheetNames.add(sheetName);
       final Sheet sheet = excel[sheetName];
 
-      final List<String> headers = isLogisticsGr
-          ? schema.fields.map((f) => f.displayName).toList()
-          : [
-              'Image File Name',
-              'Processed At',
-              ...schema.fields.map((f) => f.displayName),
-              'Extraction Status',
-            ];
+      final List<String> headers = isBnf49
+          ? lrFormat49Headers
+          : (isLogisticsGr
+              ? schema.fields.map((f) => f.displayName).toList()
+              : [
+                  'Image File Name',
+                  'Processed At',
+                  ...schema.fields.map((f) => f.displayName),
+                  'Extraction Status',
+                ]);
 
       final Map<int, int> maxColLengths = {};
       for (int i = 0; i < headers.length; i++) {
@@ -146,6 +201,192 @@ class ExcelService {
           item.record.forEach((k, v) {
             normRecord[cleanKey(k)] = v.trim();
           });
+
+          String getValForHeader(String h) {
+            switch (h) {
+              case 'Branch':
+                return normRecord['branchrefcode'] ?? normRecord['branch'] ?? normRecord['counter'] ?? normRecord['countername'] ?? '';
+              case 'GrNo':
+                final raw = normRecord['grno'] ?? normRecord['lrno'] ?? normRecord['biltyno'] ?? normRecord['grno'] ?? normRecord['lr no *'] ?? '';
+                final s = raw.trim();
+                if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null') return '';
+                final cust = (normRecord['cngr'] ?? normRecord['consignor'] ?? normRecord['customername'] ?? normRecord['customer'] ?? '').toLowerCase();
+                if (cust.contains('patanjali') && s == '0') return '';
+                if (s == '0') return '0';
+                final m5 = RegExp(r'(?<!\d)(\d{5})(?!\d)').firstMatch(s);
+                if (m5 != null && m5.group(1) != null) return m5.group(1)!;
+                final cleaned = s.replaceAll(RegExp(r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)', caseSensitive: false), '').trim();
+                return cleaned.isNotEmpty ? cleaned : s;
+              case 'GrDate':
+                return normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? normRecord['bookingdate'] ?? '';
+              case 'GrType':
+                return normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? normRecord['paymenttype'] ?? '';
+              case 'Customer':
+                return normRecord['customername'] ?? normRecord['customer'] ?? normRecord['cngr'] ?? normRecord['consignor'] ?? '';
+              case 'CustomerDepartment':
+                return normRecord['depatmentname'] ?? normRecord['departmentname'] ?? normRecord['department'] ?? normRecord['customerdepartment'] ?? '';
+              case 'Countername':
+                return normRecord['countername'] ?? normRecord['counter'] ?? normRecord['bookingcounter'] ?? normRecord['branchrefcode'] ?? normRecord['branch'] ?? 'delhi';
+              case 'TransitDays':
+                final startStr = normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['stockdt'] ?? '';
+                final endStr = normRecord['validupto'] ?? '';
+                if (startStr.isNotEmpty && endStr.isNotEmpty) {
+                  DateTime? parseD(String s) {
+                    final cleanS = s.trim().split(RegExp(r'[\sT]'))[0];
+                    final parts = cleanS.split(RegExp(r'[\/\-\.]'));
+                    if (parts.length == 3) {
+                      final d = int.tryParse(parts[0]);
+                      final m = int.tryParse(parts[1]);
+                      var y = int.tryParse(parts[2]);
+                      if (d != null && m != null && y != null) {
+                        if (y < 100) y += 2000;
+                        return DateTime(y, m, d);
+                      }
+                    }
+                    return DateTime.tryParse(cleanS);
+                  }
+                  final d1 = parseD(startStr);
+                  final d2 = parseD(endStr);
+                  if (d1 != null && d2 != null) {
+                    final diff = d2.difference(d1).inDays;
+                    if (diff >= 0) return diff.toString();
+                  }
+                }
+                return normRecord['transitdays'] ?? '';
+              case 'Origen':
+                return normRecord['orgrefcode'] ?? normRecord['from'] ?? normRecord['origin'] ?? normRecord['origen'] ?? '';
+              case 'Destination':
+                return normRecord['destrefcode'] ?? normRecord['to'] ?? normRecord['destination'] ?? '';
+              case 'Consignor':
+                return normRecord['cngr'] ?? normRecord['consignor'] ?? normRecord['sender'] ?? '';
+              case 'ConsignorGST':
+                return normRecord['cngrgstno'] ?? normRecord['consignorgst'] ?? normRecord['consignorgstin'] ?? normRecord['sendergst'] ?? '';
+              case 'Consignee':
+                return normRecord['cnge'] ?? normRecord['consignee'] ?? normRecord['receiver'] ?? '';
+              case 'ConsigneeGST':
+                return normRecord['cngegstno'] ?? normRecord['consigneegst'] ?? normRecord['consigneegstin'] ?? normRecord['receivergst'] ?? '';
+              case 'ProductName':
+                return normRecord['productcode'] ?? normRecord['productname'] ?? 'Surface-FTL';
+              case 'Packing':
+                return normRecord['packing'] ?? normRecord['packaging'] ?? '';
+              case 'PMark':
+                final rawPm = normRecord['pmark'] ?? normRecord['privatemark'] ?? normRecord['sealno'] ?? normRecord['seal'] ?? '';
+                return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
+              case 'Goods':
+                return normRecord['goods'] ?? normRecord['commodity'] ?? normRecord['goodsdescription'] ?? '';
+              case 'VehicleNo':
+                return normRecord['vehicleno'] ?? normRecord['truckno'] ?? normRecord['lorryno'] ?? '';
+              case 'VehicleTypeName':
+                return normRecord['vehicletypename'] ?? normRecord['vehicletype'] ?? normRecord['trucktype'] ?? 'Market';
+              case 'DriverName':
+                return normRecord['drivername'] ?? normRecord['driver'] ?? '';
+              case 'DriverMobileNo':
+                return normRecord['drivermobileno'] ?? normRecord['mobileno'] ?? normRecord['drivermobile'] ?? normRecord['phone'] ?? '';
+              case 'DrivingLicenseNo':
+                return normRecord['drivinglicenseno'] ?? normRecord['licenseno'] ?? normRecord['liscenseno'] ?? normRecord['dlno'] ?? '';
+              case 'DrivingValidUpto':
+                return normRecord['drivingvalidupto'] ?? normRecord['validupto'] ?? normRecord['validup to'] ?? '';
+              case 'LoadingStartDate':
+                return normRecord['loadingstartdate'] ?? normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? '';
+              case 'Freight':
+                final fr = normRecord['freight'] ?? normRecord['freightamount'] ?? normRecord['basicfreight'] ?? normRecord['totalfreight'] ?? normRecord['freightcharge'] ?? '';
+                return fr.isNotEmpty ? fr : '0';
+              case 'OtherAmount':
+                final oamt = normRecord['oamount'] ?? normRecord['otheramount'] ?? normRecord['othercharges'] ?? normRecord['hamali'] ?? normRecord['loadingcharges'] ?? normRecord['unloadingcharges'] ?? normRecord['aoc'] ?? normRecord['labour'] ?? normRecord['misc'];
+                if (oamt != null && oamt.trim().isNotEmpty && oamt.trim() != '0' && oamt.trim() != '0.00' && oamt.trim().toLowerCase() != 'null' && oamt.trim().toLowerCase() != 'none') {
+                  return oamt.trim();
+                }
+                return '0.00';
+              case 'CGST':
+                final ig = normRecord['igst'] ?? normRecord['igstamount'] ?? normRecord['integratedgst'] ?? '';
+                if (ig.isNotEmpty && double.tryParse(ig.replaceAll(',', '')) != null && double.parse(ig.replaceAll(',', '')) > 0) {
+                  return '0.00';
+                }
+                return normRecord['cgst'] ?? normRecord['cgstamount'] ?? normRecord['centralgst'] ?? '0';
+              case 'SGST':
+                final ig = normRecord['igst'] ?? normRecord['igstamount'] ?? normRecord['integratedgst'] ?? '';
+                if (ig.isNotEmpty && double.tryParse(ig.replaceAll(',', '')) != null && double.parse(ig.replaceAll(',', '')) > 0) {
+                  return '0.00';
+                }
+                return normRecord['sgst'] ?? normRecord['sgstamount'] ?? normRecord['stategst'] ?? '0';
+              case 'IGST':
+                return '0.00';
+              case 'Received':
+                final r = normRecord['received'] ?? normRecord['amountreceived'] ?? normRecord['receivedamount'];
+                return (r != null && r.isNotEmpty) ? r : '0';
+              case 'Advance':
+                final a = normRecord['advance'] ?? normRecord['advanceamount'] ?? normRecord['driveradvance'];
+                return (a != null && a.isNotEmpty) ? a : '0';
+              case 'CollectionBranch':
+                final colStn = normRecord['collectionstncode'] ?? normRecord['collectionstation'] ?? normRecord['collectionbranch'];
+                if (colStn != null && colStn.isNotEmpty) return colStn;
+                final origin = normRecord['orgrefcode'] ?? normRecord['branchrefcode'] ?? normRecord['from'] ?? normRecord['branch'];
+                if (origin != null && origin.isNotEmpty) return origin;
+                final payTerm = (normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? normRecord['paymenttype'] ?? '').toUpperCase();
+                final isToPay = payTerm == 'T' || payTerm.contains('TOPAY') || payTerm.contains('TO PAY');
+                if (isToPay) {
+                  return normRecord['destrefcode'] ?? normRecord['to'] ?? normRecord['destination'] ?? '';
+                }
+                return normRecord['destrefcode'] ?? normRecord['to'] ?? normRecord['destination'] ?? '';
+              case 'FTL':
+                final ftlVal = normRecord['ftl'] ?? normRecord['fulltruckload'] ?? '';
+                if (ftlVal.isNotEmpty) {
+                  final u = ftlVal.toUpperCase();
+                  if (u == 'FTL' || u == 'LTL') return u;
+                  if (u.contains('FTL') || u.contains('32 FT') || u.contains('7 MT')) return 'FTL';
+                  if (u.startsWith('Y') || u.contains('FULL')) return 'Y';
+                  if (u.startsWith('N') || u.contains('PART')) return 'N';
+                  return ftlVal;
+                }
+                return 'N';
+              case 'PCS':
+                return normRecord['pckgs'] ?? normRecord['packages'] ?? normRecord['pkgs'] ?? normRecord['pcs'] ?? normRecord['quantity'] ?? '';
+              case 'OrderWeight':
+                return normRecord['orderweight'] ?? '';
+              case 'ActualWeight':
+                return normRecord['aweight'] ?? normRecord['actualweight'] ?? normRecord['actualwt'] ?? normRecord['weight'] ?? '';
+              case 'ChargableWeight':
+                return normRecord['cweight'] ?? normRecord['chargableweight'] ?? normRecord['chargedweight'] ?? normRecord['aweight'] ?? normRecord['actualweight'] ?? '';
+              case 'ContractWeight':
+                return normRecord['contractweight'] ?? normRecord['contractwt'] ?? '';
+              case 'ExtraMt':
+                return normRecord['extramt'] ?? '';
+              case 'CustomerRefcode':
+                final code = normRecord['custrefcode'] ?? normRecord['customerrefcode'] ?? normRecord['customercode'] ?? normRecord['custcode'] ?? normRecord['partycode'] ?? normRecord['accountcode'] ?? normRecord['partyno'];
+                if (code != null && code.isNotEmpty) return code;
+                return 'CM001';
+              case 'staxpaidby':
+                final stax = normRecord['staxpaidby'] ?? normRecord['servicetaxpaidby'] ?? normRecord['gstpaidby'] ?? '';
+                if (stax.isNotEmpty) {
+                  final u = stax.toUpperCase();
+                  return (u.startsWith('E') || u.contains('CONSIGNEE')) ? 'E' : ((u.startsWith('T') || u.contains('TRANSPORTER')) ? 'T' : 'C');
+                }
+                final payTerm = (normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? '').toUpperCase();
+                final isToPay = payTerm == 'T' || payTerm.contains('TOPAY') || payTerm.contains('TO PAY');
+                return isToPay ? 'E' : 'C';
+              case 'DeliveryType':
+                final dlv = normRecord['dlvtype'] ?? normRecord['deliverytype'] ?? '';
+                if (dlv.isNotEmpty) {
+                  final u = dlv.toUpperCase();
+                  return (u.startsWith('D') || u.contains('DOOR')) ? 'D' : 'G';
+                }
+                return 'G';
+              case 'EwayBillNo':
+                return normRecord['ewaybillno'] ?? normRecord['ewaybill'] ?? '';
+              case 'ValidUpto':
+                return normRecord['validupto'] ?? '';
+              case 'InvoiceNo':
+                return normRecord['invoiceno'] ?? normRecord['invoicenumber'] ?? '';
+              case 'InvoieDate':
+                return normRecord['invoiedt'] ?? normRecord['invoicedate'] ?? '';
+              case 'ValueOfGoods':
+                return normRecord['valgoods'] ?? normRecord['valueofgoods'] ?? normRecord['declaredvalue'] ?? '';
+              case 'viaborder':
+                return normRecord['viaborder'] ?? '';
+              default:
+                return normRecord[cleanKey(h)] ?? '';
+            }
+          }
 
           String getVal(DocumentField f) {
             if (f.key == 'Customer Name *') return normRecord['cngr'] ?? normRecord['consignor'] ?? '';
@@ -310,7 +551,9 @@ class ExcelService {
             return '';
           }
 
-          rowValues = schema.fields.map((f) => getVal(f)).toList();
+          rowValues = isBnf49
+              ? lrFormat49Headers.map((h) => getValForHeader(h)).toList()
+              : schema.fields.map((f) => getVal(f)).toList();
         } else {
           rowValues = [
             item.fileName,

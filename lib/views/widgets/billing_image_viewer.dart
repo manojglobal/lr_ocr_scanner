@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 // In-app viewing only matching Web (no external apps)
 import 'package:path_provider/path_provider.dart';
 import '../../models/batch_item.dart';
+import '../../services/app_config_service.dart';
 import '../../state/batch_controller.dart';
 import '../screens/edit_bilty_screen.dart';
 import '../screens/lr_preview_screen.dart';
@@ -138,7 +139,7 @@ class BillingImageViewer extends StatefulWidget {
     if (path == null || path.isEmpty) return null;
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     if (isLocalFilePath(path)) return null;
-    final server = (serverUrl != null && serverUrl.trim().isNotEmpty) ? serverUrl.trim() : 'http://192.168.0.224:8000';
+    final server = (serverUrl != null && serverUrl.trim().isNotEmpty) ? serverUrl.trim() : AppConfigService.instance.baseUrl;
     final prefix = server.endsWith('/') ? server.substring(0, server.length - 1) : server;
     final relPath = path.startsWith('/') ? path : '/$path';
     return '$prefix$relPath';

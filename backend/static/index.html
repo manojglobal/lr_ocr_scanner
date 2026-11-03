@@ -3380,111 +3380,81 @@
 
 
 
-    // --- BNF 49 Logistics Columns (BNF file Modify.xlsx) ---
+    // --- BNF 49 Logistics Columns (matching docs/LR_Format.xlsx exactly, 0 asterisks in Excel) ---
 
     const BNF_49_COLUMNS = [
-
-      'branchrefcode',
-
-      'grno (*)',
-
-      'grdt *',
-
-      'grtype',
-
-      'Customer Name *',
-
-      'Depatment Name',
-
-      'Counter name',
-
-      'Transit Days',
-
-      'orgrefcode',
-
-      'destrefcode',
-
-      'cngr *',
-
-      'cnge *',
-
-      'cngrgstno *',
-
-      'cngegstno *',
-
-      'productcode',
-
-      'packing',
-
-      'pmark',
-
-      'goods',
-
-      'Vehicle No *',
-
-      'Vehicle Type *',
-
-      'Driver Name *',
-
-      'Mobile no   *',
-
-      'Liscense No *',
-
-      'Valid Up to *',
-
-      'Loading Start date *',
-
-      'freight  *',
-
-      'oamount',
-
-      'cgst',
-
-      'sgst',
-
-      'igst',
-
-      'received',
-
-      'advance',
-
-      'collectionstncode',
-
-      'ftl',
-
-      'pckgs',
-
-      'Order Weight',
-
-      'aweight',
-
-      'cweight',
-
-      'Contract wt',
-
-      'Extra Mt',
-
-      'custrefcode',
-
+      'Branch',
+      'GrNo',
+      'GrDate',
+      'GrType',
+      'Customer',
+      'CustomerDepartment',
+      'Countername',
+      'TransitDays',
+      'Origen',
+      'Destination',
+      'Consignor',
+      'ConsignorGST',
+      'Consignee',
+      'ConsigneeGST',
+      'ProductName',
+      'Packing',
+      'PMark',
+      'Goods',
+      'VehicleNo',
+      'VehicleTypeName',
+      'DriverName',
+      'DriverMobileNo',
+      'DrivingLicenseNo',
+      'DrivingValidUpto',
+      'LoadingStartDate',
+      'Freight',
+      'OtherAmount',
+      'CGST',
+      'SGST',
+      'IGST',
+      'Received',
+      'Advance',
+      'CollectionBranch',
+      'FTL',
+      'PCS',
+      'OrderWeight',
+      'ActualWeight',
+      'ChargableWeight',
+      'ContractWeight',
+      'ExtraMt',
+      'CustomerRefcode',
       'staxpaidby',
-
-      'dlvtype',
-
-      'ewaybillno',
-
-      'Valid Upto',
-
-      'invoiceno',
-
-      'invoiedt',
-
-      'valgoods',
-
+      'DeliveryType',
+      'EwayBillNo',
+      'ValidUpto',
+      'InvoiceNo',
+      'InvoieDate',
+      'ValueOfGoods',
       'viaborder'
-
     ];
 
+    const BNF_MANDATORY_FIELDS = [
+      'GrNo',
+      'GrDate',
+      'Customer',
+      'Consignor',
+      'ConsignorGST',
+      'Consignee',
+      'ConsigneeGST',
+      'VehicleNo',
+      'VehicleTypeName',
+      'DriverName',
+      'DriverMobileNo',
+      'DrivingLicenseNo',
+      'DrivingValidUpto',
+      'LoadingStartDate',
+      'Freight'
+    ];
 
+    function isFieldRequired(col) {
+      return (typeof BNF_MANDATORY_FIELDS !== 'undefined' && BNF_MANDATORY_FIELDS.includes(col)) || (col && col.includes('*'));
+    }
 
     function cleanKeyStr(s) {
 
@@ -3561,6 +3531,139 @@
     function getBnfFieldValue(data, fieldKey) {
 
       if (!data) return '';
+
+      // Direct LR Format Header Mapping (matching docs/LR_Format.xlsx exactly)
+      switch (fieldKey) {
+        case 'Branch':
+          return data['Branch'] || data['branchrefcode'] || data['Counter'] || data['counter'] || data['Booking Counter'] || '';
+        case 'GrNo':
+          fieldKey = 'grno (*)';
+          break;
+        case 'GrDate':
+          const gd = data['GrDate'] || data['grdt *'] || data['grdt'] || data['date'] || data['booking_date'] || '';
+          return gd ? formatDdMmYyyyWeb(gd) : '';
+        case 'GrType':
+          return data['GrType'] || data['grtype(Don’t know)'] || data['grtype'] || data['Payment Term'] || '';
+        case 'Customer':
+          return data['Customer'] || data['Customer Name *'] || data['Customer Name'] || data['customer_name'] || data['cngr *'] || data['cngr'] || data['consignor'] || '';
+        case 'CustomerDepartment':
+          return data['CustomerDepartment'] || data['Depatment Name'] || data['Department Name'] || data['Department'] || '';
+        case 'Countername':
+          return data['Countername'] || data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || 'delhi';
+        case 'TransitDays':
+          fieldKey = 'Transit Days';
+          break;
+        case 'Origen':
+          return data['Origen'] || data['orgrefcode'] || data['from'] || data['origin'] || '';
+        case 'Destination':
+          return data['Destination'] || data['destrefcode'] || data['to'] || data['destination'] || '';
+        case 'Consignor':
+          fieldKey = 'cngr *';
+          break;
+        case 'ConsignorGST':
+          return data['ConsignorGST'] || data['cngrgstno *'] || data['cngrgstno'] || data['Consignor GSTIN'] || data['consignorgst'] || data['sendergst'] || '';
+        case 'Consignee':
+          fieldKey = 'cnge *';
+          break;
+        case 'ConsigneeGST':
+          return data['ConsigneeGST'] || data['cngegstno *'] || data['cngegstno'] || data['Consignee GSTIN'] || data['consigneegst'] || data['receivergst'] || '';
+        case 'ProductName':
+          return data['ProductName'] || data['productcode'] || data['Product Code'] || 'Surface-FTL';
+        case 'Packing':
+          return data['Packing'] || data['packing'] || data['packaging'] || '';
+        case 'PMark':
+          fieldKey = 'pmark';
+          break;
+        case 'Goods':
+          fieldKey = 'goods';
+          break;
+        case 'VehicleNo':
+          fieldKey = 'Vehicle No *';
+          break;
+        case 'VehicleTypeName':
+          return data['VehicleTypeName'] || data['Vehicle Type *'] || data['Vehicle Type'] || data['Vehicle Category'] || 'Market';
+        case 'DriverName':
+          fieldKey = 'Driver Name *';
+          break;
+        case 'DriverMobileNo':
+          fieldKey = 'Mobile no   *';
+          break;
+        case 'DrivingLicenseNo':
+          fieldKey = 'Liscense No *';
+          break;
+        case 'DrivingValidUpto':
+          fieldKey = 'Valid Up to *';
+          break;
+        case 'LoadingStartDate':
+          fieldKey = 'Loading Start date *';
+          break;
+        case 'Freight':
+          fieldKey = 'freight  *';
+          break;
+        case 'OtherAmount':
+          fieldKey = 'oamount';
+          break;
+        case 'CGST':
+          fieldKey = 'cgst';
+          break;
+        case 'SGST':
+          fieldKey = 'sgst';
+          break;
+        case 'IGST':
+          return '0.00';
+        case 'Received':
+          fieldKey = 'received';
+          break;
+        case 'Advance':
+          fieldKey = 'advance';
+          break;
+        case 'CollectionBranch':
+          fieldKey = 'collectionstncode';
+          break;
+        case 'FTL':
+          fieldKey = 'ftl';
+          break;
+        case 'PCS':
+          fieldKey = 'pckgs';
+          break;
+        case 'OrderWeight':
+          return data['OrderWeight'] || data['Order Weight'] || '';
+        case 'ActualWeight':
+          fieldKey = 'aweight';
+          break;
+        case 'ChargableWeight':
+          fieldKey = 'cweight';
+          break;
+        case 'ContractWeight':
+          fieldKey = 'Contract wt';
+          break;
+        case 'ExtraMt':
+          fieldKey = 'Extra Mt';
+          break;
+        case 'CustomerRefcode':
+          fieldKey = 'custrefcode';
+          break;
+        case 'DeliveryType':
+          fieldKey = 'dlvtype';
+          break;
+        case 'EwayBillNo':
+          fieldKey = 'ewaybillno';
+          break;
+        case 'ValidUpto':
+          fieldKey = 'Valid Upto';
+          break;
+        case 'InvoiceNo':
+          fieldKey = 'invoiceno';
+          break;
+        case 'InvoieDate':
+          fieldKey = 'invoiedt';
+          break;
+        case 'ValueOfGoods':
+          fieldKey = 'valgoods';
+          break;
+        case 'viaborder':
+          return data['viaborder'] || '';
+      }
 
       if (fieldKey === 'grdt *' || fieldKey === 'grdt' || fieldKey === 'stockdt ' || fieldKey === 'stockdt' || fieldKey === 'Loading Start date *' || fieldKey === 'invoiedt' || fieldKey === 'Valid Upto' || fieldKey === 'Valid Up to *') {
 
@@ -14258,7 +14361,7 @@
 
       const d = item.data || {};
 
-      const mandatoryCols = BNF_49_COLUMNS.filter(col => col.includes('*'));
+      const mandatoryCols = (typeof BNF_MANDATORY_FIELDS !== 'undefined' && BNF_MANDATORY_FIELDS.length > 0) ? BNF_MANDATORY_FIELDS : BNF_49_COLUMNS.filter(col => col.includes('*'));
 
       const missing = [];
 
@@ -14398,7 +14501,7 @@
 
       const colThs = BNF_49_COLUMNS.map((col, idx) => {
 
-        const isRequired = col.includes('*');
+        const isRequired = isFieldRequired(col);
 
         return `<th class="py-2.5 px-3.5 whitespace-nowrap text-left border-r border-slate-200/70 text-xs ${isRequired ? 'text-sky-800 font-extrabold bg-sky-50/60' : 'text-slate-700 font-bold'}" title="Col ${idx + 1}: ${col}">${col}</th>`;
 
@@ -15740,7 +15843,7 @@
 
         const headersHtml = BNF_49_COLUMNS.map((col, idx) => {
 
-          const req = col.includes('*');
+          const req = isFieldRequired(col);
 
           const w = defaultWidths[idx];
 
