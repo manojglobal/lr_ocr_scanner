@@ -66,3 +66,14 @@ ocr_to_excel_git_history_backup/
 # Sensitive key files
 *.pem
 *.key
+
+# Runtime Database Data
+backend/data/cloud_db/*.json
+backend/data/sessions.json
+backend/data/users.json
+
+# Generated Export Data
+backend/export/export_audit_log.json
+backend/export/metadata/file_metadata_registry.json
+backend/export/snapshots_excel/
+backend/export/upload_LR/
