@@ -53,6 +53,12 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   String _selectedDepartment = '';
   String _selectedCounter = '';
   String _selectedVehicleCategory = 'MARKET';
+  String _selectedProductType = 'Surface-FTL';
+
+  late final TextEditingController _freightController;
+  final FocusNode _freightFocusNode = FocusNode();
+  final GlobalKey _freightKey = GlobalKey();
+  final GlobalKey _productTypeKey = GlobalKey();
 
   List<String> _customerOptions = [];
   List<String> _departmentOptions = [];
@@ -62,6 +68,14 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     'MARKET',
     'OWN',
     'ATTACHED',
+  ];
+
+  final List<String> _productTypeOptions = [
+    'Surface-FTL',
+    'Surface-PTL',
+    'Global-TT',
+    'Global-MT',
+    'AIR',
   ];
 
   @override
@@ -77,27 +91,21 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     final cust = (rec['Customer Name *'] ?? rec['customer'] ?? rec['cngr *'] ?? rec['cngr'] ?? '').trim();
     _customerController = TextEditingController(text: cust);
 
-    // 2. Department: Populate options from ManiFest.xlsx for this customer
+    // 2. Department: Exact preservation from ManiFest.xlsx without fallback or fake insertion
     _departmentOptions = List<String>.from(master.getDepartmentsForCustomer(cust));
-    final dept = (rec['Depatment Name'] ?? rec['department'] ?? '').trim();
-    if (dept.isNotEmpty) {
-      if (!_departmentOptions.contains(dept)) {
-        _departmentOptions.insert(0, dept);
-      }
+    final dept = rec['Depatment Name'] ?? rec['department'] ?? '';
+    if (dept.isNotEmpty && _departmentOptions.contains(dept)) {
       _selectedDepartment = dept;
-    } else if (_departmentOptions.isNotEmpty) {
-      _selectedDepartment = _departmentOptions.first;
+    } else {
+      _selectedDepartment = '';
     }
 
-    // 3. Counter: Populate options from BookingCounterMast.xlsx
-    final counter = (rec['Counter'] ?? rec['counter'] ?? rec['branchrefcode'] ?? '').trim();
-    if (counter.isNotEmpty) {
-      if (!_counterOptions.contains(counter)) {
-        _counterOptions.insert(0, counter);
-      }
+    // 3. Counter: Exact preservation from BookingCounterMast.xlsx without fallback or fake insertion
+    final counter = rec['Counter'] ?? rec['Counter name'] ?? rec['counter'] ?? rec['branchrefcode'] ?? '';
+    if (counter.isNotEmpty && _counterOptions.contains(counter)) {
       _selectedCounter = counter;
-    } else if (_counterOptions.isNotEmpty) {
-      _selectedCounter = _counterOptions.first;
+    } else {
+      _selectedCounter = '';
     }
 
     // 4. Vehicle Category: Default to extracted or MARKET
@@ -106,6 +114,18 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
       _selectedVehicleCategory = vehCat;
     } else {
       _selectedVehicleCategory = 'MARKET';
+    }
+
+    // 5. Freight: Canonical source of truth from record (freight * / freight)
+    final frt = (rec['freight  *'] ?? rec['freight'] ?? '').trim();
+    _freightController = TextEditingController(text: frt);
+
+    // 6. Product Type: Keep separate from Product Code, default to Surface-FTL for new records
+    final pType = (rec['product_type'] ?? rec['Product Type'] ?? '').trim();
+    if (_productTypeOptions.contains(pType)) {
+      _selectedProductType = pType;
+    } else {
+      _selectedProductType = 'Surface-FTL';
     }
 
     // 5. Driver Details: Pre-populate from OCR or auto-fetch from Master Data
@@ -206,8 +226,8 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     final newDepts = MasterDataService.instance.getDepartmentsForCustomer(newCust);
     setState(() {
       _departmentOptions = newDepts;
-      if (!_departmentOptions.contains(_selectedDepartment) && _departmentOptions.isNotEmpty) {
-        _selectedDepartment = _departmentOptions.first;
+      if (!_departmentOptions.contains(_selectedDepartment)) {
+        _selectedDepartment = '';
       }
     });
   }
@@ -229,6 +249,8 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     _driverMobileFocusNode.dispose();
     _licenseNoFocusNode.dispose();
     _licenseValidFocusNode.dispose();
+    _freightController.dispose();
+    _freightFocusNode.dispose();
     super.dispose();
   }
 
@@ -403,7 +425,10 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   void _scrollToAndFocusCustomField(String key) {
     GlobalKey? targetKey;
     FocusNode? targetFocus;
-    if (key == 'Customer Name *') {
+    if (key == 'freight  *' || key == 'freight') {
+      targetKey = _freightKey;
+      targetFocus = _freightFocusNode;
+    } else if (key == 'Customer Name *') {
       targetKey = _customerKey;
       targetFocus = _customerFocusNode;
     } else if (key == 'Counter') {
@@ -436,15 +461,41 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   }
 
   void _saveAndVerify() {
+    final master = MasterDataService.instance;
+    final cust = _customerController.text.trim();
+    if (_selectedDepartment.isNotEmpty && !master.isDepartmentValid(_selectedDepartment, cust)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Validation Error: Department "$_selectedDepartment" is not recognized in ManiFest.xlsx.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (_selectedCounter.isNotEmpty && !master.isCounterValid(_selectedCounter)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Validation Error: Counter "$_selectedCounter" is not recognized in BookingCounterMast.xlsx.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final updated = Map<String, String>.from(widget.item.record);
     updated['Customer Name *'] = _customerController.text.trim();
     updated['Depatment Name'] = _selectedDepartment;
     updated['department'] = _selectedDepartment;
     updated['Counter'] = _selectedCounter;
+    updated['Counter name'] = _selectedCounter;
     updated['counter'] = _selectedCounter;
     updated['branchrefcode'] = _selectedCounter;
     updated['Vehicle Category'] = _selectedVehicleCategory;
     updated['Vehicle Type *'] = _selectedVehicleCategory;
+    updated['freight  *'] = _freightController.text.trim();
+    updated['freight'] = _freightController.text.trim();
+    updated['product_type'] = _selectedProductType;
+    updated['Product Type'] = _selectedProductType;
     updated['Driver Name *'] = _driverNameController.text.trim();
     updated['driver_name'] = _driverNameController.text.trim();
     updated['Mobile no   *'] = _driverMobileController.text.trim();
@@ -496,6 +547,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     checkCustom(_customerController.text, 'Customer Name *', 'Customer Name *');
     checkCustom(_selectedCounter, 'Counter', 'Counter *');
     checkCustom(_selectedVehicleCategory, 'Vehicle Category', 'Vehicle Category *');
+    checkCustom(_freightController.text, 'freight  *', 'Freight Charge *');
     checkCustom(_driverNameController.text, 'Driver Name *', 'Driver Name *');
     checkCustom(_driverMobileController.text, 'Mobile no   *', 'Driver Mobile No *');
     checkCustom(_licenseNoController.text, 'Liscense No *', 'Driver License No *');
@@ -771,49 +823,129 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _buildLabel('Vehicle Category *', showError: _hasValidated && _selectedVehicleCategory.trim().isEmpty),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildLabel('Vehicle Category *', showError: _hasValidated && _selectedVehicleCategory.trim().isEmpty),
+                                  KeyedSubtree(
+                                    key: _categoryKey,
+                                    child: Builder(
+                                      builder: (context) {
+                                        final isCatErr = _hasValidated && _selectedVehicleCategory.trim().isEmpty;
+                                        return DropdownButtonFormField<String>(
+                                          isExpanded: true,
+                                          initialValue: _vehicleCategoryOptions.contains(_selectedVehicleCategory) ? _selectedVehicleCategory : null,
+                                          items: _vehicleCategoryOptions
+                                              .map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 13))))
+                                              .toList(),
+                                          onChanged: (val) {
+                                            if (val != null) setState(() => _selectedVehicleCategory = val);
+                                          },
+                                          decoration: InputDecoration(
+                                            filled: true,
+                                            fillColor: isCatErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: BorderSide(
+                                                color: isCatErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                                width: isCatErr ? 1.2 : 1.0,
+                                              ),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: BorderSide(
+                                                color: isCatErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                                width: isCatErr ? 1.2 : 1.0,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: const BorderSide(
+                                                color: Color(0xFF0284C7),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildLabel('Freight *'),
+                                  KeyedSubtree(
+                                    key: _freightKey,
+                                    child: TextField(
+                                      controller: _freightController,
+                                      focusNode: _freightFocusNode,
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                                      decoration: InputDecoration(
+                                        hintText: '0.00',
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                          borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                          borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                          borderSide: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _buildLabel('Product Type *'),
                         KeyedSubtree(
-                          key: _categoryKey,
-                          child: Builder(
-                            builder: (context) {
-                              final isCatErr = _hasValidated && _selectedVehicleCategory.trim().isEmpty;
-                              return DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                initialValue: _vehicleCategoryOptions.contains(_selectedVehicleCategory) ? _selectedVehicleCategory : null,
-                                items: _vehicleCategoryOptions
-                                    .map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 13))))
-                                    .toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedVehicleCategory = val);
-                                },
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: isCatErr ? const Color(0xFFFEF2F2) : Colors.white,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(
-                                      color: isCatErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
-                                      width: isCatErr ? 1.2 : 1.0,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(
-                                      color: isCatErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
-                                      width: isCatErr ? 1.2 : 1.0,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(
-                                      color: isCatErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                ),
-                              );
+                          key: _productTypeKey,
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            initialValue: _selectedProductType,
+                            items: _productTypeOptions
+                                .map((p) => DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 13))))
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) setState(() => _selectedProductType = val);
                             },
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.white,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
                           ),
                         ),
                       ],

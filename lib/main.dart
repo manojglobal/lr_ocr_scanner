@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'services/app_config_service.dart';
+import 'services/master_data_service.dart';
 import 'state/batch_controller.dart';
 import 'views/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppConfigService.instance.initialize();
+  unawaited(MasterDataService.instance.fetchMasterDataFromBackend(baseUrl: AppConfigService.instance.baseUrl));
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return Material(
       color: const Color(0xFFF8FAFC),

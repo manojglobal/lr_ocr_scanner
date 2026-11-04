@@ -95,6 +95,8 @@ def _resolve_project_file(*subpaths: str) -> str:
     candidates = [
         os.path.join(BASE_DIR, *subpaths),
         os.path.join(os.path.dirname(BASE_DIR), *subpaths),
+        os.path.join(BASE_DIR, "docs", *subpaths),
+        os.path.join(os.path.dirname(BASE_DIR), "docs", *subpaths),
         os.path.join(BASE_DIR, "data", *subpaths),
         os.path.join(os.path.dirname(BASE_DIR), "data", *subpaths),
     ]
@@ -1065,13 +1067,17 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     cngr = get_val("cngr", "cngr *", "consignor", "sender", "shipper", "consignor name", "from party")
     cnge = get_val("cnge", "cnge *", "consignee", "receiver", "consignee name", "to party")
     cngrgst = get_val("cngrgstno", "cngrgstno *", "consignor gst", "consignor gstin", "sender gst")
+    if cngrgst:
+        cngrgst = re.sub(r'\s+', '', str(cngrgst)).upper()
     cngegst = get_val("cngegstno", "cngegstno *", "consignee gst", "consignee gstin", "receiver gst")
+    if cngegst:
+        cngegst = re.sub(r'\s+', '', str(cngegst)).upper()
     packing = get_val("packing", "packaging", "package type")
     pmark = _clean_pmark(get_val("pmark", "private mark", "p mark", "brand mark", "seal no", "seal"))
     goods = get_val("goods", "goods description", "commodity", "item description", "material")
-    freight = clean_num(get_val("freight", "freight  *", "freight amount", "basic freight", "total freight", "freight charge", "total_freight", "basic_freight", "total freight charge"))
-    if freight is None or freight == "":
-        freight = 0
+    # Freight: Must be mandatory manual input. Extract entered value, keep empty if not provided.
+    freight_raw = clean_num(get_val("freight  *", "freight", "Freight", "freight charges", "freight charge", "freight amount"))
+    freight = freight_raw if (freight_raw is not None and str(freight_raw).strip() != "") else ""
 
     valgoods = clean_num(get_val("valgoods", "value of goods", "declared value", "goods value", "invoice value"))
     oamount_raw = clean_num(get_val("oamount", "other amount", "other charges", "hamali", "loading charges", "unloading charges", "aoc", "labour", "st charge", "st. charge", "statistical charge", "misc charges", "misc", "ch post"))
@@ -1120,8 +1126,13 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
     lrno = _clean_grno(get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)) or grno
     bnflr = get_val("BNF LR No", "bnf lr no", "bnf lr", "bnf no")
-    dept = get_val("Depatment Name", "department name", "department", "dept", "depatment name")
-    counter_name = get_val("Counter name", "counter name", "counter", "booking counter", "branchrefcode", "branch", default="delhi")
+    # Auto-detect Department from LR clues matched against ManiFest.xlsx
+    dept_raw = data.get("Depatment Name") or data.get("department") or get_val("Depatment Name", "department name", "department", "dept")
+    dept = auto_detect_department(customer=customer, destination=dest, dept_raw=dept_raw, consignee=cnge)
+
+    # Auto-detect Counter from LR clues matched against BookingCounterMast.xlsx
+    counter_raw = data.get("Counter name") or data.get("Counter") or data.get("counter") or get_val("Counter name", "counter name", "counter", "booking counter")
+    counter_name = auto_detect_counter(counter_raw=counter_raw, branch_raw=branch, origin_raw=org)
 
     # Strictly extract E-Way Bill expiry date (never fall back to driver license valid_up_to)
     raw_ewb_upto = None
@@ -1260,7 +1271,12 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         "cngrgstno *": cngrgst,
         "cngegstno": cngegst,
         "cngegstno *": cngegst,
-        "productcode": get_val("productcode"),
+        "productcode": data.get("productcode") or get_val("productcode", "Product Code", "product code", default=""),
+        "product_type": (
+            data.get("product_type") or data.get("Product Type") or get_val("product_type", "Product Type", "producttype")
+            or (data.get("productcode") if data.get("productcode") in {"Surface-FTL", "Surface-PTL", "Global-TT", "Global-MT", "AIR"} else None)
+            or "Surface-FTL"
+        ),
         "packing": packing,
         "pmark": pmark,
         "goods": goods,
@@ -1271,8 +1287,8 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         "Liscense No *": license,
         "Valid Up to *": valid_up_to,
         "Loading Start date *": loading_date,
-        "freight": freight,
-        "freight  *": freight,
+        "freight": str(data.get("freight  *") or data.get("freight") or "").strip(),
+        "freight  *": str(data.get("freight  *") or data.get("freight") or "").strip(),
         "oamount": oamount,
         "cgst": cgst,
         "sgst": sgst,
@@ -1318,7 +1334,11 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         "ConsignorGST": cngrgst,
         "Consignee": cnge,
         "ConsigneeGST": cngegst,
-        "ProductName": get_val("productcode", "productname", "product name", default="Surface-FTL"),
+        "ProductName": (
+            data.get("product_type") or data.get("Product Type") or get_val("product_type", "Product Type", "producttype")
+            or (data.get("productcode") if data.get("productcode") in {"Surface-FTL", "Surface-PTL", "Global-TT", "Global-MT", "AIR"} else None)
+            or "Surface-FTL"
+        ),
         "Packing": packing,
         "PMark": pmark,
         "Goods": goods,
@@ -1381,7 +1401,10 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *", "GrDate", "DrivingValidUpto", "LoadingStartDate", "InvoieDate"):
             v = _format_date_ddmmyyyy(v) or None
         if v is not None and isinstance(v, str):
-            v_str = v.strip()
+            if h in ("Depatment Name", "Counter name", "Counter"):
+                v_str = v
+            else:
+                v_str = v.strip()
             if not v_str or v_str.lower() in ("none", "null", "nan"):
                 v = None
             elif v_str.isdigit():
@@ -1935,8 +1958,8 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
 
     # 19. Freight, Charges, Taxes
     raw_fr = get_val("freight  *", "freight", "freight charge", "basic freight", "total freight", "freight amount")
-    data_dict["freight  *"] = str(raw_fr) if raw_fr else "0"
-    data_dict["freight"] = str(raw_fr) if raw_fr else "0"
+    data_dict["freight  *"] = str(raw_fr) if raw_fr else ""
+    data_dict["freight"] = str(raw_fr) if raw_fr else ""
 
     raw_oamt = get_val("oamount", "other charges", "other amount", "hamali", "unloading charges", "loading charges", "aoc", "misc")
     if raw_oamt and str(raw_oamt).strip() not in ("", "0", "0.00", "None", "null", "nan"):
@@ -2368,45 +2391,71 @@ async def extract_handwriting(
             data_dict["Vehicle Type *"] = current_veh_type
             data_dict["Vehicle Category"] = current_veh_type
 
-        # Auto-lookup Department from ManiFest.xlsx if Customer Name is present
-        cust_name = (data_dict.get("Customer Name *") or data_dict.get("cngr *") or "").strip()
-        if cust_name and not data_dict.get("Depatment Name"):
+        # Department validation & exact-only resolution from ManiFest.xlsx
+        cust_name = str(data_dict.get("Customer Name *") or data_dict.get("cngr *") or "").strip()
+        extracted_dept = data_dict.get("Depatment Name") or data_dict.get("department") or ""
+        if extracted_dept:
+            if not validate_department_exact(extracted_dept, cust_name if cust_name in _load_manifest_data() else None):
+                # Reject unrecognized department! Do not silently accept
+                data_dict["Depatment Name"] = ""
+                data_dict["department"] = ""
+        elif cust_name:
             try:
                 manifest_map = _load_manifest_data()
-                norm_cust = cust_name.upper()
-                matched_depts = []
-                for m_cust, m_depts in manifest_map.items():
-                    if m_cust.upper() in norm_cust or norm_cust in m_cust.upper():
-                        matched_depts = m_depts
-                        break
+                matched_depts = manifest_map.get(cust_name, [])
+                if not matched_depts:
+                    for m_cust, m_depts in manifest_map.items():
+                        if m_cust.upper() == cust_name.upper():
+                            matched_depts = m_depts
+                            break
                 if matched_depts:
-                    dest = str(data_dict.get("destrefcode") or "").upper()
-                    selected_dept = matched_depts[0]
+                    dest = str(data_dict.get("destrefcode") or "")
+                    selected_dept = ""
                     for dept in matched_depts:
-                        if dest and dest in dept.upper():
+                        if dest and dest in dept:
                             selected_dept = dept
                             break
-                    data_dict["Depatment Name"] = selected_dept
-                    data_dict["department"] = selected_dept
+                    if selected_dept and validate_department_exact(selected_dept, cust_name):
+                        data_dict["Depatment Name"] = selected_dept
+                        data_dict["department"] = selected_dept
             except Exception as e_dept:
                 print(f"[Master] Department auto-lookup notice: {e_dept}")
 
-        # Auto-lookup Counter from BookingCounterMast.xlsx if Counter is empty
-        if not data_dict.get("Counter"):
+        # Counter validation & exact-only resolution from BookingCounterMast.xlsx
+        extracted_cntr = data_dict.get("Counter") or data_dict.get("Counter name") or data_dict.get("counter") or ""
+        if extracted_cntr:
+            if not validate_counter_exact(extracted_cntr):
+                # Reject unrecognized counter! Do not silently accept
+                data_dict["Counter"] = ""
+                data_dict["counter"] = ""
+                data_dict["Counter name"] = ""
+                data_dict["branchrefcode"] = ""
+        else:
             try:
                 counters = _load_counters_data()
-                org = str(data_dict.get("orgrefcode") or data_dict.get("branchrefcode") or "").upper()
-                selected_counter = counters[0] if counters else "KOLKATA"
+                org = str(data_dict.get("orgrefcode") or data_dict.get("branchrefcode") or "")
+                selected_counter = ""
                 for c in counters:
-                    if org and org in c.upper():
+                    if org and org == c:
                         selected_counter = c
                         break
-                data_dict["Counter"] = selected_counter
-                data_dict["counter"] = selected_counter
-                data_dict["Counter name"] = selected_counter
-                data_dict["branchrefcode"] = selected_counter
+                if selected_counter and validate_counter_exact(selected_counter):
+                    data_dict["Counter"] = selected_counter
+                    data_dict["counter"] = selected_counter
+                    data_dict["Counter name"] = selected_counter
+                    data_dict["branchrefcode"] = selected_counter
             except Exception as e_cntr:
                 print(f"[Master] Counter auto-lookup notice: {e_cntr}")
+
+        # Ensure canonical Product Type default for new records
+        if not data_dict.get("productcode") or str(data_dict.get("productcode")).strip() == "":
+            data_dict["productcode"] = "Surface-FTL"
+            data_dict["ProductName"] = "Surface-FTL"
+
+        # Ensure canonical Freight field synchronization
+        frt_val = str(data_dict.get("freight  *") or data_dict.get("freight") or "").strip()
+        data_dict["freight  *"] = frt_val
+        data_dict["freight"] = frt_val
 
         # Auto-lookup Consignor & Consignee GSTIN from ManiFest master data
         try:
@@ -2424,6 +2473,14 @@ async def extract_handwriting(
                 if matched_cnge_gst:
                     data_dict["cngegstno *"] = matched_cnge_gst
                     data_dict["cngegstno"] = matched_cnge_gst
+
+            # Sanitize GST numbers - remove all whitespace and ensure uppercase
+            if data_dict.get("cngrgstno *"):
+                data_dict["cngrgstno *"] = re.sub(r'\s+', '', str(data_dict["cngrgstno *"])).upper()
+                data_dict["cngrgstno"] = data_dict["cngrgstno *"]
+            if data_dict.get("cngegstno *"):
+                data_dict["cngegstno *"] = re.sub(r'\s+', '', str(data_dict["cngegstno *"])).upper()
+                data_dict["cngegstno"] = data_dict["cngegstno *"]
         except Exception as e_gst:
             print(f"[Master] Party GST auto-lookup notice: {e_gst}")
 
@@ -2488,7 +2545,7 @@ async def extract_handwriting(
             data_dict["freight  *"] = fr_val
             data_dict["freight"] = fr_val
         else:
-            data_dict["freight  *"] = "0"
+            data_dict["freight  *"] = ""
             data_dict["freight"] = "0"
 
         oamt_raw = data_dict.get("oamount") or data_dict.get("other amount") or data_dict.get("other charges") or data_dict.get("hamali")
@@ -2547,7 +2604,7 @@ async def extract_handwriting(
                 data_dict["LR No *"] = cleaned_margin
 
             # Enforce Patanjali charges rule (printed 'xxxx' -> 0)
-            data_dict["freight  *"] = "0"
+            data_dict["freight  *"] = ""
             data_dict["freight"] = "0"
             data_dict["cgst"] = "0.00"
             data_dict["sgst"] = "0.00"
@@ -2566,7 +2623,7 @@ async def extract_handwriting(
             if not data_dict.get("Customer Name *"):
                 data_dict["Customer Name *"] = "UNICHARM INDIA PVT. LTD."
             if not data_dict.get("freight  *"):
-                data_dict["freight  *"] = "0"
+                data_dict["freight  *"] = ""
             if not data_dict.get("freight"):
                 data_dict["freight"] = "0"
             if not data_dict.get("cgst"):
@@ -2759,6 +2816,26 @@ def _build_workbook_for_docs(
     export_id: str | None = None,
     include_audit_meta: bool = True
 ) -> tuple[openpyxl.Workbook, bytes, str, str]:
+    # Strict validation: verify all documents have valid exact Department and Counter values and space-free GSTIN
+    for doc in docs:
+        d_dict = _get_doc_data(doc)
+        dept = d_dict.get("Depatment Name") or d_dict.get("department") or ""
+        cust = d_dict.get("Customer Name *") or d_dict.get("cngr *") or ""
+        if dept and not validate_department_exact(str(dept), str(cust) if cust in _load_manifest_data() else None):
+            raise HTTPException(status_code=400, detail=f"Validation Error: Department '{dept}' is not recognized in ManiFest.xlsx. It must match the master Excel exactly.")
+        cntr = d_dict.get("Counter name") or d_dict.get("Counter") or d_dict.get("counter") or ""
+        if cntr and not validate_counter_exact(str(cntr)):
+            raise HTTPException(status_code=400, detail=f"Validation Error: Counter '{cntr}' is not recognized in BookingCounterMast.xlsx. It must match the master Excel exactly.")
+        cngr_gst = str(d_dict.get("cngrgstno *") or d_dict.get("cngrgstno") or "")
+        if " " in cngr_gst or "\t" in cngr_gst:
+            raise HTTPException(status_code=400, detail=f"Validation Error: Consignor GSTIN '{cngr_gst}' contains spaces. Spaces are strictly prohibited.")
+        cnge_gst = str(d_dict.get("cngegstno *") or d_dict.get("cngegstno") or "")
+        if " " in cnge_gst or "\t" in cnge_gst:
+            raise HTTPException(status_code=400, detail=f"Validation Error: Consignee GSTIN '{cnge_gst}' contains spaces. Spaces are strictly prohibited.")
+        frt = str(d_dict.get("freight  *") or d_dict.get("freight") or "").strip()
+        if not frt:
+            raise HTTPException(status_code=400, detail="Validation Error: Freight is mandatory. Please enter Freight before exporting.")
+
     wb = openpyxl.Workbook()
 
     now = datetime.now()
@@ -3348,23 +3425,29 @@ def _load_manifest_parties() -> tuple[list[dict[str, str]], dict[str, str]]:
                     elif "gst" in h: gst_idx = idx
 
                 def _is_standard_gst(g: str) -> bool:
-                    return len(g) == 15 and bool(re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9A-Z]{3}$', g.upper()))
+                    clean_g = re.sub(r'\s+', '', g).upper()
+                    return len(clean_g) == 15 and bool(re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9A-Z]{3}$', clean_g))
 
                 def _set_gst(k: str, g: str):
                     if not k or not g:
                         return
+                    clean_g = re.sub(r'\s+', '', g).upper()
                     if k not in gst_map:
-                        gst_map[k] = g
-                    elif _is_standard_gst(g) and not _is_standard_gst(gst_map[k]):
-                        gst_map[k] = g
+                        gst_map[k] = clean_g
+                    elif _is_standard_gst(clean_g) and not _is_standard_gst(gst_map[k]):
+                        gst_map[k] = clean_g
 
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     if not row: continue
                     cust = str(row[cust_idx]).strip() if len(row) > cust_idx and row[cust_idx] is not None else ""
-                    dept = str(row[dept_idx]).strip() if len(row) > dept_idx and row[dept_idx] is not None else ""
+                    # Preserve exact Department string from ManiFest.xlsx without trim or case modification
+                    dept = str(row[dept_idx]) if len(row) > dept_idx and row[dept_idx] is not None else ""
+                    if dept in ("None", "none", "null"):
+                        dept = ""
                     state = str(row[state_idx]).strip() if len(row) > state_idx and row[state_idx] is not None else ""
-                    gst = str(row[gst_idx]).strip() if len(row) > gst_idx and row[gst_idx] is not None else ""
-                    if gst in ("None", "none", "null", ""): gst = ""
+                    raw_gst = str(row[gst_idx]) if len(row) > gst_idx and row[gst_idx] is not None else ""
+                    gst = re.sub(r'\s+', '', raw_gst).upper()
+                    if gst in ("NONE", "NULL", ""): gst = ""
                     if cust and cust not in ("None", "none", ""):
                         parties.append({"customer": cust, "department": dept, "state": state, "gst": gst})
                         if gst:
@@ -3415,51 +3498,7 @@ def _load_manifest_data() -> dict[str, list[str]]:
             if dept and dept not in ("None", "none", "") and dept not in mapping[cust]:
                 mapping[cust].append(dept)
 
-    # Standard curated master customers matching Android MasterDataService
-    base_defaults = {
-        "HIMALAYA WELLNESS COMPANY": [
-            "HIMA-KOLKATA", "HIMALAYA-SILIGURI", "HIMALAYA-RAIPUR", "HIMALAYA-BHIWANDI",
-            "HIMALAYA-RANCHI", "HIMALAYA-NAGPUR", "HIMALAYA-INDORE", "HIMALAYA-PATNA",
-            "HIMALAYA-CHENNAI", "HIMALAYA-ZIRAKPUR ", "HIMALAYA-JAIPUR", "HIMALAYA-AHEMDABAD",
-            "HIMALAYA-DELHI", "HIMALAYA - VIJAYAWADA", "HIM - TUMKUR", "HIMALAYA-HYD",
-            "HIMALAYA-KOL", "HIMALAYA-BANGLORE"
-        ],
-        "PATANJALI PARIVAHAN PRIVATE LIMITED": [
-            "PATANJALI-HYDERABAD", "PATAN-KARANPURA", "PATAN-INDORE", "PATAN-JALNA",
-            "PATAN-BHOPAL", "PATANJALI-INDORE", "PATANJALI-DEL"
-        ],
-        "GLOBAL MARKETING": [
-            "GLOBAL-BANGLORE", "GLOBAL-PUNJAB", "GLOBAL-CHENNAI", "GLOBAL-DEL", "GLOBAL-MH"
-        ],
-        "GLOBAL MARKETING REYN": [
-            "GLOBAL MARKETING REYN-DELHI", "GLOBAL REYN-MH"
-        ],
-        "INDRA HOSIERY MILLS": ["INDIRA-LUDHIANA"],
-        "VESCO CYCLE": ["VESCO-LUDHIANA"],
-        "HI TECH INTERNATIONAL": ["HI TECH-LUDH"],
-        "MONTE CARLO FASHIONS LIMITED": ["MONTE CARLO-LUDH"],
-        "UM ORTHOTICS PRIVATE LIMITED": ["UM ORTHOTICS-LUDH"],
-        "GOLD PLUS FLOAT GLASS PRIVATE LIMITED": ["GOLD PLUS-BELGUAM"],
-        "SHREE CIMENT": ["SHREE CIMENT- MH"],
-        "TORRENT PHARMACEUTICALS LTD": ["TORRENT-AHMEDABAD", "TORRENT-INDORE"],
-        "CADILA PHARMACEUTICALS LIMITED": ["CADILA-AHMEDABAD", "CADILA-ANKLESHWAR"],
-        "SUN PHARMA LABORATORIES LTD": ["SUN-MUMBAI", "SUN-HALOL", "SUN-SIKKIM"],
-        "ZYDUS HEALTHCARE LIMITED": ["ZYDUS-AHMEDABAD", "ZYDUS-MORAIYA"],
-        "CIPLA LIMITED": ["CIPLA-MUMBAI", "CIPLA-GOA", "CIPLA-INDORE", "CIPLA-KURKUMBH"],
-        "LUPIN LIMITED": ["LUPIN-MUMBAI", "LUPIN-TARAPUR", "LUPIN-MANDIDEEP"],
-        "ALKEM LABORATORIES LTD": ["ALKEM-MUMBAI", "ALKEM-DAMAN", "ALKEM-BADDI"],
-        "MANKIND PHARMA LIMITED": ["MANKIND-DELHI", "MANKIND-PAONTA SAHIB"]
-    }
-
-    # Merge base defaults with loaded mapping
-    for k, v in base_defaults.items():
-        if k not in mapping:
-            mapping[k] = list(v)
-        else:
-            for item in v:
-                if item not in mapping[k]:
-                    mapping[k].append(item)
-
+    # ManiFest.xlsx is the strict single source of truth - zero synthetic base_defaults
     _CACHED_MANIFEST_DATA = mapping
     return _CACHED_MANIFEST_DATA
 
@@ -3475,18 +3514,15 @@ def _load_counters_data() -> list[str]:
             try:
                 wb = openpyxl.load_workbook(COUNTERS_FILE_PATH, data_only=True)
                 ws = wb.active
-                # Header is ('ID', 'Counter Name', 'From Date', 'Close Date', 'Branch Name')
+                # BookingCounterMast.xlsx header: ('ID', 'Counter Name', 'From Date', 'Close Date', 'Branch Name')
+                # Column 1 ('Counter Name') is the strict single source of truth
                 for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row:
+                    if not row or len(row) < 2 or row[1] is None:
                         continue
-                    cnt_name = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                    branch_name = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
-                    # Replace single-digit index typos (e.g. '1' at row 27) with Branch Name
-                    target = branch_name if (cnt_name.isdigit() or not cnt_name) else cnt_name
-                    if target and target not in ("None", "none", "") and target not in counters:
-                        counters.append(target)
-                    if branch_name and branch_name not in ("None", "none", "") and branch_name not in counters:
-                        counters.append(branch_name)
+                    # Preserve exact Counter Name from BookingCounterMast.xlsx without trim or case modification
+                    cnt_name = str(row[1])
+                    if cnt_name and cnt_name not in ("None", "none", "") and cnt_name not in counters:
+                        counters.append(cnt_name)
             except Exception as ex:
                 print(f"[MasterData] Error loading BookingCounterMast.xlsx: {ex}")
             finally:
@@ -3496,20 +3532,177 @@ def _load_counters_data() -> list[str]:
                     except Exception:
                         pass
 
-        # Standard booking counters matching Android MasterDataService
-        std_counters = [
-            "KOLKATA", "DELHI", "MUMBAI 01", "BANGLORE", "BELGAUM", "BHOPAL", "HYDERABAD",
-            "LUDHIANA", "JALNA", "CHENNAI", "INDORE-1", "PATIALA", "MANGLORE", "TUMKUR",
-            "PATALGANGA(MUMBAI)", "KARANPURA", "VIJAYWADA", "FARUKHNAGAR_BRANCH", "AHEMBADAB",
-            "PITHAMPUR_BRANCH", "ZIRAKPUR_1", "GHAZIABAD_1", "GURUGRAM_HUB", "RANCHI_1",
-            "JAIPUR_1", "PATNA_1", "NAGPUR_1", "BHIWANDI_1", "RAIPUR_1", "SILIGURI_1"
-        ]
-        for c in std_counters:
-            if c not in counters:
-                counters.append(c)
-
+        # BookingCounterMast.xlsx is the strict single source of truth - zero synthetic std_counters
         _CACHED_COUNTERS_DATA = counters
         return _CACHED_COUNTERS_DATA
+
+def validate_department_exact(dept: str, customer: str | None = None) -> bool:
+    """Validates Department value strictly against ManiFest.xlsx.
+    Preserves exact spelling, casing, whitespace, and special characters."""
+    if not dept:
+        return True
+    mapping = _load_manifest_data()
+    if customer:
+        cust_depts = mapping.get(customer, [])
+        if dept in cust_depts:
+            return True
+        for c_name, c_depts in mapping.items():
+            if c_name.upper() == customer.upper() and dept in c_depts:
+                return True
+    all_depts = {d for depts in mapping.values() for d in depts}
+    return dept in all_depts
+
+def validate_counter_exact(counter: str) -> bool:
+    """Validates Counter value strictly against BookingCounterMast.xlsx (Counter Name column).
+    Preserves exact spelling, casing, whitespace, and special characters."""
+    if not counter:
+        return True
+    counters = _load_counters_data()
+    return counter in counters
+
+
+def auto_detect_department(customer: str | None = None, destination: str | None = None, dept_raw: str | None = None, consignee: str | None = None) -> str:
+    """Matches extracted LR information against ManiFest.xlsx.
+    Returns the exact matching Department string from ManiFest.xlsx if a unique reliable match is found.
+    If 0 matches or multiple matches are possible (ambiguous), returns empty string '' to require manual selection."""
+    mapping = _load_manifest_data()
+    if not mapping:
+        return ""
+
+    # 1. Identify candidate departments for the customer if known
+    candidate_depts: list[str] = []
+    if customer:
+        c_clean = re.sub(r'[^A-Za-z0-9]', '', customer.upper())
+        for cust_name, depts in mapping.items():
+            cust_clean = re.sub(r'[^A-Za-z0-9]', '', cust_name.upper())
+            if c_clean in cust_clean or cust_clean in c_clean or any(token in cust_clean for token in c_clean.split() if len(token) > 3):
+                candidate_depts.extend(depts)
+    if not candidate_depts:
+        candidate_depts = [d for depts in mapping.values() for d in depts]
+
+    # Deduplicate candidate departments while preserving exact strings
+    unique_candidates: list[str] = []
+    for d in candidate_depts:
+        if d not in unique_candidates:
+            unique_candidates.append(d)
+
+    # 2. Check for exact match first
+    if dept_raw:
+        for d in unique_candidates:
+            if d == dept_raw:
+                return d
+        dept_raw_clean = re.sub(r'[^A-Za-z0-9]', '', dept_raw.upper())
+        exact_clean_matches = [d for d in unique_candidates if re.sub(r'[^A-Za-z0-9]', '', d.upper()) == dept_raw_clean]
+        if len(exact_clean_matches) == 1:
+            return exact_clean_matches[0]
+
+    # 3. Match against destination, raw dept, and consignee clues
+    clues_text = f"{destination or ''} {dept_raw or ''} {consignee or ''}".upper()
+    clue_tokens = [t for t in re.split(r'[^A-Za-z0-9]+', clues_text) if len(t) >= 3]
+
+    matched_depts: list[str] = []
+    for d in unique_candidates:
+        d_upper = d.upper()
+        d_tokens = [t for t in re.split(r'[^A-Za-z0-9]+', d_upper) if len(t) >= 3]
+        has_token_match = False
+        for token in d_tokens:
+            if token in ("HIM", "HIMALAYA", "PATANJALI", "PATAN", "GLOBAL", "MARKETING", "REYN", "GOLD", "PLUS", "SHREE", "CIMENT", "INDRA", "INDIRA", "VESCO", "MONTE", "CARLO", "LIMITED", "PVT", "LTD", "COMPANY", "WELLNESS"):
+                continue
+            if token in clue_tokens or any(token in ct or ct in token for ct in clue_tokens if len(ct) >= 4):
+                has_token_match = True
+                break
+        if has_token_match and d not in matched_depts:
+            matched_depts.append(d)
+
+    # 4. Strictly evaluate uniqueness: exactly 1 match -> return exact Excel value; else ''
+    if len(matched_depts) == 1:
+        return matched_depts[0]
+
+    return ""
+
+
+def auto_detect_counter(counter_raw: str | None = None, branch_raw: str | None = None, origin_raw: str | None = None) -> str:
+    """Matches extracted LR information against BookingCounterMast.xlsx (Column 1).
+    Returns the exact matching Counter string if a unique reliable match is found.
+    If 0 matches or multiple matches (ambiguous), returns empty string '' to require manual selection."""
+    counters = _load_counters_data()
+    if not counters:
+        return ""
+
+    # 1. Check for exact match
+    for clue in (counter_raw, branch_raw, origin_raw):
+        if clue and clue in counters:
+            return clue
+        if clue:
+            c_clean = re.sub(r'[^A-Za-z0-9]', '', str(clue).upper())
+            exact_clean_matches = [c for c in counters if re.sub(r'[^A-Za-z0-9]', '', c.upper()) == c_clean]
+            if len(exact_clean_matches) == 1:
+                return exact_clean_matches[0]
+
+    # 2. Known station/city to counter token associations
+    clues_text = f"{counter_raw or ''} {branch_raw or ''} {origin_raw or ''}".upper()
+    city_counter_map = {
+        "DELHI": "DELHI",
+        "KOLKATA": "KOL",
+        "CALCUTTA": "KOL",
+        "MUMBAI": "MUMBAI 01",
+        "BOMBAY": "MUMBAI 01",
+        "BANGALORE": "BANG-01",
+        "BENGALURU": "BANG-01",
+        "BELGAUM": "BEL",
+        "BELAGAVI": "BEL",
+        "BHOPAL": "BHOP",
+        "HYDERABAD": "HYD",
+        "SECUNDERABAD": "HYD",
+        "LUDHIANA": "LUDH",
+        "JALNA": "JALNA",
+        "CHENNAI": "CHENNAI",
+        "MADRAS": "CHENNAI",
+        "INDORE": "INDORE-1",
+        "PATIALA": "PATIALA",
+        "MANGALORE": "MANG",
+        "MANGALURU": "MANG",
+        "TUMKUR": "TUM",
+        "TUMAKURU": "TUM",
+        "PATALGANGA": "PATAL-1",
+        "KARANPURA": "KARANPURA",
+        "VIJAYAWADA": "VIJAYWADA",
+        "VIJAYWADA": "VIJAYWADA",
+        "FARUKHNAGAR": "FARUKH-01",
+        "FARUKH": "FARUKH-01",
+        "AHMEDABAD": "AHEM-01",
+        "AHEMDABAD": "AHEM-01",
+        "PRITHLA": "PRIT-01",
+        "ZIRAKPUR": "ZIRAK-01",
+        "ZIRAK": "ZIRAK-01",
+        "GHAZIABAD": "GHAZ-01",
+        "GURGAON": "GURU-01",
+        "GURUGRAM": "GURU-01",
+        "RANCHI": "RANCHI-01",
+        "JAIPUR": "JAIP-01",
+        "PATNA": "PATNA-1",
+        "BHIWANDI": "BHIWANDI-01",
+        "RAIPUR": "RAIPUR-01",
+        "SILIGURI": "SILIGURI-1",
+    }
+
+    matched_counters: list[str] = []
+    for city, mapped_counter in city_counter_map.items():
+        if city in clues_text and mapped_counter in counters:
+            if mapped_counter not in matched_counters:
+                matched_counters.append(mapped_counter)
+
+    if not matched_counters:
+        for c in counters:
+            c_base = re.sub(r'[^A-Za-z]', '', c.upper())
+            if len(c_base) >= 3 and c_base in clues_text:
+                if c not in matched_counters:
+                    matched_counters.append(c)
+
+    if len(matched_counters) == 1:
+        return matched_counters[0]
+
+    return ""
 
 DRIVER_MASTER_FILE = os.path.join(os.path.dirname(__file__), "data", "driver_master.json")
 

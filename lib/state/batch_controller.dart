@@ -20,6 +20,7 @@ import '../services/permission_service.dart';
 import '../services/file_lifecycle_service.dart';
 import '../services/master_data_service.dart';
 import '../services/pdf_assembler_service.dart';
+import '../services/app_config_service.dart';
 
 /// Central state management controller for the multi-image OCR-to-Excel pipeline.
 class BatchProcessingController extends ChangeNotifier {
@@ -67,6 +68,7 @@ class BatchProcessingController extends ChangeNotifier {
     FileLifecycleService.instance.purgeLocalSnapshotsOlderThan(days: 30);
     _purgeOldItems();
     _loadSavedSession();
+    MasterDataService.instance.fetchMasterDataFromBackend(baseUrl: AppConfigService.instance.baseUrl);
   }
 
   void _purgeOldItems() {
@@ -1157,40 +1159,63 @@ bool _duplicateNoticePending = false;
             parseResult.data.putIfAbsent(drvKey, () => '');
           }
 
-          // Auto-enrich Department from ManiFest.xlsx if Customer is known
-          final custName = (parseResult.data['Customer Name *'] ?? parseResult.data['cngr *'] ?? '').trim();
-          if (custName.isNotEmpty && (parseResult.data['Depatment Name'] ?? '').trim().isEmpty) {
-            final depts = MasterDataService.instance.getDepartmentsForCustomer(custName);
-            if (depts.isNotEmpty) {
-              final dest = (parseResult.data['destrefcode'] ?? '').trim().toUpperCase();
-              String selectedDept = depts.first;
-              for (final d in depts) {
-                if (dest.isNotEmpty && d.toUpperCase().contains(dest)) {
-                  selectedDept = d;
-                  break;
-                }
-              }
-              parseResult.data['Depatment Name'] = selectedDept;
-              parseResult.data['department'] = selectedDept;
+          // Consignor & Consignee GST Field Validation: Strip any spaces from OCR extraction
+          for (final gstKey in ['cngrgstno *', 'cngrgstno', 'cngrgst', 'consignorgst', 'consignorgstin', 'cngegstno *', 'cngegstno', 'cngegst', 'consigneegst', 'consigneegstin']) {
+            if (parseResult.data.containsKey(gstKey)) {
+              parseResult.data[gstKey] = parseResult.data[gstKey]!.replaceAll(RegExp(r'\s+'), '').toUpperCase();
             }
           }
 
-          // Auto-enrich Counter from BookingCounterMast.xlsx if Counter is empty
-          if ((parseResult.data['Counter'] ?? '').trim().isEmpty) {
-            final counters = MasterDataService.instance.getCounters();
-            if (counters.isNotEmpty) {
-              final org = (parseResult.data['orgrefcode'] ?? parseResult.data['branchrefcode'] ?? '').trim().toUpperCase();
-              String selectedCounter = counters.first;
-              for (final c in counters) {
-                if (org.isNotEmpty && c.toUpperCase().contains(org)) {
-                  selectedCounter = c;
-                  break;
-                }
-              }
-              parseResult.data['Counter'] = selectedCounter;
-              parseResult.data['counter'] = selectedCounter;
-              parseResult.data['branchrefcode'] = selectedCounter;
-            }
+          // Freight: Must be mandatory manual input. Keep empty by default.
+          parseResult.data['freight  *'] = '';
+          parseResult.data['freight'] = '';
+
+          // Product Type vs Product Code separation:
+          // Keep productcode as actual product code (do not overwrite with product type).
+          // Product Type is stored separately as product_type, defaulting to Surface-FTL for new records.
+          if ((parseResult.data['product_type'] ?? '').trim().isEmpty) {
+            parseResult.data['product_type'] = 'Surface-FTL';
+            parseResult.data['Product Type'] = 'Surface-FTL';
+          }
+
+          // Auto-detect Department from ManiFest.xlsx using actual LR OCR data
+          final custName = (parseResult.data['Customer Name *'] ?? parseResult.data['cngr *'] ?? '').trim();
+          final dest = (parseResult.data['destrefcode'] ?? parseResult.data['to'] ?? '').trim();
+          final rawDept = (parseResult.data['Depatment Name'] ?? parseResult.data['department'] ?? '').trim();
+          final cngeName = (parseResult.data['cnge *'] ?? parseResult.data['cnge'] ?? '').trim();
+
+          final detectedDept = MasterDataService.instance.autoDetectDepartment(
+            customer: custName,
+            destination: dest,
+            deptRaw: rawDept,
+            consignee: cngeName,
+          );
+          if (detectedDept.isNotEmpty) {
+            parseResult.data['Depatment Name'] = detectedDept;
+            parseResult.data['department'] = detectedDept;
+          } else {
+            parseResult.data['Depatment Name'] = '';
+            parseResult.data['department'] = '';
+          }
+
+          // Auto-detect Counter from BookingCounterMast.xlsx using actual LR OCR data
+          final rawCounter = (parseResult.data['Counter'] ?? parseResult.data['counter'] ?? '').trim();
+          final rawBranch = (parseResult.data['branchrefcode'] ?? parseResult.data['branch'] ?? '').trim();
+          final rawOrg = (parseResult.data['orgrefcode'] ?? parseResult.data['from'] ?? '').trim();
+
+          final detectedCounter = MasterDataService.instance.autoDetectCounter(
+            counterRaw: rawCounter,
+            branchRaw: rawBranch,
+            originRaw: rawOrg,
+          );
+          if (detectedCounter.isNotEmpty) {
+            parseResult.data['Counter'] = detectedCounter;
+            parseResult.data['counter'] = detectedCounter;
+            parseResult.data['branchrefcode'] = detectedCounter;
+          } else {
+            parseResult.data['Counter'] = '';
+            parseResult.data['counter'] = '';
+            parseResult.data['branchrefcode'] = '';
           }
 
           // Find current index after asynchronous gap

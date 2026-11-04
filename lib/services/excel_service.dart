@@ -8,6 +8,7 @@ import '../config/document_schema.dart';
 import '../models/batch_item.dart';
 import '../models/extraction_result.dart';
 import 'file_lifecycle_service.dart';
+import 'master_data_service.dart';
 
 /// Pure Dart Excel generator that compiles batch OCR items into a styled .xlsx workbook
 /// with dynamic table and structure layout for ANY image without requiring predefined templates.
@@ -72,6 +73,23 @@ class ExcelService {
     String? userName,
     bool includeAuditMeta = false,
   }) {
+    // Strict validation for Department, Counter, and mandatory Freight on ANY export
+    for (final it in items) {
+      final cust = it.record['Customer Name *'] ?? it.record['customer_name'] ?? it.record['customer'] ?? it.record['cngr *'] ?? it.record['cngr'] ?? '';
+      final dept = it.record['Depatment Name'] ?? it.record['department'] ?? it.record['CustomerDepartment'] ?? '';
+      final counter = it.record['Counter'] ?? it.record['counter'] ?? it.record['Countername'] ?? it.record['countername'] ?? '';
+      if (dept.isNotEmpty && !MasterDataService.instance.isDepartmentValid(dept, cust)) {
+        throw ArgumentError('Export Rejected: Unrecognized Department "$dept" for customer "$cust". Must match exact value from ManiFest.xlsx.');
+      }
+      if (counter.isNotEmpty && !MasterDataService.instance.isCounterValid(counter)) {
+        throw ArgumentError('Export Rejected: Unrecognized Counter "$counter". Must match exact value from BookingCounterMast.xlsx.');
+      }
+      final frt = (it.record['freight  *'] ?? it.record['freight'] ?? '').trim();
+      if (frt.isEmpty) {
+        throw ArgumentError('Export Rejected: Freight is empty for item "${it.fileName}". Freight is a mandatory manual field.');
+      }
+    }
+
     final excel = Excel.createExcel();
     final Set<String> existingSheetNames = {};
 
@@ -199,7 +217,14 @@ class ExcelService {
           String cleanKey(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
           final Map<String, String> normRecord = {};
           item.record.forEach((k, v) {
-            normRecord[cleanKey(k)] = v.trim();
+            final ck = cleanKey(k);
+            // Strictly preserve exact Excel values (including spaces) for Department and Counter
+            if (ck == 'depatmentname' || ck == 'departmentname' || ck == 'department' || ck == 'customerdepartment' ||
+                ck == 'countername' || ck == 'counter' || ck == 'bookingcounter') {
+              normRecord[ck] = v;
+            } else {
+              normRecord[ck] = v.trim();
+            }
           });
 
           String getValForHeader(String h) {
@@ -226,7 +251,7 @@ class ExcelService {
               case 'CustomerDepartment':
                 return normRecord['depatmentname'] ?? normRecord['departmentname'] ?? normRecord['department'] ?? normRecord['customerdepartment'] ?? '';
               case 'Countername':
-                return normRecord['countername'] ?? normRecord['counter'] ?? normRecord['bookingcounter'] ?? normRecord['branchrefcode'] ?? normRecord['branch'] ?? 'delhi';
+                return normRecord['countername'] ?? normRecord['counter'] ?? normRecord['bookingcounter'] ?? normRecord['branchrefcode'] ?? normRecord['branch'] ?? '';
               case 'TransitDays':
                 final startStr = normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['stockdt'] ?? '';
                 final endStr = normRecord['validupto'] ?? '';
@@ -260,13 +285,24 @@ class ExcelService {
               case 'Consignor':
                 return normRecord['cngr'] ?? normRecord['consignor'] ?? normRecord['sender'] ?? '';
               case 'ConsignorGST':
-                return normRecord['cngrgstno'] ?? normRecord['consignorgst'] ?? normRecord['consignorgstin'] ?? normRecord['sendergst'] ?? '';
+                final cngrGst = normRecord['cngrgstno'] ?? normRecord['consignorgst'] ?? normRecord['consignorgstin'] ?? normRecord['sendergst'] ?? '';
+                return cngrGst.replaceAll(RegExp(r'\s+'), '');
               case 'Consignee':
                 return normRecord['cnge'] ?? normRecord['consignee'] ?? normRecord['receiver'] ?? '';
               case 'ConsigneeGST':
-                return normRecord['cngegstno'] ?? normRecord['consigneegst'] ?? normRecord['consigneegstin'] ?? normRecord['receivergst'] ?? '';
+                final cngeGst = normRecord['cngegstno'] ?? normRecord['consigneegst'] ?? normRecord['consigneegstin'] ?? normRecord['receivergst'] ?? '';
+                return cngeGst.replaceAll(RegExp(r'\s+'), '');
               case 'ProductName':
-                return normRecord['productcode'] ?? normRecord['productname'] ?? 'Surface-FTL';
+                final explicitType = normRecord['product_type'] ?? normRecord['producttype'];
+                if (explicitType != null && explicitType.toString().trim().isNotEmpty) {
+                  return explicitType.toString().trim();
+                }
+                final legacyCode = normRecord['productcode'] ?? '';
+                const validTypes = {'Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'};
+                if (validTypes.contains(legacyCode.toString().trim())) {
+                  return legacyCode.toString().trim();
+                }
+                return 'Surface-FTL';
               case 'Packing':
                 return normRecord['packing'] ?? normRecord['packaging'] ?? '';
               case 'PMark':

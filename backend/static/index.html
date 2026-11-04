@@ -944,7 +944,7 @@
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Consignor GSTIN *</label>
 
-                <input type="text" id="edit_cngrgst" class="w-full px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+                <input type="text" id="edit_cngrgst" onkeydown="if(event.key===' ')event.preventDefault();" oninput="this.value=this.value.replace(/\s+/g,'').toUpperCase();" onpaste="setTimeout(()=>{this.value=this.value.replace(/\s+/g,'').toUpperCase();},0);" class="w-full px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
 
               </div>
 
@@ -960,7 +960,7 @@
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Consignee GSTIN *</label>
 
-                <input type="text" id="edit_cngegst" class="w-full px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+                <input type="text" id="edit_cngegst" onkeydown="if(event.key===' ')event.preventDefault();" oninput="this.value=this.value.replace(/\s+/g,'').toUpperCase();" onpaste="setTimeout(()=>{this.value=this.value.replace(/\s+/g,'').toUpperCase();},0);" class="w-full px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
 
               </div>
 
@@ -1311,6 +1311,34 @@
                     <option value="Own">Own</option>
 
                     <option value="Attached">Attached</option>
+
+                  </select>
+
+                </div>
+
+                <div>
+
+                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Freight *</label>
+
+                  <input type="text" id="custom_freight" placeholder="0.00" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none font-semibold text-slate-800 focus:border-sky-500 shadow-xs" />
+
+                </div>
+
+                <div class="sm:col-span-2">
+
+                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Product Type *</label>
+
+                  <select id="custom_product_type" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs">
+
+                    <option value="Surface-FTL" selected>Surface-FTL</option>
+
+                    <option value="Surface-PTL">Surface-PTL</option>
+
+                    <option value="Global-TT">Global-TT</option>
+
+                    <option value="Global-MT">Global-MT</option>
+
+                    <option value="AIR">AIR</option>
 
                   </select>
 
@@ -3549,7 +3577,7 @@
         case 'CustomerDepartment':
           return data['CustomerDepartment'] || data['Depatment Name'] || data['Department Name'] || data['Department'] || '';
         case 'Countername':
-          return data['Countername'] || data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || 'delhi';
+          return data['Countername'] || data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || '';
         case 'TransitDays':
           fieldKey = 'Transit Days';
           break;
@@ -3561,14 +3589,14 @@
           fieldKey = 'cngr *';
           break;
         case 'ConsignorGST':
-          return data['ConsignorGST'] || data['cngrgstno *'] || data['cngrgstno'] || data['Consignor GSTIN'] || data['consignorgst'] || data['sendergst'] || '';
+          return (data['ConsignorGST'] || data['cngrgstno *'] || data['cngrgstno'] || data['Consignor GSTIN'] || data['consignorgst'] || data['sendergst'] || '').replace(/\s+/g, '').toUpperCase();
         case 'Consignee':
           fieldKey = 'cnge *';
           break;
         case 'ConsigneeGST':
-          return data['ConsigneeGST'] || data['cngegstno *'] || data['cngegstno'] || data['Consignee GSTIN'] || data['consigneegst'] || data['receivergst'] || '';
+          return (data['ConsigneeGST'] || data['cngegstno *'] || data['cngegstno'] || data['Consignee GSTIN'] || data['consigneegst'] || data['receivergst'] || '').replace(/\s+/g, '').toUpperCase();
         case 'ProductName':
-          return data['ProductName'] || data['productcode'] || data['Product Code'] || 'Surface-FTL';
+          return data['product_type'] || data['Product Type'] || 'Surface-FTL';
         case 'Packing':
           return data['Packing'] || data['packing'] || data['packaging'] || '';
         case 'PMark':
@@ -10151,6 +10179,8 @@
 
       { id: 'custom_veh_category', label: 'Vehicle Category *', required: true },
 
+      { id: 'custom_freight', label: 'Freight Charge *', required: true },
+
       { id: 'custom_driver_name', label: 'Driver Name *', required: true },
 
       { id: 'custom_driver_mobile', label: 'Driver Mobile No *', required: true },
@@ -12025,54 +12055,24 @@
 
 
 
-      // Handle department selection matching Android MasterDataService parity
-
-      if (currentSelected && currentSelected.trim()) {
-
-        const curClean = currentSelected.trim().toUpperCase();
-
+      // Handle department selection preserving exact ManiFest.xlsx value without fallback
+      if (currentSelected) {
         let found = false;
-
         for (let i = 0; i < deptSelect.options.length; i++) {
-
-          if (deptSelect.options[i].value.trim().toUpperCase() === curClean) {
-
+          if (deptSelect.options[i].value === currentSelected) {
             deptSelect.selectedIndex = i;
-
             deptSelect.value = deptSelect.options[i].value;
-
             found = true;
-
             break;
-
           }
-
         }
-
         if (!found) {
-
-          // If not in options, insert at top and select (exact Android initState parity)
-
-          const opt = document.createElement('option');
-
-          opt.value = currentSelected.trim();
-
-          opt.innerText = currentSelected.trim();
-
-          opt.selected = true;
-
-          deptSelect.insertBefore(opt, deptSelect.options[1] || null);
-
-          deptSelect.value = currentSelected.trim();
-
+          deptSelect.selectedIndex = 0;
+          deptSelect.value = '';
         }
-
-      } else if (depts.length > 0 && custVal) {
-
-        // If customer was picked and has departments, default to first (exact Android _onCustomerChanged parity)
-
-        deptSelect.value = depts[0];
-
+      } else {
+        deptSelect.selectedIndex = 0;
+        deptSelect.value = '';
       }
 
 
@@ -12130,53 +12130,44 @@
 
 
       const counterEl = document.getElementById('custom_counter');
-
       if (counterEl) {
-
-        const targetCounter = (d['Counter'] || d['counter'] || d['branchrefcode'] || '').trim();
-
+        const targetCounter = d['Counter'] || d['Counter name'] || d['counter'] || d['branchrefcode'] || '';
         if (targetCounter) {
-
           let found = false;
-
           for (let i = 0; i < counterEl.options.length; i++) {
-
-            if (counterEl.options[i].value.trim().toUpperCase() === targetCounter.toUpperCase()) {
-
+            if (counterEl.options[i].value === targetCounter) {
               counterEl.selectedIndex = i;
-
               counterEl.value = counterEl.options[i].value;
-
               found = true;
-
               break;
-
             }
-
           }
-
           if (!found) {
-
-            const opt = document.createElement('option');
-
-            opt.value = targetCounter;
-
-            opt.innerText = targetCounter;
-
-            opt.selected = true;
-
-            counterEl.insertBefore(opt, counterEl.options[1] || null);
-
-            counterEl.value = targetCounter;
-
+            counterEl.selectedIndex = 0;
+            counterEl.value = '';
           }
-
-        } else if (counterEl.options.length > 1) {
-
-          counterEl.selectedIndex = 1;
-
+        } else {
+          counterEl.selectedIndex = 0;
+          counterEl.value = '';
         }
+      }
 
+      // Master Data -> Freight
+      const frtEl = document.getElementById('custom_freight');
+      if (frtEl) {
+        frtEl.value = d['freight  *'] || d['freight'] || '';
+      }
+
+      // Master Data -> Product Type (separate from productcode)
+      const prodTypeEl = document.getElementById('custom_product_type');
+      if (prodTypeEl) {
+        const allowedProdTypes = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
+        const existingProd = d['product_type'] || d['Product Type'] || '';
+        if (allowedProdTypes.includes(existingProd)) {
+          prodTypeEl.value = existingProd;
+        } else {
+          prodTypeEl.value = 'Surface-FTL';
+        }
       }
 
 
@@ -12420,8 +12411,15 @@
       activeItem.data['branchrefcode'] = counterVal;
 
       activeItem.data['Vehicle Category'] = vehCatVal;
-
       activeItem.data['Vehicle Type *'] = vehCatVal;
+      activeItem.data['freight  *'] = frtVal;
+      activeItem.data['freight'] = frtVal;
+      activeItem.data['product_type'] = prodTypeVal;
+      activeItem.data['Product Type'] = prodTypeVal;
+      activeItem.data['cngrgstno *'] = cngrGstVal;
+      activeItem.data['cngrgstno'] = cngrGstVal;
+      activeItem.data['cngegstno *'] = cngeGstVal;
+      activeItem.data['cngegstno'] = cngeGstVal;
 
       activeItem.data['Driver Name *'] = drvNameVal;
 
@@ -12535,13 +12533,65 @@
 
 
 
-      // Collect from customization and driver inputs (fallback to activeItem.data)
+      // Validate Consignor & Consignee GST fields (prevent spaces, 15-char format)
+      const cngrGstEl = document.getElementById('edit_cngrgst');
+      const cngeGstEl = document.getElementById('edit_cngegst');
+      const cngrGstVal = (cngrGstEl ? cngrGstEl.value : (activeItem.data['cngrgstno *'] || '')).replace(/\s+/g, '').toUpperCase();
+      const cngeGstVal = (cngeGstEl ? cngeGstEl.value : (activeItem.data['cngegstno *'] || '')).replace(/\s+/g, '').toUpperCase();
+      if (cngrGstEl) cngrGstEl.value = cngrGstVal;
+      if (cngeGstEl) cngeGstEl.value = cngeGstVal;
 
-      const deptVal = document.getElementById('custom_dept')?.value.trim() || activeItem.data['Depatment Name'] || activeItem.data['department'] || '';
+      function isValidGstFormat(val) {
+        if (!val) return true;
+        return (val.length === 15 && /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z]{1}[0-9A-Z]{1}$/.test(val)) || (val.length === 15 && /^[0-9A-Z]{15}$/.test(val));
+      }
 
-      const counterVal = document.getElementById('custom_counter')?.value.trim() || activeItem.data['Counter'] || activeItem.data['counter'] || activeItem.data['branchrefcode'] || '';
+      if (cngrGstVal && !isValidGstFormat(cngrGstVal)) {
+        showUploadLrValidationModal('Invalid Consignor GST Number. It must be a 15-character alphanumeric GSTIN without spaces.');
+        return;
+      }
+      if (cngeGstVal && !isValidGstFormat(cngeGstVal)) {
+        showUploadLrValidationModal('Invalid Consignee GST Number. It must be a 15-character alphanumeric GSTIN without spaces.');
+        return;
+      }
 
-      const vehCatVal = document.getElementById('custom_veh_category')?.value.trim() || activeItem.data['Vehicle Category'] || 'MARKET';
+      // Collect from customization and driver inputs (preserve exact strings without trim)
+      const deptVal = document.getElementById('custom_dept')?.value || activeItem.data['Depatment Name'] || activeItem.data['department'] || '';
+      const counterVal = document.getElementById('custom_counter')?.value || activeItem.data['Counter'] || activeItem.data['Counter name'] || activeItem.data['counter'] || '';
+      const vehCatVal = document.getElementById('custom_veh_category')?.value.trim() || activeItem.data['Vehicle Category'] || 'Market';
+      const frtVal = document.getElementById('custom_freight')?.value.trim();
+      const prodTypeVal = document.getElementById('custom_product_type')?.value.trim() || activeItem.data['product_type'] || 'Surface-FTL';
+
+      // Mandatory validation for Freight Charge
+      if (!frtVal) {
+        showUploadLrValidationModal('Validation Error: Freight Charge is mandatory. Please enter Freight Charge before saving.');
+        document.getElementById('custom_freight')?.focus();
+        return;
+      }
+
+      // Strict validation for Department against ManiFest.xlsx
+      if (deptVal && typeof masterCustomersMapping !== 'undefined' && masterCustomersMapping) {
+        let allowedDepts = [];
+        if (editCustomer && masterCustomersMapping[editCustomer]) {
+          allowedDepts = masterCustomersMapping[editCustomer];
+        } else {
+          for (const k in masterCustomersMapping) {
+            allowedDepts = allowedDepts.concat(masterCustomersMapping[k]);
+          }
+        }
+        if (!allowedDepts.includes(deptVal)) {
+          showUploadLrValidationModal(`Validation Error: Department "${deptVal}" is not recognized in ManiFest.xlsx.`);
+          return;
+        }
+      }
+
+      // Strict validation for Counter against BookingCounterMast.xlsx
+      if (counterVal && typeof masterCountersList !== 'undefined' && masterCountersList && masterCountersList.length > 0) {
+        if (!masterCountersList.includes(counterVal)) {
+          showUploadLrValidationModal(`Validation Error: Counter "${counterVal}" is not recognized in BookingCounterMast.xlsx.`);
+          return;
+        }
+      }
 
       const drvNameVal = document.getElementById('custom_driver_name')?.value.trim() || activeItem.data['Driver Name *'] || activeItem.data['driver_name'] || '';
 
@@ -12586,8 +12636,15 @@
       activeItem.data['branchrefcode'] = counterVal;
 
       activeItem.data['Vehicle Category'] = vehCatVal;
-
       activeItem.data['Vehicle Type *'] = vehCatVal;
+      activeItem.data['freight  *'] = frtVal;
+      activeItem.data['freight'] = frtVal;
+      activeItem.data['product_type'] = prodTypeVal;
+      activeItem.data['Product Type'] = prodTypeVal;
+      activeItem.data['cngrgstno *'] = cngrGstVal;
+      activeItem.data['cngrgstno'] = cngrGstVal;
+      activeItem.data['cngegstno *'] = cngeGstVal;
+      activeItem.data['cngegstno'] = cngeGstVal;
 
       activeItem.data['Driver Name *'] = drvNameVal;
 

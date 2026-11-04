@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
@@ -97,6 +98,9 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       if (key == 'oamount') {
         if (val.isEmpty || val == '0') val = '0.00';
       }
+      if (key == 'cngrgstno *' || key == 'cngegstno *') {
+        val = val.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+      }
       _fieldControllers[key] = TextEditingController(text: val);
       _fieldFocusNodes[key] = FocusNode();
       _fieldGlobalKeys[key] = GlobalKey();
@@ -169,7 +173,22 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       final textVal = entry.value.text.trim();
       updated[entry.key] = textVal;
       // Sync known aliases for consistency
-      if (entry.key == 'grno (*)') {
+      if (entry.key == 'cngrgstno *' || entry.key == 'cngegstno *') {
+        final sanitized = textVal.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+        updated[entry.key] = sanitized;
+        if (entry.key == 'cngrgstno *') {
+          updated['cngrgstno'] = sanitized;
+          updated['cngrgst'] = sanitized;
+          updated['consignorgst'] = sanitized;
+        } else {
+          updated['cngegstno'] = sanitized;
+          updated['cngegst'] = sanitized;
+          updated['consigneegst'] = sanitized;
+        }
+      } else if (entry.key == 'freight  *' || entry.key == 'freight') {
+        updated['freight  *'] = textVal;
+        updated['freight'] = textVal;
+      } else if (entry.key == 'grno (*)') {
         updated['LR No *'] = textVal;
         updated['grno'] = textVal;
         updated['lrno'] = textVal;
@@ -376,6 +395,40 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
   }
 
   Future<void> _handleNextAction() async {
+    final cngrGst = (_fieldControllers['cngrgstno *']?.text ?? '').replaceAll(RegExp(r'\s+'), '').toUpperCase();
+    final cngeGst = (_fieldControllers['cngegstno *']?.text ?? '').replaceAll(RegExp(r'\s+'), '').toUpperCase();
+    final gstPattern = RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[A-Z0-9]{1}[A-Z0-9]{1}$');
+    if (cngrGst.isNotEmpty && !gstPattern.hasMatch(cngrGst)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid Consignor GST Number. Must be 15 alphanumeric characters without spaces.'),
+            backgroundColor: Color(0xFFDC2626),
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      _tabController.animateTo(1);
+      _scrollToAndFocusField('cngrgstno *');
+      return;
+    }
+    if (cngeGst.isNotEmpty && !gstPattern.hasMatch(cngeGst)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid Consignee GST Number. Must be 15 alphanumeric characters without spaces.'),
+            backgroundColor: Color(0xFFDC2626),
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      _tabController.animateTo(1);
+      _scrollToAndFocusField('cngegstno *');
+      return;
+    }
+
     final updatedItem = _collectUpdatedItem();
     widget.controller.updateItem(updatedItem);
     if (_tabController.index < 3) {
@@ -813,6 +866,15 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                         child: TextField(
                           controller: ctrl,
                           focusNode: _fieldFocusNodes[key],
+                          inputFormatters: (key == 'cngrgstno *' || key == 'cngegstno *')
+                              ? [
+                                  FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                                  LengthLimitingTextInputFormatter(15),
+                                ]
+                              : null,
+                          textCapitalization: (key == 'cngrgstno *' || key == 'cngegstno *')
+                              ? TextCapitalization.characters
+                              : TextCapitalization.none,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
