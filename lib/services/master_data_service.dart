@@ -96,6 +96,58 @@ class MasterDataService {
     ],
   };
 
+  /// Exact 30 Counter master records from BookingCounterMast.xlsx ('Counter Name' and 'Branch Name').
+  List<Map<String, String>> _bookingCounterRecords = [
+    {'counter': 'DELHI', 'branch': 'DELHI'},
+    {'counter': 'KOL', 'branch': 'KOLKATA'},
+    {'counter': 'MUMBAI 01', 'branch': 'MUMBAI_1'},
+    {'counter': 'BANG-01', 'branch': 'BANGLORE'},
+    {'counter': 'BEL', 'branch': 'BELGAUM'},
+    {'counter': 'BHOP', 'branch': 'BHOPAL'},
+    {'counter': 'HYD', 'branch': 'HYDERABAD'},
+    {'counter': 'LUDH', 'branch': 'LUDHIANA'},
+    {'counter': 'JALNA', 'branch': 'JALNA'},
+    {'counter': 'CHENNAI', 'branch': 'CHENNAI 01'},
+    {'counter': 'INDORE-1', 'branch': 'INDORE'},
+    {'counter': 'PATIALA', 'branch': 'PATIALA BRANCH '},
+    {'counter': 'MANG', 'branch': 'MANGLORE'},
+    {'counter': 'TUM', 'branch': 'TUMKUR'},
+    {'counter': 'PATAL-1', 'branch': 'PATALGANGA(MUMBAI)'},
+    {'counter': 'KARANPURA', 'branch': 'KARANPURA'},
+    {'counter': 'VIJAYWADA', 'branch': 'VIJAYWADA '},
+    {'counter': 'FARUKH-01', 'branch': 'FARUKHNAGAR_BRANCH'},
+    {'counter': 'AHEM-01', 'branch': 'AHEMBADAB'},
+    {'counter': 'PRIT-01', 'branch': 'PITHAMPUR_BRANCH'},
+    {'counter': 'ZIRAK-01', 'branch': 'ZIRAKPUR_1'},
+    {'counter': 'GHAZ-01', 'branch': 'GHAZIABAD_1'},
+    {'counter': 'GURU-01', 'branch': 'GURUGRAM_HUB'},
+    {'counter': 'RANCHI-01', 'branch': 'RANCHI_1'},
+    {'counter': 'JAIP-01', 'branch': 'JAIPUR_1'},
+    {'counter': 'PATNA-1', 'branch': 'PATNA_1'},
+    {'counter': '1', 'branch': 'NAGPUR_1'},
+    {'counter': 'BHIWANDI-01', 'branch': ' BHIWANDI_1'},
+    {'counter': 'RAIPUR-01', 'branch': 'RAIPUR_1'},
+    {'counter': 'SILIGURI-1', 'branch': 'SILIGURI_1'},
+  ];
+
+  static const Map<String, String> _citySpellingAliases = {
+    'CALCUTTA': 'KOLKATA',
+    'BOMBAY': 'MUMBAI',
+    'BANGALORE': 'BANGLORE',
+    'BENGALURU': 'BANGLORE',
+    'BELGUAM': 'BELGAUM',
+    'BELAGAVI': 'BELGAUM',
+    'SECUNDERABAD': 'HYDERABAD',
+    'MADRAS': 'CHENNAI',
+    'MANGALORE': 'MANGLORE',
+    'MANGALURU': 'MANGLORE',
+    'TUMAKURU': 'TUMKUR',
+    'AHMEDABAD': 'AHEMDABAD',
+    'AHEMBADAB': 'AHEMDABAD',
+    'GURGAON': 'GURUGRAM',
+    'VIJAYAWADA': 'VIJAYWADA',
+  };
+
   /// Exact 30 Counter values from Column 1 ('Counter Name') of BookingCounterMast.xlsx.
   /// Preserves exact casing, spelling, and symbols without hardcoded Branch Name substitutions.
   List<String> _bookingCounters = [
@@ -305,16 +357,19 @@ class MasterDataService {
   }
 
   /// Auto-detects and matches Department information extracted from LR against ManiFest.xlsx.
-  /// Returns the exact matching Department string from ManiFest.xlsx if a unique reliable match is found.
-  /// If 0 matches or multiple matches are possible (ambiguous), returns empty string '' to require manual selection.
-  String autoDetectDepartment({String? customer, String? destination, String? deptRaw, String? consignee}) {
+  /// Extracts the Origin City from the scanned LR using OCR.
+  /// Uses the extracted Origin City to find the matching Department from ManiFest.xlsx.
+  /// Populates only the exact Department value available in the master Excel file.
+  /// Do not use hardcoded values, generated values, or default fallbacks.
+  /// If no reliable match is found, returns empty string '' to require manual selection.
+  String autoDetectDepartment({String? originCity, String? customer, String? deptRaw, String? destination, String? consignee}) {
     final candidateDepts = (customer != null && customer.isNotEmpty)
         ? getDepartmentsForCustomer(customer)
         : getAllDepartments();
 
     if (candidateDepts.isEmpty) return '';
 
-    // 1. Check exact match
+    // 1. Check exact match if deptRaw was provided
     if (deptRaw != null && deptRaw.isNotEmpty) {
       if (candidateDepts.contains(deptRaw)) return deptRaw;
       final cleanDeptRaw = deptRaw.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
@@ -322,123 +377,119 @@ class MasterDataService {
       if (exactMatches.length == 1) return exactMatches.first;
     }
 
-    // 2. Token match from destination / raw dept / consignee clues
-    final cluesText = '${destination ?? ''} ${deptRaw ?? ''} ${consignee ?? ''}'.toUpperCase();
-    final clueTokens = cluesText.split(RegExp(r'[^A-Z0-9]+')).where((t) => t.length >= 3).toList();
-
-    const ignoredTokens = {
-      'HIM', 'HIMALAYA', 'PATANJALI', 'PATAN', 'GLOBAL', 'MARKETING', 'REYN',
-      'GOLD', 'PLUS', 'SHREE', 'CIMENT', 'INDRA', 'INDIRA', 'VESCO',
-      'MONTE', 'CARLO', 'LIMITED', 'PVT', 'LTD', 'COMPANY', 'WELLNESS'
-    };
-
-    final matched = <String>[];
-    for (final d in candidateDepts) {
-      final dTokens = d.toUpperCase().split(RegExp(r'[^A-Z0-9]+')).where((t) => t.length >= 3).toList();
-      bool hasMatch = false;
-      for (final t in dTokens) {
-        if (ignoredTokens.contains(t)) continue;
-        if (clueTokens.contains(t) || clueTokens.any((ct) => ct.contains(t) || (t.length >= 4 && t.contains(ct)))) {
-          hasMatch = true;
-          break;
+    // 2. Match Origin City from scanned LR against Department location in ManiFest.xlsx
+    if (originCity != null && originCity.trim().isNotEmpty) {
+      var normOrig = originCity.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+      for (final entry in _citySpellingAliases.entries) {
+        if (normOrig.contains(entry.key)) {
+          normOrig = normOrig.replaceAll(entry.key, entry.value);
         }
       }
-      if (hasMatch && !matched.contains(d)) {
-        matched.add(d);
-      }
-    }
 
-    // 3. Strict uniqueness: exactly 1 match -> return exact Excel string; else return ''
-    if (matched.length == 1) {
-      return matched.first;
+      const ignoredTokens = {
+        'HIM', 'HIMALAYA', 'PATANJALI', 'PATAN', 'GLOBAL', 'MARKETING', 'REYN',
+        'GOLD', 'PLUS', 'SHREE', 'CIMENT', 'INDRA', 'INDIRA', 'VESCO',
+        'MONTE', 'CARLO', 'HI', 'TECH', 'UM', 'ORTHOTICS', 'LIMITED', 'PVT',
+        'LTD', 'COMPANY', 'WELLNESS'
+      };
+
+      final matched = <String>[];
+      for (final d in candidateDepts) {
+        final dTokens = d.toUpperCase().split(RegExp(r'[\-\s]+')).where((t) => t.trim().length >= 3).toList();
+        for (final t in dTokens) {
+          if (ignoredTokens.contains(t)) continue;
+          var tNorm = t;
+          for (final entry in _citySpellingAliases.entries) {
+            if (tNorm.contains(entry.key)) {
+              tNorm = tNorm.replaceAll(entry.key, entry.value);
+            }
+          }
+          final tClean = tNorm.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+          if (tClean.isNotEmpty && (tClean.contains(normOrig) || normOrig.contains(tClean))) {
+            if (!matched.contains(d)) {
+              matched.add(d);
+            }
+            break;
+          }
+        }
+      }
+
+      if (matched.length == 1) {
+        return matched.first;
+      }
     }
     return '';
   }
 
-  /// Auto-detects and matches Counter information extracted from LR against BookingCounterMast.xlsx (Column 1).
-  /// Returns the exact matching Counter string if a unique reliable match is found.
-  /// If 0 matches or multiple matches (ambiguous), returns empty string '' to require manual selection.
-  String autoDetectCounter({String? counterRaw, String? branchRaw, String? originRaw}) {
-    final counters = getCounters();
-    if (counters.isEmpty) return '';
+  /// Auto-detects and matches Counter information extracted from LR against BookingCounterMast.xlsx.
+  /// Extracts the Origin City from the scanned LR using OCR.
+  /// Uses the extracted Origin City to find the matching Counter Name from BookingCounterMast.xlsx.
+  /// Populates only the exact Counter Name available in the master Excel file.
+  /// Do not use hardcoded values, generated values, or default fallbacks.
+  /// If no reliable match is found, returns empty string '' to require manual selection.
+  String autoDetectCounter({String? originCity, String? counterRaw, String? branchRaw, String? originRaw}) {
+    final effectiveClues = [originCity, originRaw, counterRaw, branchRaw];
+    for (final clue in effectiveClues) {
+      if (clue == null || clue.trim().isEmpty) continue;
+      final clueStr = clue.trim();
+      if (clueStr.toLowerCase() == 'none' || clueStr.toLowerCase() == 'null') continue;
 
-    // 1. Exact match check
-    for (final clue in [counterRaw, branchRaw, originRaw]) {
-      if (clue != null && clue.isNotEmpty) {
-        if (counters.contains(clue)) return clue;
-        final cleanClue = clue.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
-        final exactMatches = counters.where((c) => c.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase() == cleanClue).toList();
-        if (exactMatches.length == 1) return exactMatches.first;
-      }
-    }
-
-    // 2. City to counter associations
-    final cluesText = '${counterRaw ?? ''} ${branchRaw ?? ''} ${originRaw ?? ''}'.toUpperCase();
-    const cityMap = {
-      'DELHI': 'DELHI',
-      'KOLKATA': 'KOL',
-      'CALCUTTA': 'KOL',
-      'MUMBAI': 'MUMBAI 01',
-      'BOMBAY': 'MUMBAI 01',
-      'BANGALORE': 'BANG-01',
-      'BENGALURU': 'BANG-01',
-      'BELGAUM': 'BEL',
-      'BELAGAVI': 'BEL',
-      'BHOPAL': 'BHOP',
-      'HYDERABAD': 'HYD',
-      'SECUNDERABAD': 'HYD',
-      'LUDHIANA': 'LUDH',
-      'JALNA': 'JALNA',
-      'CHENNAI': 'CHENNAI',
-      'MADRAS': 'CHENNAI',
-      'INDORE': 'INDORE-1',
-      'PATIALA': 'PATIALA',
-      'MANGALORE': 'MANG',
-      'MANGALURU': 'MANG',
-      'TUMKUR': 'TUM',
-      'TUMAKURU': 'TUM',
-      'PATALGANGA': 'PATAL-1',
-      'KARANPURA': 'KARANPURA',
-      'VIJAYAWADA': 'VIJAYWADA',
-      'VIJAYWADA': 'VIJAYWADA',
-      'FARUKHNAGAR': 'FARUKH-01',
-      'FARUKH': 'FARUKH-01',
-      'AHMEDABAD': 'AHEM-01',
-      'AHEMDABAD': 'AHEM-01',
-      'PRITHLA': 'PRIT-01',
-      'ZIRAKPUR': 'ZIRAK-01',
-      'ZIRAK': 'ZIRAK-01',
-      'GHAZIABAD': 'GHAZ-01',
-      'GURGAON': 'GURU-01',
-      'GURUGRAM': 'GURU-01',
-      'RANCHI': 'RANCHI-01',
-      'JAIPUR': 'JAIP-01',
-      'PATNA': 'PATNA-1',
-      'BHIWANDI': 'BHIWANDI-01',
-      'RAIPUR': 'RAIPUR-01',
-      'SILIGURI': 'SILIGURI-1',
-    };
-
-    final matched = <String>[];
-    for (final entry in cityMap.entries) {
-      if (cluesText.contains(entry.key) && counters.contains(entry.value)) {
-        if (!matched.contains(entry.value)) {
-          matched.add(entry.value);
+      var normClue = clueStr.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+      for (final entry in _citySpellingAliases.entries) {
+        if (normClue.contains(entry.key)) {
+          normClue = normClue.replaceAll(entry.key, entry.value);
         }
       }
-    }
 
-    if (matched.isEmpty) {
-      for (final c in counters) {
-        final cBase = c.replaceAll(RegExp(r'[^A-Z]'), '');
-        if (cBase.length >= 3 && cluesText.contains(cBase)) {
-          if (!matched.contains(c)) matched.add(c);
+      // 1. Direct match with Counter Name in BookingCounterMast.xlsx
+      for (final rec in _bookingCounterRecords) {
+        final cClean = rec['counter']!.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+        if (cClean == normClue) {
+          return rec['counter']!;
         }
       }
-    }
 
-    if (matched.length == 1) {
-      return matched.first;
+      // 2. Match with Primary Branch Token (e.g. MUMBAI in MUMBAI_1, BANGLORE in BANGLORE)
+      for (final rec in _bookingCounterRecords) {
+        final brRaw = rec['branch']!.trim();
+        if (brRaw.isNotEmpty) {
+          final primary = brRaw.split(RegExp(r'[\(_\s]'))[0].trim();
+          var pNorm = primary.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+          for (final entry in _citySpellingAliases.entries) {
+            if (pNorm.contains(entry.key)) {
+              pNorm = pNorm.replaceAll(entry.key, entry.value);
+            }
+          }
+          if (pNorm.isNotEmpty && pNorm == normClue) {
+            return rec['counter']!;
+          }
+        }
+      }
+
+      // 3. Match with Secondary Branch Name tokens
+      final matched = <String>[];
+      for (final rec in _bookingCounterRecords) {
+        final bName = rec['branch']!.toUpperCase();
+        final tokens = bName.split(RegExp(r'[^A-Z0-9]+')).where((t) => t.isNotEmpty && t != 'BRANCH' && t != 'HUB' && t != '1').toList();
+        for (final t in tokens) {
+          var tClean = t.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+          for (final entry in _citySpellingAliases.entries) {
+            if (tClean.contains(entry.key)) {
+              tClean = tClean.replaceAll(entry.key, entry.value);
+            }
+          }
+          if (tClean.length >= 4 && (tClean.contains(normClue) || normClue.contains(tClean))) {
+            if (!matched.contains(rec['counter'])) {
+              matched.add(rec['counter']!);
+            }
+            break;
+          }
+        }
+      }
+
+      if (matched.length == 1) {
+        return matched.first;
+      }
     }
     return '';
   }

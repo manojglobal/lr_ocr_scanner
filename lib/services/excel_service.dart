@@ -13,6 +13,49 @@ import 'master_data_service.dart';
 /// Pure Dart Excel generator that compiles batch OCR items into a styled .xlsx workbook
 /// with dynamic table and structure layout for ANY image without requiring predefined templates.
 class ExcelService {
+  /// Strictly formats any date string into DD-MM-YYYY format (e.g. 12-10-2026).
+  /// Preserves actual date values without shifts or conversions.
+  static String formatToDdMmYyyy(String? val) {
+    if (val == null) return '';
+    var s = val.trim();
+    // Remove time portion if present (e.g. 11:59:00 PM or T15:30:00)
+    s = s.replaceAll(RegExp(r'[T\s]\d{1,2}:\d{2}(:\d{2})?(\s*[APap][Mm])?.*$'), '').trim();
+    if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null') return '';
+
+    const months = {
+      'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+      'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+    };
+
+    final parts = s.split(RegExp(r'[\/\-\.\s]+'));
+    if (parts.length == 3) {
+      if (parts[0].length == 4 && int.tryParse(parts[0]) != null) {
+        final y = parts[0];
+        final m = parts[1].padLeft(2, '0');
+        final d = parts[2].padLeft(2, '0');
+        return '$d-$m-$y';
+      }
+      if (int.tryParse(parts[0]) != null && int.tryParse(parts[1]) != null) {
+        final d = parts[0].padLeft(2, '0');
+        final m = parts[1].padLeft(2, '0');
+        var y = parts[2];
+        if (y.length == 2) y = '20$y';
+        return '$d-$m-$y';
+      }
+      if (int.tryParse(parts[0]) != null && parts[1].length >= 3) {
+        final monKey = parts[1].toLowerCase().substring(0, 3);
+        final mo = months[monKey];
+        if (mo != null) {
+          var y = parts[2];
+          if (y.length == 2) y = '20$y';
+          final d = parts[0].padLeft(2, '0');
+          return '$d-$mo-$y';
+        }
+      }
+    }
+    return s;
+  }
+
   /// Canonical 49-column LR format matching docs/LR_Format.xlsx exactly (0 asterisks in Excel export)
   static const List<String> lrFormat49Headers = [
     'Branch',
@@ -243,7 +286,8 @@ class ExcelService {
                 final cleaned = s.replaceAll(RegExp(r'^(?:consign(?:ment)?\s*note\s*:?\s*|c\s*note\s*:?\s*|lr\s*(?:no\.?)?\s*:?\s*|no[\.:\s]+)', caseSensitive: false), '').trim();
                 return cleaned.isNotEmpty ? cleaned : s;
               case 'GrDate':
-                return normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? normRecord['bookingdate'] ?? '';
+                final gd = normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? normRecord['bookingdate'] ?? '';
+                return gd.isNotEmpty ? formatToDdMmYyyy(gd) : '';
               case 'GrType':
                 return normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? normRecord['paymenttype'] ?? '';
               case 'Customer':
@@ -321,9 +365,11 @@ class ExcelService {
               case 'DrivingLicenseNo':
                 return normRecord['drivinglicenseno'] ?? normRecord['licenseno'] ?? normRecord['liscenseno'] ?? normRecord['dlno'] ?? '';
               case 'DrivingValidUpto':
-                return normRecord['drivingvalidupto'] ?? normRecord['validupto'] ?? normRecord['validup to'] ?? '';
+                final dv = normRecord['drivingvalidupto'] ?? normRecord['validupto'] ?? normRecord['validup to'] ?? '';
+                return dv.isNotEmpty ? formatToDdMmYyyy(dv) : '';
               case 'LoadingStartDate':
-                return normRecord['loadingstartdate'] ?? normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? '';
+                final ld = normRecord['loadingstartdate'] ?? normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? '';
+                return ld.isNotEmpty ? formatToDdMmYyyy(ld) : '';
               case 'Freight':
                 final fr = normRecord['freight'] ?? normRecord['freightamount'] ?? normRecord['basicfreight'] ?? normRecord['totalfreight'] ?? normRecord['freightcharge'] ?? '';
                 return fr.isNotEmpty ? fr : '0';
@@ -410,11 +456,13 @@ class ExcelService {
               case 'EwayBillNo':
                 return normRecord['ewaybillno'] ?? normRecord['ewaybill'] ?? '';
               case 'ValidUpto':
-                return normRecord['validupto'] ?? '';
+                final vu = normRecord['validupto'] ?? '';
+                return vu.isNotEmpty ? formatToDdMmYyyy(vu) : '';
               case 'InvoiceNo':
                 return normRecord['invoiceno'] ?? normRecord['invoicenumber'] ?? '';
               case 'InvoieDate':
-                return normRecord['invoiedt'] ?? normRecord['invoicedate'] ?? '';
+                final idt = normRecord['invoiedt'] ?? normRecord['invoicedate'] ?? '';
+                return idt.isNotEmpty ? formatToDdMmYyyy(idt) : '';
               case 'ValueOfGoods':
                 return normRecord['valgoods'] ?? normRecord['valueofgoods'] ?? normRecord['declaredvalue'] ?? '';
               case 'viaborder':
@@ -443,8 +491,8 @@ class ExcelService {
               return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
             }
             if (f.key == 'BNF LR No') return normRecord['bnflrno'] ?? normRecord['bnflr'] ?? normRecord['bnfno'] ?? '';
-            if (f.key == 'Loading Start date *') return normRecord['grdt'] ?? normRecord['date'] ?? '';
-            if (f.key == 'Valid Upto') return normRecord['validupto'] ?? '';
+            if (f.key == 'Loading Start date *') return formatToDdMmYyyy(normRecord['grdt'] ?? normRecord['date'] ?? '');
+            if (f.key == 'Valid Upto') return formatToDdMmYyyy(normRecord['validupto'] ?? '');
             if (f.key == 'Transit Days') {
               final startStr = normRecord['grdt'] ?? normRecord['stockdt'] ?? '';
               final endStr = normRecord['validupto'] ?? '';
@@ -472,7 +520,10 @@ class ExcelService {
               }
               return normRecord['transitdays'] ?? '';
             }
-            if (f.key == 'stockdt' || f.key == 'stockdt ') return normRecord['stockdt'] ?? normRecord['grdt'] ?? '';
+            if (f.key == 'stockdt' || f.key == 'stockdt ') return formatToDdMmYyyy(normRecord['stockdt'] ?? normRecord['grdt'] ?? '');
+            if (f.key == 'grdt *' || f.key == 'grdt') return formatToDdMmYyyy(normRecord['grdt *'] ?? normRecord['grdt'] ?? normRecord['date'] ?? '');
+            if (f.key == 'Valid Up to *') return formatToDdMmYyyy(normRecord['valid up to *'] ?? normRecord['validupto'] ?? '');
+            if (f.key == 'invoiedt') return formatToDdMmYyyy(normRecord['invoiedt'] ?? normRecord['invoicedate'] ?? '');
 
             // 15 Affected Fields Systematic Derivations & Fallbacks
             if (f.key == 'freight  *' || f.key == 'freight') {

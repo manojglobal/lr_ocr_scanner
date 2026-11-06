@@ -116,8 +116,9 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
       _selectedVehicleCategory = 'MARKET';
     }
 
-    // 5. Freight: Canonical source of truth from record (freight * / freight)
-    final frt = (rec['freight  *'] ?? rec['freight'] ?? '').trim();
+    // 5. Freight: Mandatory manual entry. Keep empty by default; do not display 0 or automatic values.
+    final rawFrt = (rec['freight  *'] ?? rec['freight'] ?? '').trim();
+    final frt = (rawFrt == '0' || rawFrt == '0.00' || rawFrt == '0.0') ? '' : rawFrt;
     _freightController = TextEditingController(text: frt);
 
     // 6. Product Type: Keep separate from Product Code, default to Surface-FTL for new records
@@ -355,7 +356,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                     if (firstStep2.isNotEmpty) {
                       _navigateToMissingField(firstStep2);
                     } else {
-                      Navigator.of(context).pop();
+                      _saveCurrentStateAndReturn();
                     }
                   },
                   icon: const Icon(Icons.arrow_back, size: 15),
@@ -399,14 +400,59 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     );
   }
 
+  BatchItem _collectUpdatedItem() {
+    final updated = Map<String, String>.from(widget.item.record);
+    updated['Customer Name *'] = _customerController.text.trim();
+    updated['customer'] = _customerController.text.trim();
+    updated['Depatment Name'] = _selectedDepartment;
+    updated['department'] = _selectedDepartment;
+    updated['Counter'] = _selectedCounter;
+    updated['Counter name'] = _selectedCounter;
+    updated['counter'] = _selectedCounter;
+    updated['branchrefcode'] = _selectedCounter;
+    updated['Vehicle Category'] = _selectedVehicleCategory;
+    updated['Vehicle Type *'] = _selectedVehicleCategory;
+    updated['freight  *'] = _freightController.text.trim();
+    updated['freight'] = _freightController.text.trim();
+    updated['product_type'] = _selectedProductType;
+    updated['Product Type'] = _selectedProductType;
+    updated['Driver Name *'] = _driverNameController.text.trim();
+    updated['driver_name'] = _driverNameController.text.trim();
+    updated['Mobile no   *'] = _driverMobileController.text.trim();
+    updated['mobile_no'] = _driverMobileController.text.trim();
+    updated['Liscense No *'] = _licenseNoController.text.trim();
+    updated['license_no'] = _licenseNoController.text.trim();
+    updated['Valid Up to *'] = _licenseValidController.text.trim();
+    updated['valid_up_to'] = _licenseValidController.text.trim();
+    updated['dl_valid_till'] = _licenseValidController.text.trim();
+    return widget.item.copyWith(record: updated);
+  }
+
+  void _saveCurrentStateAndReturn({Map<String, String>? targetMissing}) {
+    final savedItem = _collectUpdatedItem();
+    widget.controller.updateItem(savedItem);
+
+    if (targetMissing != null && targetMissing.isNotEmpty) {
+      final tabIndex = int.tryParse(targetMissing['tabIndex'] ?? '0') ?? 0;
+      Navigator.of(context).pop({
+        'backToLrData': true,
+        'targetKey': targetMissing['key'],
+        'tabIndex': tabIndex,
+        'label': targetMissing['label'],
+        'updatedItem': savedItem,
+      });
+    } else {
+      Navigator.of(context).pop({
+        'backToLrData': true,
+        'tabIndex': 3,
+        'updatedItem': savedItem,
+      });
+    }
+  }
+
   void _navigateToMissingField(Map<String, String> item) {
     if (item['screen'] == 'step2') {
-      final tabIndex = int.tryParse(item['tabIndex'] ?? '0') ?? 0;
-      Navigator.of(context).pop({
-        'targetKey': item['key'],
-        'tabIndex': tabIndex,
-        'label': item['label'],
-      });
+      _saveCurrentStateAndReturn(targetMissing: item);
     } else {
       _scrollToAndFocusCustomField(item['key'] ?? '');
       if (mounted) {
@@ -482,31 +528,8 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
       return;
     }
 
-    final updated = Map<String, String>.from(widget.item.record);
-    updated['Customer Name *'] = _customerController.text.trim();
-    updated['Depatment Name'] = _selectedDepartment;
-    updated['department'] = _selectedDepartment;
-    updated['Counter'] = _selectedCounter;
-    updated['Counter name'] = _selectedCounter;
-    updated['counter'] = _selectedCounter;
-    updated['branchrefcode'] = _selectedCounter;
-    updated['Vehicle Category'] = _selectedVehicleCategory;
-    updated['Vehicle Type *'] = _selectedVehicleCategory;
-    updated['freight  *'] = _freightController.text.trim();
-    updated['freight'] = _freightController.text.trim();
-    updated['product_type'] = _selectedProductType;
-    updated['Product Type'] = _selectedProductType;
-    updated['Driver Name *'] = _driverNameController.text.trim();
-    updated['driver_name'] = _driverNameController.text.trim();
-    updated['Mobile no   *'] = _driverMobileController.text.trim();
-    updated['mobile_no'] = _driverMobileController.text.trim();
-    updated['Liscense No *'] = _licenseNoController.text.trim();
-    updated['license_no'] = _licenseNoController.text.trim();
-    updated['Valid Up to *'] = _licenseValidController.text.trim();
-    updated['valid_up_to'] = _licenseValidController.text.trim();
-    updated['dl_valid_till'] = _licenseValidController.text.trim();
-
-    final candidate = widget.item.copyWith(record: updated);
+    final candidate = _collectUpdatedItem();
+    final updated = candidate.record;
 
     // Collect all missing mandatory fields matching Web
     final emptyMandatory = <Map<String, String>>[];
@@ -633,7 +656,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                   ),
                   icon: const Icon(Icons.arrow_back, size: 14),
                   label: const Text('Back to LR Data', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => _saveCurrentStateAndReturn(),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
@@ -1229,7 +1252,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                         ),
                         const SizedBox(height: 8),
                         TextButton.icon(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => _saveCurrentStateAndReturn(),
                           icon: const Icon(Icons.arrow_back, size: 14, color: brandNavy),
                           label: const Text(
                             'Back to LR Data',

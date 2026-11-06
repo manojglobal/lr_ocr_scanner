@@ -241,20 +241,33 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
   final List<String> _headers = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
 
   String _getCellValue(BatchItem item, String header) {
+    String res = '';
     if (item.record.containsKey(header)) {
-      return item.record[header] ?? '';
-    }
-    final cleanHeader = header.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-    for (final entry in item.record.entries) {
-      final cleanKey = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-      if (cleanKey == cleanHeader) {
-        return entry.value;
+      res = item.record[header] ?? '';
+    } else {
+      final cleanHeader = header.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+      for (final entry in item.record.entries) {
+        final cleanKey = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+        if (cleanKey == cleanHeader) {
+          res = entry.value;
+          break;
+        }
+      }
+      if (res.isEmpty && header == 'BNF LR No') {
+        res = item.record['BNF LR No'] ?? item.record['bnf lr no'] ?? item.record['bnflrno'] ?? item.record['bnflr'] ?? '';
       }
     }
-    if (header == 'BNF LR No') {
-      return item.record['BNF LR No'] ?? item.record['bnf lr no'] ?? item.record['bnflrno'] ?? item.record['bnflr'] ?? '';
+
+    // Format all date values strictly to DD-MM-YYYY in the Excel Preview section
+    const dateHeaders = {
+      'grdt *', 'grdt', 'stockdt', 'stockdt ', 'Loading Start date *',
+      'invoiedt', 'Valid Upto', 'Valid Up to *', 'GrDate', 'LoadingStartDate',
+      'InvoieDate', 'DrivingValidUpto'
+    };
+    if (dateHeaders.contains(header) && res.isNotEmpty) {
+      return ExcelService.formatToDdMmYyyy(res);
     }
-    return '';
+    return res;
   }
 
   void _confirmAndGenerateExcel() {

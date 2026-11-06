@@ -872,11 +872,33 @@
 
                 <div class="relative">
 
-                  <input type="text" id="edit_grdt" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white pr-8 transition" />
+                  <input type="text" id="edit_grdt" placeholder="DD-MM-YYYY" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white pr-8 transition" />
 
-                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400">
+                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="document.getElementById('edit_grdt_picker')?.showPicker?.() || document.getElementById('edit_grdt_picker')?.focus()">
 
                     <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+
+                    <input type="date" id="edit_grdt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); document.getElementById('edit_grdt').value = `${p[2]}-${p[1]}-${p[0]}`; }" />
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              <div>
+
+                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">E-Way Bill Date</label>
+
+                <div class="relative">
+
+                  <input type="text" id="edit_ewaybilldt" placeholder="DD-MM-YYYY" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white pr-8 transition" />
+
+                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="document.getElementById('edit_ewaybilldt_picker')?.showPicker?.() || document.getElementById('edit_ewaybilldt_picker')?.focus()">
+
+                    <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+
+                    <input type="date" id="edit_ewaybilldt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); document.getElementById('edit_ewaybilldt').value = `${p[2]}-${p[1]}-${p[0]}`; }" />
 
                   </div>
 
@@ -3493,68 +3515,40 @@
 
 
     function formatDdMmYyyyWeb(val) {
-
       if (!val) return '';
-
       const s = String(val).trim().replace(/T\d{2}:.*$/, '').replace(/\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?.*$/, '').trim();
-
       if (!s || s.toLowerCase() === 'none' || s.toLowerCase() === 'null') return '';
 
       // Pattern 1: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
-
       const mDd = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
-
       if (mDd) {
-
         let yr = mDd[3];
-
         if (yr.length === 2) yr = '20' + yr;
-
-        return `${String(mDd[1]).padStart(2, '0')}/${String(mDd[2]).padStart(2, '0')}/${yr}`;
-
+        return `${String(mDd[1]).padStart(2, '0')}-${String(mDd[2]).padStart(2, '0')}-${yr}`;
       }
 
       // Pattern 2: DD-Mon-YYYY (e.g. 12-OCT-2026 or 05 Oct 26)
-
       const months = {
-
         'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
-
         'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
-
       };
-
-      const mMon = s.match(/^(\d{1,2})[\s\-\/\.]([a-zA-Z]{3,9})[\s\-\/\.](\d{2,4})$/);
-
+      const mMon = s.match(/^(\d{1,2})[\s\-\/.]([a-zA-Z]{3,9})[\s\-\/.](d{2,4})$/);
       if (mMon) {
-
         const d = String(mMon[1]).padStart(2, '0');
-
         const mo = months[mMon[2].toLowerCase().slice(0, 3)];
-
         let yr = mMon[3];
-
         if (yr.length === 2) yr = '20' + yr;
-
-        if (mo) return `${d}/${mo}/${yr}`;
-
+        if (mo) return `${d}-${mo}-${yr}`;
       }
 
       // Pattern 3: YYYY-MM-DD
-
       const mIso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-
       if (mIso) {
-
-        return `${String(mIso[3]).padStart(2, '0')}/${String(mIso[2]).padStart(2, '0')}/${mIso[1]}`;
-
+        return `${String(mIso[3]).padStart(2, '0')}-${String(mIso[2]).padStart(2, '0')}-${mIso[1]}`;
       }
 
       return s;
-
     }
-
-
 
     function getBnfFieldValue(data, fieldKey) {
 
@@ -3879,7 +3873,10 @@
 
       if (fieldKey === 'ewaybillno') return data['ewaybillno'] || data['E-way Bill No'] || data['eway_bill_no'] || '';
 
-      if (fieldKey === 'productcode') return data['productcode'] || data['Product Code'] || '';
+      if (fieldKey === 'productcode') {
+        const pCode = (data['productcode'] || data['Product Code'] || '').trim();
+        return ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'].includes(pCode) ? '' : pCode;
+      }
 
       if (fieldKey === 'pmark') {
 
@@ -3893,9 +3890,9 @@
 
       if (fieldKey === 'freight  *' || fieldKey === 'freight') {
 
-        const fr = data['freight  *'] || data['freight'] || data['Freight Charge'] || data['basic freight'] || data['total freight'] || '';
+        const fr = (data['freight  *'] || data['freight'] || data['Freight Charge'] || data['basic freight'] || data['total freight'] || '').toString().trim();
 
-        return fr ? String(fr) : '0';
+        return (fr === '0' || fr === '0.00' || fr === '0.0') ? '' : fr;
 
       }
 
@@ -9573,6 +9570,46 @@
 
           }
 
+          // Freight: Mandatory manual entry. Keep empty by default; never display 0 or automatic values
+          if (result && result.data) {
+            result.data['freight  *'] = '';
+            result.data['freight'] = '';
+
+            // Product Code vs Product Type:
+            // Product Code must not use Product Type value. Extract Product Code only when explicitly available in scanned LR.
+            const prodTypeOptions = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
+            const rawPCode = (result.data['productcode'] || result.data['Product Code'] || '').trim();
+            if (prodTypeOptions.includes(rawPCode)) {
+              result.data['productcode'] = '';
+            }
+            if (!result.data['product_type'] || !prodTypeOptions.includes(result.data['product_type'])) {
+              result.data['product_type'] = 'Surface-FTL';
+            }
+            result.data['Product Type'] = result.data['product_type'];
+
+            // Auto-detect Department & Counter using Origin City extracted from LR
+            const orgCity = (result.data['orgrefcode'] || result.data['from'] || result.data['origin'] || '').trim();
+            const custName = (result.data['Customer Name *'] || result.data['cngr *'] || '').trim();
+            const rawDept = (result.data['Depatment Name'] || result.data['department'] || '').trim();
+            const detectedDept = autoDetectDepartmentWeb(orgCity, custName, rawDept);
+            result.data['Depatment Name'] = detectedDept;
+            result.data['department'] = detectedDept;
+
+            const rawCntr = (result.data['Counter'] || result.data['Counter name'] || result.data['counter'] || '').trim();
+            const detectedCntr = autoDetectCounterWeb(orgCity, rawCntr);
+            result.data['Counter'] = detectedCntr;
+            result.data['Counter name'] = detectedCntr;
+            result.data['counter'] = detectedCntr;
+            result.data['branchrefcode'] = detectedCntr;
+
+            // Standardize all date fields strictly to DD-MM-YYYY format
+            for (const dk of ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
+              if (result.data[dk]) {
+                result.data[dk] = formatDdMmYyyyWeb(result.data[dk]);
+              }
+            }
+          }
+
 
 
           const isFilePdf = (file.name && file.name.toLowerCase().endsWith('.pdf')) || imageSrc.startsWith('data:application/pdf');
@@ -9895,6 +9932,184 @@
 
     let masterCountersList = [];
 
+    const CITY_SPELLING_ALIASES_WEB = {
+      'CALCUTTA': 'KOLKATA',
+      'BOMBAY': 'MUMBAI',
+      'BANGALORE': 'BANGLORE',
+      'BENGALURU': 'BANGLORE',
+      'BELGUAM': 'BELGAUM',
+      'BELAGAVI': 'BELGAUM',
+      'SECUNDERABAD': 'HYDERABAD',
+      'MADRAS': 'CHENNAI',
+      'MANGALORE': 'MANGLORE',
+      'MANGALURU': 'MANGLORE',
+      'TUMAKURU': 'TUMKUR',
+      'AHMEDABAD': 'AHEMDABAD',
+      'AHEMBADAB': 'AHEMDABAD',
+      'GURGAON': 'GURUGRAM',
+      'VIJAYAWADA': 'VIJAYWADA'
+    };
+
+    let masterBookingCounterRecords = [
+      { counter_name: 'DELHI', branch_name: 'DELHI' },
+      { counter_name: 'KOL', branch_name: 'KOLKATA' },
+      { counter_name: 'MUMBAI 01', branch_name: 'MUMBAI_1' },
+      { counter_name: 'BANG-01', branch_name: 'BANGLORE' },
+      { counter_name: 'BEL', branch_name: 'BELGAUM' },
+      { counter_name: 'BHOP', branch_name: 'BHOPAL' },
+      { counter_name: 'HYD', branch_name: 'HYDERABAD' },
+      { counter_name: 'LUDH', branch_name: 'LUDHIANA' },
+      { counter_name: 'JALNA', branch_name: 'JALNA' },
+      { counter_name: 'CHENNAI', branch_name: 'CHENNAI 01' },
+      { counter_name: 'INDORE-1', branch_name: 'INDORE' },
+      { counter_name: 'PATIALA', branch_name: 'PATIALA BRANCH ' },
+      { counter_name: 'MANG', branch_name: 'MANGLORE' },
+      { counter_name: 'TUM', branch_name: 'TUMKUR' },
+      { counter_name: 'PATAL-1', branch_name: 'PATALGANGA(MUMBAI)' },
+      { counter_name: 'KARANPURA', branch_name: 'KARANPURA' },
+      { counter_name: 'VIJAYWADA', branch_name: 'VIJAYWADA ' },
+      { counter_name: 'FARUKH-01', branch_name: 'FARUKHNAGAR_BRANCH' },
+      { counter_name: 'AHEM-01', branch_name: 'AHEMBADAB' },
+      { counter_name: 'PRIT-01', branch_name: 'PITHAMPUR_BRANCH' },
+      { counter_name: 'ZIRAK-01', branch_name: 'ZIRAKPUR_1' },
+      { counter_name: 'GHAZ-01', branch_name: 'GHAZIABAD_1' },
+      { counter_name: 'GURU-01', branch_name: 'GURUGRAM_HUB' },
+      { counter_name: 'RANCHI-01', branch_name: 'RANCHI_1' },
+      { counter_name: 'JAIP-01', branch_name: 'JAIPUR_1' },
+      { counter_name: 'PATNA-1', branch_name: 'PATNA_1' },
+      { counter_name: '1', branch_name: 'NAGPUR_1' },
+      { counter_name: 'BHIWANDI-01', branch_name: ' BHIWANDI_1' },
+      { counter_name: 'RAIPUR-01', branch_name: 'RAIPUR_1' },
+      { counter_name: 'SILIGURI-1', branch_name: 'SILIGURI_1' }
+    ];
+
+    function autoDetectCounterWeb(originCity, counterRaw, branchRaw) {
+      const records = (Array.isArray(masterBookingCounterRecords) && masterBookingCounterRecords.length > 0)
+        ? masterBookingCounterRecords
+        : [];
+      if (records.length === 0) return '';
+
+      const clues = [originCity, counterRaw, branchRaw];
+      for (const clue of clues) {
+        if (!clue) continue;
+        const clueStr = String(clue).trim();
+        if (!clueStr || clueStr.toLowerCase() === 'none' || clueStr.toLowerCase() === 'null') continue;
+
+        let normClue = clueStr.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        for (const [k, v] of Object.entries(CITY_SPELLING_ALIASES_WEB)) {
+          if (normClue.includes(k)) normClue = normClue.replace(new RegExp(k, 'g'), v);
+        }
+
+        // 1. Direct match with Counter Name in BookingCounterMast.xlsx
+        for (const rec of records) {
+          const cClean = (rec.counter_name || rec.counter || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (cClean === normClue) {
+            return rec.counter_name || rec.counter;
+          }
+        }
+
+        // 2. Primary Branch Token match (e.g. MUMBAI in MUMBAI_1, BANGLORE in BANGLORE)
+        for (const rec of records) {
+          const brRaw = (rec.branch_name || rec.branch || '').trim();
+          if (brRaw) {
+            const primary = brRaw.split(/[\(_\s]/)[0].trim();
+            let pNorm = primary.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            for (const [k, v] of Object.entries(CITY_SPELLING_ALIASES_WEB)) {
+              if (pNorm.includes(k)) pNorm = pNorm.replace(new RegExp(k, 'g'), v);
+            }
+            if (pNorm && pNorm === normClue) {
+              return rec.counter_name || rec.counter;
+            }
+          }
+        }
+
+        // 3. Secondary tokens match
+        const matched = [];
+        for (const rec of records) {
+          const bName = (rec.branch_name || rec.branch || '').toUpperCase();
+          const tokens = bName.split(/[^A-Z0-9]+/).filter(t => t && t !== 'BRANCH' && t !== 'HUB' && t !== '1');
+          for (const t of tokens) {
+            let tClean = t.replace(/[^A-Z0-9]/g, '');
+            for (const [k, v] of Object.entries(CITY_SPELLING_ALIASES_WEB)) {
+              if (tClean.includes(k)) tClean = tClean.replace(new RegExp(k, 'g'), v);
+            }
+            if (tClean.length >= 4 && (tClean.includes(normClue) || normClue.includes(tClean))) {
+              const cntName = rec.counter_name || rec.counter;
+              if (!matched.includes(cntName)) matched.push(cntName);
+              break;
+            }
+          }
+        }
+        if (matched.length === 1) {
+          return matched[0];
+        }
+      }
+      return '';
+    }
+
+    function autoDetectDepartmentWeb(originCity, customer, deptRaw) {
+      let candidateDepts = [];
+      if (customer && masterCustomersMapping) {
+        const cClean = String(customer).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        for (const [custName, depts] of Object.entries(masterCustomersMapping)) {
+          const custClean = custName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (cClean.includes(custClean) || custClean.includes(cClean)) {
+            candidateDepts = candidateDepts.concat(depts);
+          }
+        }
+      }
+      if (candidateDepts.length === 0 && masterCustomersMapping) {
+        candidateDepts = getAllMasterDepartmentsWeb();
+      }
+      if (candidateDepts.length === 0) return '';
+
+      // 1. Direct match if deptRaw provided
+      if (deptRaw) {
+        for (const d of candidateDepts) {
+          if (d === deptRaw) return d;
+        }
+        const dClean = String(deptRaw).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const exactMatches = candidateDepts.filter(d => d.toUpperCase().replace(/[^A-Z0-9]/g, '') === dClean);
+        if (exactMatches.length === 1) return exactMatches[0];
+      }
+
+      // 2. Match Origin City from scanned LR against Department location in ManiFest.xlsx
+      if (originCity && String(originCity).trim()) {
+        let normOrig = String(originCity).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        for (const [k, v] of Object.entries(CITY_SPELLING_ALIASES_WEB)) {
+          if (normOrig.includes(k)) normOrig = normOrig.replace(new RegExp(k, 'g'), v);
+        }
+
+        const ignoredTokens = [
+          'HIM', 'HIMALAYA', 'PATAN', 'PATANJALI', 'GLOBAL', 'MARKETING', 'REYN',
+          'GOLD', 'PLUS', 'SHREE', 'CIMENT', 'INDIRA', 'INDRA', 'VESCO',
+          'MONTE', 'CARLO', 'HI', 'TECH', 'UM', 'ORTHOTICS', 'LIMITED', 'PVT',
+          'LTD', 'COMPANY', 'WELLNESS'
+        ];
+
+        const matched = [];
+        for (const d of candidateDepts) {
+          const tokens = d.toUpperCase().split(/[\-\s]+/).filter(t => t.trim().length >= 3);
+          for (const t of tokens) {
+            if (ignoredTokens.includes(t)) continue;
+            let tNorm = t;
+            for (const [k, v] of Object.entries(CITY_SPELLING_ALIASES_WEB)) {
+              if (tNorm.includes(k)) tNorm = tNorm.replace(new RegExp(k, 'g'), v);
+            }
+            const tClean = tNorm.replace(/[^A-Z0-9]/g, '');
+            if (tClean && (tClean.includes(normOrig) || normOrig.includes(tClean))) {
+              if (!matched.includes(d)) matched.push(d);
+              break;
+            }
+          }
+        }
+        if (matched.length === 1) {
+          return matched[0];
+        }
+      }
+      return '';
+    }
+
     let masterPartiesList = [];
 
     let masterPartyGstMap = {};
@@ -10078,6 +10293,9 @@
         if (dCounters.success && dCounters.counters) {
 
           masterCountersList = dCounters.counters;
+          if (Array.isArray(dCounters.records) && dCounters.records.length > 0) {
+            masterBookingCounterRecords = dCounters.records;
+          }
 
           const selCounter = document.getElementById('custom_counter');
 
@@ -10624,6 +10842,7 @@
       setVal('edit_grno', d['grno'] || d['LR No *'] || d['lrno'] || d['BNF LR No'] || d['grno (*)'] || '');
 
       setVal('edit_grdt', formatDdMmYyyyWeb(d['grdt'] || d['grdt *'] || d['stockdt'] || d['stockdt '] || ''));
+      setVal('edit_ewaybilldt', formatDdMmYyyyWeb(d['ewaybilldt'] || d['eway_bill_date'] || d['E-Way Bill Date'] || ''));
 
       setVal('edit_customer', d['Customer Name *'] || d['customer'] || d['Customer'] || d['cngr *'] || d['cngr'] || '');
 
@@ -10695,7 +10914,9 @@
 
       // Tab 4: Other Details (Additional Details only)
 
-      setVal('edit_productcode', d['productcode'] || '');
+      const rawPCode = (d['productcode'] || d['Product Code'] || '').trim();
+      const prodTypeOptions = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
+      setVal('edit_productcode', prodTypeOptions.includes(rawPCode) ? '' : rawPCode);
 
       setVal('edit_eway', d['ewaybillno'] || '');
 
@@ -11866,6 +12087,8 @@
       d['grdt'] = document.getElementById('edit_grdt').value.trim();
 
       d['stockdt'] = document.getElementById('edit_grdt').value.trim();
+      const ewayDtEl = document.getElementById('edit_ewaybilldt');
+      if (ewayDtEl) d['ewaybilldt'] = ewayDtEl.value.trim();
 
       d['Customer Name *'] = document.getElementById('edit_customer').value.trim();
 
@@ -12152,10 +12375,11 @@
         }
       }
 
-      // Master Data -> Freight
+      // Master Data -> Freight: Keep empty by default; do not display 0 or automatic values
       const frtEl = document.getElementById('custom_freight');
       if (frtEl) {
-        frtEl.value = d['freight  *'] || d['freight'] || '';
+        const rawFr = (d['freight  *'] || d['freight'] || '').trim();
+        frtEl.value = (rawFr === '0' || rawFr === '0.00' || rawFr === '0.0') ? '' : rawFr;
       }
 
       // Master Data -> Product Type (separate from productcode)
@@ -12378,13 +12602,17 @@
 
       const custVal = document.getElementById('custom_customer')?.value.trim() || '';
 
-      const deptVal = document.getElementById('custom_dept')?.value.trim() || '';
+      const deptVal = document.getElementById('custom_dept')?.value || '';
 
-      const counterVal = document.getElementById('custom_counter')?.value.trim() || '';
+      const counterVal = document.getElementById('custom_counter')?.value || '';
 
       const rawVehCat = document.getElementById('custom_veh_category')?.value.trim() || 'Market';
 
       const vehCatVal = rawVehCat.charAt(0).toUpperCase() + rawVehCat.slice(1).toLowerCase();
+
+      const frtVal = document.getElementById('custom_freight')?.value.trim() || '';
+
+      const prodTypeVal = document.getElementById('custom_product_type')?.value.trim() || activeItem.data['product_type'] || 'Surface-FTL';
 
       const drvNameVal = document.getElementById('custom_driver_name')?.value.trim() || '';
 
@@ -12416,10 +12644,6 @@
       activeItem.data['freight'] = frtVal;
       activeItem.data['product_type'] = prodTypeVal;
       activeItem.data['Product Type'] = prodTypeVal;
-      activeItem.data['cngrgstno *'] = cngrGstVal;
-      activeItem.data['cngrgstno'] = cngrGstVal;
-      activeItem.data['cngegstno *'] = cngeGstVal;
-      activeItem.data['cngegstno'] = cngeGstVal;
 
       activeItem.data['Driver Name *'] = drvNameVal;
 
@@ -12440,6 +12664,8 @@
 
 
       navigateTo('screen4_edit');
+
+      populateEditForm(activeItem);
 
       switchTab('other');
 
@@ -16102,7 +16328,7 @@
 
             </td>
 
-            <td class="py-2.5 px-3 text-slate-600">${d['grdt'] || d['stockdt '] || d['stockdt'] || '-'}</td>
+            <td class="py-2.5 px-3 text-slate-600">${formatDdMmYyyyWeb(d['grdt'] || d['stockdt '] || d['stockdt']) || '-'}</td>
 
             <td class="py-2.5 px-3 font-medium text-slate-800">${d['Customer Name *'] || d['cngr *'] || '-'}</td>
 

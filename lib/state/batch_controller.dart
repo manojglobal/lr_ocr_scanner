@@ -1171,24 +1171,28 @@ bool _duplicateNoticePending = false;
           parseResult.data['freight'] = '';
 
           // Product Type vs Product Code separation:
-          // Keep productcode as actual product code (do not overwrite with product type).
+          // Product Code must not use Product Type value. Extract Product Code only when explicitly available in scanned LR.
+          // If missing or set to a product type option, keep it empty.
+          const prodTypeOptions = {'Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'};
+          final pCode = (parseResult.data['productcode'] ?? '').trim();
+          if (prodTypeOptions.contains(pCode)) {
+            parseResult.data['productcode'] = '';
+          }
           // Product Type is stored separately as product_type, defaulting to Surface-FTL for new records.
           if ((parseResult.data['product_type'] ?? '').trim().isEmpty) {
             parseResult.data['product_type'] = 'Surface-FTL';
             parseResult.data['Product Type'] = 'Surface-FTL';
           }
 
-          // Auto-detect Department from ManiFest.xlsx using actual LR OCR data
+          // Auto-detect Department & Counter using Origin City extracted from LR
           final custName = (parseResult.data['Customer Name *'] ?? parseResult.data['cngr *'] ?? '').trim();
-          final dest = (parseResult.data['destrefcode'] ?? parseResult.data['to'] ?? '').trim();
+          final rawOrg = (parseResult.data['orgrefcode'] ?? parseResult.data['from'] ?? parseResult.data['origin'] ?? '').trim();
           final rawDept = (parseResult.data['Depatment Name'] ?? parseResult.data['department'] ?? '').trim();
-          final cngeName = (parseResult.data['cnge *'] ?? parseResult.data['cnge'] ?? '').trim();
 
           final detectedDept = MasterDataService.instance.autoDetectDepartment(
+            originCity: rawOrg,
             customer: custName,
-            destination: dest,
             deptRaw: rawDept,
-            consignee: cngeName,
           );
           if (detectedDept.isNotEmpty) {
             parseResult.data['Depatment Name'] = detectedDept;
@@ -1198,15 +1202,14 @@ bool _duplicateNoticePending = false;
             parseResult.data['department'] = '';
           }
 
-          // Auto-detect Counter from BookingCounterMast.xlsx using actual LR OCR data
+          // Auto-detect Counter from BookingCounterMast.xlsx using Origin City
           final rawCounter = (parseResult.data['Counter'] ?? parseResult.data['counter'] ?? '').trim();
           final rawBranch = (parseResult.data['branchrefcode'] ?? parseResult.data['branch'] ?? '').trim();
-          final rawOrg = (parseResult.data['orgrefcode'] ?? parseResult.data['from'] ?? '').trim();
 
           final detectedCounter = MasterDataService.instance.autoDetectCounter(
+            originCity: rawOrg,
             counterRaw: rawCounter,
             branchRaw: rawBranch,
-            originRaw: rawOrg,
           );
           if (detectedCounter.isNotEmpty) {
             parseResult.data['Counter'] = detectedCounter;
@@ -1216,6 +1219,13 @@ bool _duplicateNoticePending = false;
             parseResult.data['Counter'] = '';
             parseResult.data['counter'] = '';
             parseResult.data['branchrefcode'] = '';
+          }
+
+          // Standardize date fields in extracted data strictly to DD-MM-YYYY
+          for (final dk in ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
+            if ((parseResult.data[dk] ?? '').trim().isNotEmpty) {
+              parseResult.data[dk] = ExcelService.formatToDdMmYyyy(parseResult.data[dk]);
+            }
           }
 
           // Find current index after asynchronous gap

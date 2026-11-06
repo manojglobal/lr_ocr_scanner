@@ -53,6 +53,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     'destrefcode',
     'Vehicle No *',
     'Vehicle Type *',
+    'ewaybilldt',
   ];
 
   final List<String> _partyKeys = [
@@ -100,6 +101,13 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       }
       if (key == 'cngrgstno *' || key == 'cngegstno *') {
         val = val.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+      }
+      if (key == 'freight  *' || key == 'freight') {
+        if (val == '0' || val == '0.00' || val == '0.0') val = '';
+      }
+      if (key == 'productcode') {
+        const prodTypeOptions = {'Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'};
+        if (prodTypeOptions.contains(val)) val = '';
       }
       _fieldControllers[key] = TextEditingController(text: val);
       _fieldFocusNodes[key] = FocusNode();
@@ -448,7 +456,20 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
           Navigator.of(context).pop();
           return;
         }
-        final tabIndex = result['tabIndex'] as int? ?? 0;
+        // Synchronize updatedItem from CustomizationDriverScreen back into edit form
+        if (result['updatedItem'] is BatchItem) {
+          final updatedItemReturned = result['updatedItem'] as BatchItem;
+          setState(() {
+            _currentItem = updatedItemReturned;
+            for (final entry in _fieldControllers.entries) {
+              if (updatedItemReturned.record.containsKey(entry.key)) {
+                entry.value.text = updatedItemReturned.record[entry.key] ?? '';
+              }
+            }
+          });
+        }
+
+        final tabIndex = result['tabIndex'] as int? ?? 3;
         final targetKey = result['targetKey'] as String?;
         final label = result['label'] as String? ?? '';
         _tabController.animateTo(tabIndex);
@@ -848,7 +869,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                 final ctrl = _fieldControllers[key]!;
                 final isMandatory = BatchItem.mandatoryKeys.contains(key) || key.contains('*');
                 final isKeyDoc = key == 'grno (*)' || key == 'LR No *';
-                final isDate = key == 'Valid Upto' || key == 'invoiedt' || key == 'grdt *' || key == 'Loading Start date *' || key == 'Valid Up to *';
+                final isDate = key == 'Valid Upto' || key == 'invoiedt' || key == 'grdt *' || key == 'Loading Start date *' || key == 'Valid Up to *' || key == 'ewaybilldt';
                 final isSearch = key == 'Customer Name *' || key == 'orgrefcode' || key == 'destrefcode';
 
                 return Padding(
@@ -901,7 +922,36 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                                 ? Icon(Icons.vpn_key_outlined, size: 18, color: isRed ? const Color(0xFFDC2626) : const Color(0xFF0284C7))
                                 : null,
                             suffixIcon: isDate
-                                ? const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey)
+                                ? IconButton(
+                                    icon: const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey),
+                                    onPressed: () async {
+                                      final now = DateTime.now();
+                                      DateTime? initial;
+                                      final txt = ctrl.text.trim();
+                                      final parts = txt.split(RegExp(r'[\/\-\.]'));
+                                      if (parts.length == 3) {
+                                        final d = int.tryParse(parts[0]);
+                                        final m = int.tryParse(parts[1]);
+                                        final y = int.tryParse(parts[2]);
+                                        if (d != null && m != null && y != null) {
+                                          final fullY = y < 100 ? 2000 + y : y;
+                                          initial = DateTime(fullY, m, d);
+                                        }
+                                      }
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: initial ?? now,
+                                        firstDate: DateTime(2000),
+                                        lastDate: DateTime(2100),
+                                      );
+                                      if (picked != null) {
+                                        final dd = picked.day.toString().padLeft(2, '0');
+                                        final mm = picked.month.toString().padLeft(2, '0');
+                                        final yyyy = picked.year.toString();
+                                        ctrl.text = '$dd-$mm-$yyyy';
+                                      }
+                                    },
+                                  )
                                 : isSearch
                                     ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
                                     : null,
@@ -950,7 +1000,9 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'LR No *':
         return 'Enter LR / Consignment No. (e.g. BNF-2024-001)';
       case 'grdt *':
-        return 'DD/MM/YYYY';
+        return 'DD-MM-YYYY';
+      case 'ewaybilldt':
+        return 'DD-MM-YYYY';
       case 'Customer Name *':
         return 'Enter Customer Name (e.g. Patanjali)';
       case 'orgrefcode':
@@ -990,11 +1042,11 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'ewaybillno':
         return '12-digit E-Way Bill No.';
       case 'Valid Upto':
-        return 'DD/MM/YYYY';
+        return 'DD-MM-YYYY';
       case 'invoiceno':
         return 'Invoice number';
       case 'invoiedt':
-        return 'DD/MM/YYYY';
+        return 'DD-MM-YYYY';
       case 'grtype':
         return 'Paid, To Pay, or TBB';
       case 'oamount':
@@ -1006,9 +1058,9 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'Liscense No *':
         return 'e.g. KA23 20000044025';
       case 'Valid Up to *':
-        return 'DD/MM/YYYY';
+        return 'DD-MM-YYYY';
       case 'Loading Start date *':
-        return 'DD/MM/YYYY';
+        return 'DD-MM-YYYY';
       case 'freight  *':
         return '0.00';
       default:
@@ -1021,6 +1073,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'grno (*)':
       case 'LR No *': return 'LR / Consignment No. *';
       case 'grdt *': return 'LR Date *';
+      case 'ewaybilldt': return 'E-Way Bill Date';
       case 'Customer Name *': return 'Customer Name *';
       case 'orgrefcode': return 'Origin Station';
       case 'destrefcode': return 'Destination Station';
