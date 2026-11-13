@@ -9391,13 +9391,13 @@
 
 
 
-          // 1. Primary Method: Server-side OCR (/extract-handwriting) with 90s timeout (for deep multimodal OCR)
+          // 1. Primary Method: Server-side OCR (/extract-handwriting) with 240s timeout (for deep multimodal OCR)
 
           try {
 
             const abortCtrl = new AbortController();
 
-            const timeoutId = setTimeout(() => abortCtrl.abort(), 90000);
+            const timeoutId = setTimeout(() => abortCtrl.abort(), 240000);
 
             const reqHeaders = {};
 
