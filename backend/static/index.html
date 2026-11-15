@@ -5775,7 +5775,9 @@
 
       if (targetScreen === 'screen4_edit' || targetScreen === 'screen4b_customization') {
 
-        if (!activeItem && verifiedBatch.length > 0) activeItem = verifiedBatch[0];
+        if (!activeItem) {
+          activeItem = verifiedBatch.find(b => !getLrMandatoryStatus(b).isVerified) || (verifiedBatch.length > 0 ? verifiedBatch[0] : null);
+        }
 
         if (activeItem) {
 
@@ -8341,7 +8343,10 @@
         confirmText: 'Yes, Cancel',
 
         onConfirm: () => {
-
+          if (activeItem) {
+            activeItem.is_cancelled = true;
+            activeItem.pending_verification = true;
+          }
           navigateTo(step2OriginScreen || 'screen2_upload');
 
         }
@@ -8606,6 +8611,9 @@
         if (item.deletedAt) continue;
 
         if (excludeId && item.id === excludeId) continue;
+
+        // Duplicate validation prevents duplicates against existing verified LRs; stale unverified items are ignored
+        if (item.is_cancelled || item.pending_verification || (!item.is_verified && !getLrMandatoryStatus(item).isVerified)) continue;
 
 
 
@@ -9838,6 +9846,8 @@
 
 
 
+          item.pending_verification = true;
+          item.is_verified = false;
           storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
 
           verifiedBatch.push(item);
@@ -12912,6 +12922,10 @@
 
 
 
+      activeItem.is_verified = true;
+      delete activeItem.pending_verification;
+      delete activeItem.is_cancelled;
+
       const editTimestamp = new Date().toISOString();
 
       activeItem.current_version = (activeItem.current_version || 1) + 1;
@@ -14070,51 +14084,60 @@
 
 
 
-          // 2. NOTE: Active verifiedBatch (LR List) is intentionally KEPT INTACT!
-
-          // Removing from Previously Uploaded LRs removes the item from the history strip ONLY.
-
-          // The verified LR with all its data, verification status, and export availability remains in verifiedBatch.
-
-
-
-          // 3. Notify backend API to dismiss from uploaded_lrs (history) ONLY in cloud DB
+          // Check matching item in verifiedBatch to determine if it is an unverified LR or already verified
+          const batchIdx = verifiedBatch.findIndex(b => isSameUploadWeb(b, removed));
+          const matchingBatchItem = batchIdx !== -1 ? verifiedBatch[batchIdx] : null;
+          const isMatchingVerified = matchingBatchItem ? (matchingBatchItem.is_verified === true || (!matchingBatchItem.pending_verification && !matchingBatchItem.is_cancelled && getLrMandatoryStatus(matchingBatchItem).isVerified)) : false;
 
           const headers = { 'Content-Type': 'application/json' };
-
           if (currentUser.token) {
-
             headers['Authorization'] = 'Bearer ' + currentUser.token;
-
           }
 
-          fetch('/api/user-cloud-storage/delete-upload-history', {
+          if (!isMatchingVerified) {
+            // UNVERIFIED LR:
+            // 1. Completely remove from verifiedBatch (purges from Step 2: screen4_edit)
+            if (batchIdx !== -1) {
+              verifiedBatch.splice(batchIdx, 1);
+            }
+            if (activeItem && isSameUploadWeb(activeItem, removed)) {
+              activeItem = verifiedBatch.find(b => !getLrMandatoryStatus(b).isVerified) || null;
+            }
+            saveUserBatches();
 
-            method: 'POST',
-
-            headers: headers,
-
-            body: JSON.stringify({
-
-              lr_identifiers: idList,
-
-              lr_identifier: removed.saved_filename || removed.filename || removed.id || targetId,
-
-              user_id: currentUser.id || null,
-
-              user_mobile: currentUser.mobile || null
-
-            })
-
-          }).then(r => r.json()).then(res => {
-
-            console.log('[Dismiss Upload History] Server confirmed:', res);
-
-          }).catch(delErr => {
-
-            console.warn('[Dismiss Upload History] Notice:', delErr);
-
-          });
+            // 2. Notify backend to delete from BOTH active_batch AND uploaded_lrs
+            fetch('/api/user-cloud-storage/delete-lr', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({
+                lr_identifiers: idList,
+                lr_identifier: removed.saved_filename || removed.filename || removed.id || targetId,
+                user_id: currentUser.id || null,
+                user_mobile: currentUser.mobile || null
+              })
+            }).then(r => r.json()).then(res => {
+              console.log('[Delete Unverified LR] Server confirmed:', res);
+            }).catch(delErr => {
+              console.warn('[Delete Unverified LR] Notice:', delErr);
+            });
+          } else {
+            // VERIFIED LR in Step 3 (LR List):
+            // Intentionally keep in verifiedBatch (Step 3 LR List intact) and dismiss from uploaded_lrs history ONLY
+            fetch('/api/user-cloud-storage/delete-upload-history', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({
+                lr_identifiers: idList,
+                lr_identifier: removed.saved_filename || removed.filename || removed.id || targetId,
+                user_id: currentUser.id || null,
+                user_mobile: currentUser.mobile || null
+              })
+            }).then(r => r.json()).then(res => {
+              console.log('[Dismiss Upload History] Server confirmed:', res);
+            }).catch(delErr => {
+              console.warn('[Dismiss Upload History] Notice:', delErr);
+            });
+          }
 
         }
 

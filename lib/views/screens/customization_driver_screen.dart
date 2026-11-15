@@ -601,6 +601,11 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
       ));
     }
 
+    // Mark record as verified and clear any pending or cancelled flags
+    updated['is_verified'] = 'true';
+    updated.remove('pending_verification');
+    updated.remove('is_cancelled');
+
     final newItem = widget.item.copyWith(
       record: updated,
       status: BatchItemStatus.completed,

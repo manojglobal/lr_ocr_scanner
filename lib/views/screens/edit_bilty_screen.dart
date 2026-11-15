@@ -518,6 +518,10 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
           onPressed: () async {
             final shouldCancel = await showCancelVerificationConfirmation(context);
             if (shouldCancel && context.mounted) {
+              final rec = Map<String, String>.from(widget.item.record);
+              rec['is_cancelled'] = 'true';
+              rec['pending_verification'] = 'true';
+              widget.controller.updateItem(widget.item.copyWith(record: rec));
               Navigator.of(context).pop();
             }
           },
@@ -787,6 +791,10 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                       onPressed: () async {
                         final shouldCancel = await showCancelVerificationConfirmation(context);
                         if (shouldCancel && context.mounted) {
+                          final rec = Map<String, String>.from(widget.item.record);
+                          rec['is_cancelled'] = 'true';
+                          rec['pending_verification'] = 'true';
+                          widget.controller.updateItem(widget.item.copyWith(record: rec));
                           Navigator.of(context).pop();
                         }
                       },

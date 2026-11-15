@@ -802,11 +802,39 @@ void _checkDuplicateNotice() {
 
     final savedFilename = (itmData['saved_filename'] ?? (itmData['record'] is Map ? itmData['record']['saved_filename'] : null) ?? '').toString().trim();
 
+    final candLr = (itmData['lrNo'] ?? itmData['lr_no'] ?? itmData['grno'] ?? '').toString().trim();
 
 
-    // NOTE: Active controller items (LR List) are intentionally KEPT INTACT.
 
-    // We do NOT remove the item from widget.controller.items.
+    // Check if there is a matching item in controller.items
+    final matchingIndex = widget.controller.items.indexWhere((it) {
+      final itId = it.id.trim().toLowerCase();
+      final itFn = it.fileName.trim().toLowerCase();
+      final itSaved = (it.record['saved_filename'] ?? '').toString().trim().toLowerCase();
+      final itLr = BatchProcessingController.normalizeLrNo(BatchProcessingController.extractLrNoFromRecord(it.record));
+      final normCand = BatchProcessingController.normalizeLrNo(candLr);
+
+      if (targetId.isNotEmpty && itId == targetId.toLowerCase()) return true;
+      if (savedFilename.isNotEmpty && itSaved == savedFilename.toLowerCase()) return true;
+      if (fileName.isNotEmpty && itFn == fileName.toLowerCase()) return true;
+      if (normCand.isNotEmpty && itLr.isNotEmpty && normCand == itLr) return true;
+      return false;
+    });
+
+    final matchingItem = matchingIndex != -1 ? widget.controller.items[matchingIndex] : null;
+    final isUnverified = matchingItem != null &&
+        (matchingItem.record['is_cancelled'] == 'true' ||
+         matchingItem.record['pending_verification'] == 'true');
+
+    if (isUnverified) {
+      // Unverified/cancelled/pending LR: completely remove from Step 2 (controller.items)
+      widget.controller.removeUnverifiedItem(
+        id: targetId,
+        fileName: fileName,
+        savedFilename: savedFilename,
+        lrNo: candLr,
+      );
+    }
 
 
 
@@ -855,17 +883,21 @@ void _checkDuplicateNotice() {
         .toList();
 
     if (idsToSend.isNotEmpty) {
-
-      UserCloudService.instance.deleteCloudUploadHistory(
-
-        mobile,
-
-        idsToSend,
-
-        baseUrl: widget.controller.geminiService.serverUrl,
-
-      ).catchError((_) => false);
-
+      if (isUnverified) {
+        // Purge unverified record from BOTH active_batch and uploaded_lrs
+        UserCloudService.instance.deleteCloudLr(
+          mobile,
+          idsToSend,
+          baseUrl: widget.controller.geminiService.serverUrl,
+        ).catchError((_) => false);
+      } else {
+        // Verified LR in Step 3 (LR List): dismiss from uploaded_lrs history ONLY
+        UserCloudService.instance.deleteCloudUploadHistory(
+          mobile,
+          idsToSend,
+          baseUrl: widget.controller.geminiService.serverUrl,
+        ).catchError((_) => false);
+      }
     }
 
 

@@ -2246,7 +2246,7 @@ async def extract_handwriting(
         # Build multimodal payload: For PDFs, send high-resolution 300 DPI rendered pages (up to 8 pages to capture DL cards on pages 5-6)
         gemini_parts = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
-            pages_to_send = pdf_all_preview_bytes[:8]
+            pages_to_send = pdf_all_preview_bytes[:15]
             print(f"[Gemini Input] Sending {len(pages_to_send)} rendered 300 DPI page image(s) to Gemini for maximum precision.")
             for p_bytes in pages_to_send:
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})

@@ -150,6 +150,57 @@ class BatchProcessingController extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Removes an unverified or pending LR record from active batch items (_items)
+  /// and previous uploads cache. Guarantees that:
+  /// 1. Unverified LRs are completely removed from Step 2 (EditBiltyScreen).
+  /// 2. Already verified LRs (in Step 3 LR List) are strictly preserved and never deleted.
+  /// 3. Returns true if an unverified item was matched and removed.
+  bool removeUnverifiedItem({
+    String? id,
+    String? fileName,
+    String? savedFilename,
+    String? lrNo,
+  }) {
+    final cleanId = id?.trim().toLowerCase() ?? '';
+    final cleanFn = fileName?.trim().toLowerCase() ?? '';
+    final cleanSaved = savedFilename?.trim().toLowerCase() ?? '';
+    final cleanLr = lrNo != null && lrNo.trim().isNotEmpty ? normalizeLrNo(lrNo) : '';
+
+    const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
+
+    // Find and remove matching UNVERIFIED item from _items
+    final matchIndex = _items.indexWhere((item) {
+      if (item.isVerified) return false; // Strictly protect verified LRs!
+
+      final itemId = item.id.trim().toLowerCase();
+      final itemFn = item.fileName.trim().toLowerCase();
+      final itemSaved = (item.record['saved_filename'] ?? '').toString().trim().toLowerCase();
+      final itemLr = normalizeLrNo(extractLrNoFromRecord(item.record));
+
+      if (cleanId.isNotEmpty && itemId.isNotEmpty && cleanId == itemId) return true;
+      if (cleanSaved.isNotEmpty && itemSaved.isNotEmpty && cleanSaved == itemSaved) return true;
+      if (cleanFn.isNotEmpty && itemFn.isNotEmpty && !genericFns.contains(cleanFn) && cleanFn == itemFn) return true;
+      if (cleanLr.isNotEmpty && itemLr.isNotEmpty && cleanLr == itemLr) return true;
+      return false;
+    });
+
+    String? removedPath;
+    if (matchIndex != -1) {
+      final removed = _items.removeAt(matchIndex);
+      removedPath = removed.imagePath;
+    }
+
+    purgeFromPreviousUploads(
+      id: id,
+      fileName: fileName,
+      imagePath: removedPath,
+      savedFilename: savedFilename,
+    );
+
+    notifyListeners();
+    return matchIndex != -1;
+  }
+
   void triggerConnectionErrorNotice(String message) {
     _connectionErrorNoticePending = true;
     _connectionErrorNoticeMessage = message;
@@ -346,6 +397,7 @@ bool _duplicateNoticePending = false;
     // B. Check previous uploads cache (so duplicate documents are caught on FIRST upload attempt)
     for (final prev in _previousUploadsCache) {
       if (excludeItemId != null && prev['id'] == excludeItemId) continue;
+      if (prev['is_deleted'] == true || prev['isDeleted'] == true) continue;
 
       // Tier 1: Check LR number
       if (candidateLr.isNotEmpty) {
@@ -1227,6 +1279,10 @@ bool _duplicateNoticePending = false;
               parseResult.data[dk] = ExcelService.formatToDdMmYyyy(parseResult.data[dk]);
             }
           }
+
+          // Mark newly scanned LR as unverified / pending verification
+          parseResult.data['pending_verification'] = 'true';
+          parseResult.data['is_verified'] = 'false';
 
           // Find current index after asynchronous gap
           final currentIndex = _items.indexWhere((i) => i.id == item.id);

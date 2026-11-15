@@ -51,15 +51,17 @@ class StepIndicatorBar extends StatelessWidget {
         );
         break;
       case 2:
-        if (ctrl.items.isNotEmpty) {
+        final pendingItem = ctrl.items.where((i) => !i.isDeleted && !i.isVerified).firstOrNull ??
+            ctrl.items.where((i) => !i.isDeleted).firstOrNull;
+        if (pendingItem != null) {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => EditBiltyScreen(item: ctrl.items.first, controller: ctrl, initialTab: 0),
+              builder: (_) => EditBiltyScreen(item: pendingItem, controller: ctrl, initialTab: 0),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No consignment note in batch to verify. Upload an LR first.')),
+            const SnackBar(content: Text('No unverified consignment note in batch. Upload an LR first.')),
           );
         }
         break;

@@ -303,6 +303,7 @@ class BatchItem {
 
   /// Returns true only when all 15 mandatory BNF columns are filled and valid.
   bool get isVerified {
+    if (record['is_verified'] == 'true') return true;
     for (final key in mandatoryKeys) {
       final val = resolveField(key);
       if (val.isEmpty || val == '-' || val.toLowerCase() == 'null' || val.toLowerCase() == 'none') {
