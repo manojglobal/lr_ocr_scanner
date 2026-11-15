@@ -510,7 +510,7 @@
 
       <div id="dropZone" class="bg-white rounded-2xl border-2 border-dashed border-slate-300 hover:border-sky-500 p-5 sm:p-6 text-center transition-all shadow-sm relative overflow-hidden shrink-0">
 
-        <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg, image/webp, application/pdf, .pdf" class="hidden" />
+        <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg, image/webp, application/pdf, .pdf" multiple class="hidden" />
 
 
 
@@ -5909,6 +5909,10 @@
 
       if ((screenId === 'screen4_edit' || screenId === 'screen4b_customization') && activeItem) {
 
+        populateEditForm(activeItem);
+
+        populateCustomizationForm(activeItem);
+
         loadLrImagePreview(activeItem);
 
       }
@@ -6869,67 +6873,25 @@
 
 
       dropZone.addEventListener('drop', (e) => {
-
         if (!currentUser) {
-
           showUploadLrValidationModal('Please complete OTP validation first.');
-
           navigateTo('screen1_login');
-
           return;
-
         }
-
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-
-          const droppedFile = e.dataTransfer.files[0];
-
-          if (droppedFile.size > MAX_FILE_SIZE_BYTES) {
-
-            const sizeMb = (droppedFile.size / (1024 * 1024)).toFixed(2);
-
-            showFileSizeValidationModal(droppedFile.name, sizeMb);
-
-            return;
-
-          }
-
-          handleSelectedFiles([droppedFile]);
-
+          const droppedFiles = Array.from(e.dataTransfer.files);
+          handleSelectedFiles(droppedFiles);
         }
-
       });
-
-
 
       fileInput.addEventListener('change', (e) => {
-
         if (e.target.files && e.target.files.length > 0) {
-
-          const selectedFile = e.target.files[0];
-
-          if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
-
-            const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(2);
-
-            showFileSizeValidationModal(selectedFile.name, sizeMb);
-
-            e.target.value = '';
-
-            return;
-
-          }
-
-          handleSelectedFiles([selectedFile]);
-
+          const selectedFiles = Array.from(e.target.files);
+          handleSelectedFiles(selectedFiles);
           e.target.value = '';
-
         }
-
       });
-
     }
-
 
 
     // --- CONTINUOUS MULTI-PAGE SCANNING & WEBCAM LOGIC ---
@@ -8502,6 +8464,15 @@
     }
 
 
+    function showMultipleLrsNotAllowedModal(msg) {
+      showAppInfoModal({
+        title: 'Multiple LRs Not Allowed',
+        subtitle: 'Document Validation',
+        message: msg || 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
+        iconType: 'warning'
+      });
+    }
+
     function showInvalidLrModal() {
       showAppInfoModal({
         title: 'Invalid LR',
@@ -9214,708 +9185,430 @@
     // Handles single LR image/PDF selected or dropped (Upload only 1 LR at a time)
 
     let isUploadingFile = false;
-
     async function handleSelectedFiles(files) {
-
       if (isUploadingFile) return;
-
       isUploadingFile = true;
-
       if (!currentUser) {
-
         showUploadLrValidationModal('Please complete OTP validation first.');
-
         navigateTo('screen1_login');
-
+        isUploadingFile = false;
         return;
-
+      }
+      if (!files || files.length === 0) {
+        isUploadingFile = false;
+        return;
       }
 
-      if (!files || files.length === 0) return;
-
-
-
-      // Enforce upload of only 1 LR at a time and 10 MB per file size limit
-
-      const fileList = Array.from(files).slice(0, 1);
-
+      const fileList = Array.from(files);
       const validFiles = [];
 
-
-
       for (const f of fileList) {
-
         if (f.size > MAX_FILE_SIZE_BYTES) {
-
           const sizeMb = (f.size / (1024 * 1024)).toFixed(2);
-
           showFileSizeValidationModal(f.name, sizeMb);
-
+          isUploadingFile = false;
+          const fileInput = document.getElementById('fileInput');
+          if (fileInput) fileInput.value = '';
+          return;
         } else {
-
           validFiles.push(f);
-
         }
-
       }
-
-
 
       if (validFiles.length === 0) {
-
+        isUploadingFile = false;
         const fileInput = document.getElementById('fileInput');
-
         if (fileInput) fileInput.value = '';
-
-        const cameraInput = document.getElementById('cameraInput');
-
-        if (cameraInput) cameraInput.value = '';
-
         return;
-
       }
 
-
-
       let processedCount = 0;
-
-      const total = validFiles.length;
-
-
-
-      // Navigate to Step 1 loading state screen3_ocr (confined strictly within Step 1)
-
       navigateTo('screen3_ocr');
 
-
-
       try {
-
-        for (let i = 0; i < validFiles.length; i++) {
-
-          const file = validFiles[i];
-
+        if (validFiles.length > 1) {
+          // --- MULTI-FILE UPLOAD: COMBINED AS SINGLE LR ---
           const ocrTitleEl = document.getElementById('ocrProcessingTitle');
-
-          if (ocrTitleEl) ocrTitleEl.innerText = `Reading Consignment (${file.name})...`;
-
+          if (ocrTitleEl) ocrTitleEl.innerText = `Reading Consignment (${validFiles.length} files)...`;
           const ocrSubEl = document.getElementById('ocrProcessingSub');
-
-          if (ocrSubEl) ocrSubEl.innerText = `Processing: ${file.name}...`;
-
-
-
-          // Reset checklist matching commit 28792914
+          if (ocrSubEl) ocrSubEl.innerText = `Processing combined ${validFiles.length} files as single LR dossier...`;
 
           const s1 = document.getElementById('step1');
-
           if (s1) s1.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-
           const s2 = document.getElementById('step2');
-
           if (s2) s2.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-
           const s3 = document.getElementById('step3');
-
           if (s3) {
-
             s3.className = "flex items-center space-x-3 text-xs font-semibold text-sky-600 animate-pulse";
-
-            s3.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-sky-500"></i><span>Extracting Consignment Details</span>`;
-
+            s3.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-sky-500"></i><span>Extracting Combined Consignment Details</span>`;
           }
-
           const s4 = document.getElementById('step4');
-
           if (s4) {
-
             s4.className = "flex items-center space-x-3 text-xs font-semibold text-slate-400";
-
             s4.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Mapping with BNF 49-Column Format</span>`;
-
           }
-
           const s5 = document.getElementById('step5');
-
           if (s5) {
-
             s5.className = "flex items-center space-x-3 text-xs font-semibold text-slate-400";
-
-            s5.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Validating Data & Preserving Blanks</span>`;
-
+            s5.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Validating Combined Data & Preserving Blanks</span>`;
           }
-
           if (window.lucide && lucide.createIcons) lucide.createIcons();
 
+          const formData = new FormData();
+          for (const f of validFiles) {
+            formData.append('files', f);
+          }
+          if (currentUser) {
+            if (currentUser.id) formData.append('user_id', currentUser.id);
+            if (currentUser.mobile) formData.append('user_mobile', currentUser.mobile);
+            if (currentUser.name) formData.append('user_name', currentUser.name);
+          }
 
+          const abortCtrl = new AbortController();
+          const timeoutId = setTimeout(() => abortCtrl.abort(), 240000);
+          const reqHeaders = {};
+          if (currentUser && currentUser.token) {
+            reqHeaders['Authorization'] = 'Bearer ' + currentUser.token;
+          }
 
-        try {
+          const resp = await fetch('/extract-handwriting', {
+            method: 'POST',
+            headers: reqHeaders,
+            body: formData,
+            signal: abortCtrl.signal
+          });
+          clearTimeout(timeoutId);
+
+          if (!resp.ok) {
+            let errJson = null;
+            try { errJson = await resp.json(); } catch (_) {}
+            const errCode = errJson?.error_code || '';
+            const errMsg = errJson?.message || errJson?.detail || '';
+            const isMultiLrs = errCode === 'MULTIPLE_LRS' || errMsg.includes('Multiple LR') || errMsg.includes('Multiple LRs');
+            if (resp.status === 422 || resp.status === 400 || isMultiLrs || errCode === 'INVALID_LR') {
+              if (isMultiLrs) {
+                showMultipleLrsNotAllowedModal(errMsg);
+              } else {
+                showInvalidLrModal();
+              }
+              const fileInput = document.getElementById('fileInput');
+              if (fileInput) fileInput.value = '';
+              navigateTo('screen2_upload');
+              return;
+            } else {
+              showServerConnectionErrorModal(errMsg || 'Validation failed. Please check your network connection and try again.');
+              const fileInput = document.getElementById('fileInput');
+              if (fileInput) fileInput.value = '';
+              navigateTo('screen2_upload');
+              return;
+            }
+          }
+
+          const result = await resp.json();
+          if (!result || !result.data) {
+            showServerConnectionErrorModal('Unable to validate documents. Please try again.');
+            navigateTo('screen2_upload');
+            return;
+          }
+
+          // Master & 49-column enrichments
+          enrichExtractedResultWeb(result);
+
+          // Post-OCR Duplicate Check
+          const extractedLrNo = extractLrNoFromData(result.data);
+          if (isDuplicateWeb({ lrNo: extractedLrNo, data: result.data })) {
+            showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
+            navigateTo('screen2_upload');
+            return;
+          }
+
+          const s3Done = document.getElementById('step3');
+          if (s3Done) {
+            s3Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
+            s3Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Extraction Complete (Combined Files)</span>`;
+          }
+          const s4Done = document.getElementById('step4');
+          if (s4Done) {
+            s4Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
+            s4Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Mapped with BNF 49-Column Format</span>`;
+          }
+          const s5Done = document.getElementById('step5');
+          if (s5Done) {
+            s5Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
+            s5Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Data Validated</span>`;
+          }
+          if (window.lucide && lucide.createIcons) lucide.createIcons();
+
+          const nowIso = new Date().toISOString();
+          const item = {
+            id: result.file_id || 'lr_' + Date.now(),
+            filename: result.filename || `${validFiles[0].name} (+${validFiles.length - 1} files)`,
+            saved_filename: result.saved_filename || null,
+            file_url: result.file_url || null,
+            preview_url: result.preview_url || null,
+            preview_pages: result.preview_pages || [],
+            page_count: result.page_count || validFiles.length,
+            imageSrc: result.preview_url || (result.preview_pages && result.preview_pages[0]) || null,
+            preview_image: result.preview_image || null,
+            originalPdfSrc: result.file_url || null,
+            isPdf: true,
+            data: result.data || {},
+            record: result.data || {},
+            created_at: result.created_at || nowIso,
+            editedAt: null,
+            current_version: 1,
+            pending_verification: true,
+            is_verified: false,
+            versions: result.versions || [
+              {
+                version: 1,
+                timestamp: nowIso,
+                user: currentUser?.name || 'Logistics User',
+                mobile: currentUser?.mobile || '',
+                action: 'add',
+                details: `Consignment added (${validFiles.length} files combined)`
+              }
+            ]
+          };
+
+          storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
+          verifiedBatch.push(item);
+          saveUserBatches();
+          saveRecentUploadWeb(item, true);
+          processedCount++;
+          activeItem = item;
+
+        } else {
+          // --- SINGLE FILE UPLOAD (EXISTING FLOW) ---
+          const file = validFiles[0];
+          const ocrTitleEl = document.getElementById('ocrProcessingTitle');
+          if (ocrTitleEl) ocrTitleEl.innerText = `Reading Consignment (${file.name})...`;
+          const ocrSubEl = document.getElementById('ocrProcessingSub');
+          if (ocrSubEl) ocrSubEl.innerText = `Processing: ${file.name}...`;
+
+          const s1 = document.getElementById('step1');
+          if (s1) s1.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
+          const s2 = document.getElementById('step2');
+          if (s2) s2.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
+          const s3 = document.getElementById('step3');
+          if (s3) {
+            s3.className = "flex items-center space-x-3 text-xs font-semibold text-sky-600 animate-pulse";
+            s3.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-sky-500"></i><span>Extracting Consignment Details</span>`;
+          }
+          const s4 = document.getElementById('step4');
+          if (s4) {
+            s4.className = "flex items-center space-x-3 text-xs font-semibold text-slate-400";
+            s4.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Mapping with BNF 49-Column Format</span>`;
+          }
+          const s5 = document.getElementById('step5');
+          if (s5) {
+            s5.className = "flex items-center space-x-3 text-xs font-semibold text-slate-400";
+            s5.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Validating Data & Preserving Blanks</span>`;
+          }
+          if (window.lucide && lucide.createIcons) lucide.createIcons();
 
           const imageHash = await computeFileSha256(file);
-
-
-
-          // Pre-OCR duplicate check by image content hash
-
           if (isDuplicateWeb({ imageHash: imageHash })) {
-
             showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
-
             navigateTo('screen2_upload');
-
             return;
-
           }
-
-
 
           const imageSrc = await readFileAsDataURL(file);
-
-          // Check image color type (orange/yellow handwritten bilty vs white printed page)
-
           const isOrangeYellow = await isOrangeYellowImageWeb(file);
 
-
-
           const formData = new FormData();
-
           formData.append('file', file);
-
           if (currentUser) {
-
             if (currentUser.id) formData.append('user_id', currentUser.id);
-
             if (currentUser.mobile) formData.append('user_mobile', currentUser.mobile);
-
             if (currentUser.name) formData.append('user_name', currentUser.name);
-
           }
 
+          const abortCtrl = new AbortController();
+          const timeoutId = setTimeout(() => abortCtrl.abort(), 240000);
+          const reqHeaders = {};
+          if (currentUser && currentUser.token) {
+            reqHeaders['Authorization'] = 'Bearer ' + currentUser.token;
+          }
 
+          const resp = await fetch('/extract-handwriting', {
+            method: 'POST',
+            headers: reqHeaders,
+            body: formData,
+            signal: abortCtrl.signal
+          });
+          clearTimeout(timeoutId);
 
-          let result = null;
-
-          let activeOcrEngine = 'server';
-
-
-
-          // 1. Primary Method: Server-side OCR (/extract-handwriting) with 240s timeout (for deep multimodal OCR)
-
-          try {
-
-            const abortCtrl = new AbortController();
-
-            const timeoutId = setTimeout(() => abortCtrl.abort(), 240000);
-
-            const reqHeaders = {};
-
-            if (currentUser && currentUser.token) {
-
-              reqHeaders['Authorization'] = 'Bearer ' + currentUser.token;
-
-            }
-
-            const resp = await fetch('/extract-handwriting', {
-
-              method: 'POST',
-
-              headers: reqHeaders,
-
-              body: formData,
-
-              signal: abortCtrl.signal
-
-            });
-
-            clearTimeout(timeoutId);
-
-
-
-            if (resp.ok) {
-              const json = await resp.json();
-              if (json && json.status !== 'failed' && json.data) {
-                result = json;
-                activeOcrEngine = 'server';
-                if (isOrangeYellow && result.data) {
-                  result.data['BNF LR No'] = '';
-                }
-              }
-            } else {
-              let errJson = null;
-              try { errJson = await resp.json(); } catch (_) {}
-              if (resp.status === 422 || errJson?.error_code === 'INVALID_LR') {
-                showInvalidLrModal();
-                const fileInput = document.getElementById('fileInput');
-                if (fileInput) fileInput.value = '';
-                const cameraInput = document.getElementById('cameraInput');
-                if (cameraInput) cameraInput.value = '';
-                navigateTo('screen2_upload');
-                return;
+          if (!resp.ok) {
+            let errJson = null;
+            try { errJson = await resp.json(); } catch (_) {}
+            const errCode = errJson?.error_code || '';
+            const errMsg = errJson?.message || errJson?.detail || '';
+            const isMultiLrs = errCode === 'MULTIPLE_LRS' || errMsg.includes('Multiple LR') || errMsg.includes('Multiple LRs');
+            if (resp.status === 422 || resp.status === 400 || isMultiLrs || errCode === 'INVALID_LR') {
+              if (isMultiLrs) {
+                showMultipleLrsNotAllowedModal(errMsg);
               } else {
-                showServerConnectionErrorModal(errJson?.detail || 'Validation failed. Please check your network connection and try again.');
-                const fileInput = document.getElementById('fileInput');
-                if (fileInput) fileInput.value = '';
-                const cameraInput = document.getElementById('cameraInput');
-                if (cameraInput) cameraInput.value = '';
-                navigateTo('screen2_upload');
-                return;
+                showInvalidLrModal();
               }
+              const fileInput = document.getElementById('fileInput');
+              if (fileInput) fileInput.value = '';
+              navigateTo('screen2_upload');
+              return;
+            } else {
+              showServerConnectionErrorModal(errMsg || 'Validation failed. Please check your network connection and try again.');
+              const fileInput = document.getElementById('fileInput');
+              if (fileInput) fileInput.value = '';
+              navigateTo('screen2_upload');
+              return;
             }
-          } catch (serverErr) {
-            console.warn(`Server OCR unavailable for ${file.name}:`, serverErr);
-            showServerConnectionErrorModal('Unable to reach the validation server. Please check your network connection and try again.');
-            const fileInput = document.getElementById('fileInput');
-            if (fileInput) fileInput.value = '';
-            const cameraInput = document.getElementById('cameraInput');
-            if (cameraInput) cameraInput.value = '';
-            navigateTo('screen2_upload');
-            return;
           }
 
-          if (!result) {
+          const result = await resp.json();
+          if (!result || !result.data) {
             showServerConnectionErrorModal('Unable to validate document. Please try again.');
             navigateTo('screen2_upload');
             return;
           }
 
-
-
-          // Post-OCR Duplicate Check
-
-          const extractedLrNo = extractLrNoFromData(result?.data);
-
-          if (isDuplicateWeb({ lrNo: extractedLrNo, data: result?.data, imageHash: imageHash })) {
-
-            showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
-
-            navigateTo('screen2_upload');
-
-            return;
-
+          if (isOrangeYellow && result.data) {
+            result.data['BNF LR No'] = '';
           }
 
+          enrichExtractedResultWeb(result);
 
-
-          const progressSubEl = document.getElementById('webOcrProgressSub');
-
-          if (progressSubEl) progressSubEl.innerText = `Extraction complete (${file.name})`;
-
-
-
-          // Mark extraction checklist complete matching commit 28792914
+          const extractedLrNo = extractLrNoFromData(result.data);
+          if (isDuplicateWeb({ lrNo: extractedLrNo, data: result.data, imageHash: imageHash })) {
+            showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
+            navigateTo('screen2_upload');
+            return;
+          }
 
           const s3Done = document.getElementById('step3');
-
           if (s3Done) {
-
             s3Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-
-            s3Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Extraction Complete (${activeOcrEngine === 'ml_fallback' ? 'Fallback' : 'Server'})</span>`;
-
+            s3Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Extraction Complete</span>`;
           }
-
           const s4Done = document.getElementById('step4');
-
           if (s4Done) {
-
             s4Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-
             s4Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Mapped with BNF 49-Column Format</span>`;
-
           }
-
           const s5Done = document.getElementById('step5');
-
           if (s5Done) {
-
             s5Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-
             s5Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Data Validated</span>`;
-
           }
-
           if (window.lucide && lucide.createIcons) lucide.createIcons();
 
-
-
           const nowIso = new Date().toISOString();
-
-          const detailsLabel = activeOcrEngine === 'ml_fallback'
-
-            ? 'Consignment added (Fallback results)'
-
-            : 'Consignment added (Server results)';
-
-
-
-          let compactThumb = null;
-
-          try {
-
-            if (imageSrc && imageSrc.startsWith('data:image')) {
-
-              compactThumb = await createCompactThumbnail(imageSrc);
-
-            } else if (result?.preview_image && result.preview_image.startsWith('data:image')) {
-
-              compactThumb = await createCompactThumbnail(result.preview_image);
-
-            }
-
-          } catch (_) {}
-
-
-
-          // Ensure driver details remain empty if not captured by OCR (auto-fill from registry disabled)
-
-          for (const drvK of ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
-
-            if (!result?.data?.[drvK]) {
-
-              if (result && result.data) result.data[drvK] = '';
-
-            }
-
-          }
-
-          // Freight: Mandatory manual entry. Keep empty by default; never display 0 or automatic values
-          if (result && result.data) {
-            result.data['freight  *'] = '';
-            result.data['freight'] = '';
-
-            // Product Code vs Product Type:
-            // Product Code must not use Product Type value. Extract Product Code only when explicitly available in scanned LR.
-            const prodTypeOptions = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
-            const rawPCode = (result.data['productcode'] || result.data['Product Code'] || '').trim();
-            if (prodTypeOptions.includes(rawPCode)) {
-              result.data['productcode'] = '';
-            }
-            if (!result.data['product_type'] || !prodTypeOptions.includes(result.data['product_type'])) {
-              result.data['product_type'] = 'Surface-FTL';
-            }
-            result.data['Product Type'] = result.data['product_type'];
-
-            // Auto-detect Department & Counter using Origin City extracted from LR
-            const orgCity = (result.data['orgrefcode'] || result.data['from'] || result.data['origin'] || '').trim();
-            const custName = (result.data['Customer Name *'] || result.data['cngr *'] || '').trim();
-            const rawDept = (result.data['Depatment Name'] || result.data['department'] || '').trim();
-            const detectedDept = autoDetectDepartmentWeb(orgCity, custName, rawDept);
-            result.data['Depatment Name'] = detectedDept;
-            result.data['department'] = detectedDept;
-
-            const rawCntr = (result.data['Counter'] || result.data['Counter name'] || result.data['counter'] || '').trim();
-            const detectedCntr = autoDetectCounterWeb(orgCity, rawCntr);
-            result.data['Counter'] = detectedCntr;
-            result.data['Counter name'] = detectedCntr;
-            result.data['counter'] = detectedCntr;
-            result.data['branchrefcode'] = detectedCntr;
-
-            // Standardize all date fields strictly to DD-MM-YYYY format
-            for (const dk of ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
-              if (result.data[dk]) {
-                result.data[dk] = formatDdMmYyyyWeb(result.data[dk]);
-              }
-            }
-          }
-
-
-
           const isFilePdf = (file.name && file.name.toLowerCase().endsWith('.pdf')) || imageSrc.startsWith('data:application/pdf');
-
-
-
-          // Ensure preview_image is strictly a high-res image (from 300 DPI backend or client rendering)
-
-          let highResPreviewImage = (result?.preview_image && !result.preview_image.startsWith('data:application/pdf'))
-
+          let highResPreviewImage = (result.preview_image && !result.preview_image.startsWith('data:application/pdf'))
             ? result.preview_image
-
-            : (!isFilePdf && imageSrc && !imageSrc.startsWith('data:application/pdf') ? imageSrc : null);
-
-
-
-          let detectedPageCount = result?.page_count || 1;
-
-          let previewPagesList = Array.isArray(result?.preview_pages) && result.preview_pages.length > 0
-
-            ? [...result.preview_pages]
-
-            : (result?.preview_url ? [result.preview_url] : []);
-
-
-
-          // If PDF and high-res preview wasn't returned by server, render via PDF.js on client
-
-          if (isFilePdf && (!highResPreviewImage || detectedPageCount <= 1) && typeof renderPdfPageDataUrl === 'function') {
-
-            const clientRes = await renderPdfPageDataUrl(file, 1);
-
-            if (clientRes) {
-
-              if (!highResPreviewImage) highResPreviewImage = clientRes.dataUrl;
-
-              if (clientRes.totalPages > detectedPageCount) detectedPageCount = clientRes.totalPages;
-
-              if (previewPagesList.length === 0) previewPagesList = [clientRes.dataUrl];
-
-            }
-
-          } else if (isFilePdf && !highResPreviewImage && typeof renderPdfFirstPageDataUrl === 'function') {
-
-            highResPreviewImage = await renderPdfFirstPageDataUrl(file);
-
-            if (previewPagesList.length === 0 && highResPreviewImage) previewPagesList = [highResPreviewImage];
-
-          }
-
-
-
-          if (previewPagesList.length === 0 && highResPreviewImage) {
-
-            previewPagesList = [highResPreviewImage];
-
-          }
-
-
-
-          // Generate compact thumbnail for PDF if not generated earlier
-
-          if (!compactThumb && highResPreviewImage && typeof createCompactThumbnail === 'function') {
-
-            try {
-
-              compactThumb = await createCompactThumbnail(highResPreviewImage);
-
-            } catch (_) {}
-
-          }
-
-
-
-          // Ensure client item ID matches backend upload/file ID to eliminate ID mismatch
-
-          const resolvedFileId = result?.file_id || result?.upload_id || ('lr_' + Date.now() + '_' + i);
-
-
-
-          // Active upload: clear any stale dismissals/tombstones for this file so it appears in history
-
-          // Clear any dismissal tombstone in memory and notify backend cloud DB
-
-          const toClear = [
-
-            resolvedFileId,
-
-            result?.saved_filename,
-
-            file.name,
-
-            extractedLrNo,
-
-            result?.data?.['grno'],
-
-            result?.data?.['LR No *'],
-
-            result?.data?.['BNF LR No']
-
-          ].filter(Boolean).map(s => String(s).trim().toLowerCase());
-
-          toClear.forEach(t => userDismissedTombstones.delete(t));
-
-
-
-          if (currentUser) {
-
-            const undismissHeaders = { 'Content-Type': 'application/json' };
-
-            if (currentUser.token) undismissHeaders['Authorization'] = 'Bearer ' + currentUser.token;
-
-            fetch('/api/user-cloud-storage/undismiss-upload', {
-
-              method: 'POST',
-
-              headers: undismissHeaders,
-
-              body: JSON.stringify({
-
-                lr_identifiers: toClear,
-
-                user_mobile: currentUser.mobile || null,
-
-                user_id: currentUser.id || null
-
-              })
-
-            }).catch(() => {});
-
-          }
-
-
+            : (imageSrc.startsWith('data:image') ? imageSrc : null);
 
           const item = {
-
-            id: resolvedFileId,
-
+            id: result.file_id || 'lr_' + Date.now(),
             filename: file.name,
-
-            file_url: result?.file_url || (result?.saved_filename ? `/uploads/${result.saved_filename}` : null),
-
-            saved_filename: result?.saved_filename || null,
-
-            file_path: result?.file_path || null,
-
-            preview_url: result?.preview_url || null,
-
-            page_count: detectedPageCount,
-
-            current_page: 1,
-
-            preview_pages: previewPagesList,
-
-            imageSrc: highResPreviewImage || (!isFilePdf ? imageSrc : null),
-
-            preview_image: highResPreviewImage,
-
-            thumbnail_image: compactThumb || highResPreviewImage,
-
-            originalPdfSrc: isFilePdf ? imageSrc : null,
-
-            imageHash: imageHash,
-
+            saved_filename: result.saved_filename || null,
+            file_url: result.file_url || null,
+            preview_url: result.preview_url || null,
+            preview_pages: result.preview_pages || [],
+            page_count: result.page_count || 1,
+            imageSrc: highResPreviewImage || imageSrc,
+            preview_image: result.preview_image || highResPreviewImage,
+            originalPdfSrc: isFilePdf ? (result.file_url || imageSrc) : null,
+            isPdf: isFilePdf,
             data: result.data || {},
-
-            ocrEngine: activeOcrEngine,
-
-            createdAt: result.created_at || nowIso,
-
+            record: result.data || {},
+            created_at: result.created_at || nowIso,
             editedAt: null,
-
-            exportedAt: null,
-
-            deletedAt: null,
-
             current_version: 1,
-
-            versions: [
-
+            pending_verification: true,
+            is_verified: false,
+            versions: result.versions || [
               {
-
                 version: 1,
-
-                timestamp: result.created_at || nowIso,
-
-                action: 'add',
-
-                user_name: currentUser?.name || 'Logistics User',
-
-                user_mobile: currentUser?.mobile || '',
-
-                ocr_engine: activeOcrEngine,
-
-                details: detailsLabel,
-
-                snapshot_data: Object.assign({}, result.data || {})
-
-              }
-
-            ],
-
-            editHistory: [
-
-              {
-
-                timestamp: result.created_at || nowIso,
-
+                timestamp: nowIso,
                 user: currentUser?.name || 'Logistics User',
-
                 mobile: currentUser?.mobile || '',
-
                 action: 'add',
-
-                version: 1,
-
-                ocr_engine: activeOcrEngine,
-
-                details: detailsLabel
-
+                details: 'Consignment added'
               }
-
             ]
-
           };
 
-
-
-          item.pending_verification = true;
-          item.is_verified = false;
           storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
-
           verifiedBatch.push(item);
-
           saveUserBatches();
-
           saveRecentUploadWeb(item, true);
-
           processedCount++;
-
           activeItem = item;
-
-
-
-        } catch (err) {
-
-          console.error(`Failed to process ${file.name}:`, err);
-
         }
 
+      } catch (err) {
+        console.error('Failed to process upload:', err);
+        showServerConnectionErrorModal('Failed to process upload. Please try again.');
+        navigateTo('screen2_upload');
+      } finally {
+        isUploadingFile = false;
+        hideUploadLoading();
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) fileInput.value = '';
+        const cameraInput = document.getElementById('cameraInput');
+        if (cameraInput) cameraInput.value = '';
       }
-
-    } finally {
-
-      isUploadingFile = false;
-
-      hideUploadLoading();
-
-      const fileInput = document.getElementById('fileInput');
-
-      if (fileInput) fileInput.value = '';
-
-      const cameraInput = document.getElementById('cameraInput');
-
-      if (cameraInput) cameraInput.value = '';
-
-    }
-
-
 
       updateBatchBadge();
-
       renderPreviousUploadsWeb();
 
-
-
-      // Automatically open Scan Data (screen4_edit: Verify & Edit LR Data) first after successful upload & processing
-
       if (processedCount > 0 && activeItem) {
-
         populateEditForm(activeItem);
-
         populateCustomizationForm(activeItem);
-
-        navigateTo('screen4_edit');
-
         switchTab('basic');
-
-        loadLrImagePreview(activeItem);
-
-      } else {
-
-        navigateTo('screen2_upload');
-
+        navigateTo('screen4_edit');
       }
-
     }
 
+    function enrichExtractedResultWeb(result) {
+      if (!result || !result.data) return;
+      for (const drvK of ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
+        if (!result.data[drvK]) result.data[drvK] = '';
+      }
+      result.data['freight  *'] = '';
+      result.data['freight'] = '';
+
+      const prodTypeOptions = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
+      const rawPCode = (result.data['productcode'] || result.data['Product Code'] || '').trim();
+      if (prodTypeOptions.includes(rawPCode)) {
+        result.data['productcode'] = '';
+      }
+      if (!result.data['product_type'] || !prodTypeOptions.includes(result.data['product_type'])) {
+        result.data['product_type'] = 'Surface-FTL';
+      }
+      result.data['Product Type'] = result.data['product_type'];
+
+      const orgCity = (result.data['orgrefcode'] || result.data['from'] || result.data['origin'] || '').trim();
+      const custName = (result.data['Customer Name *'] || result.data['cngr *'] || '').trim();
+      const rawDept = (result.data['Depatment Name'] || result.data['department'] || '').trim();
+      const detectedDept = autoDetectDepartmentWeb(orgCity, custName, rawDept);
+      result.data['Depatment Name'] = detectedDept;
+      result.data['department'] = detectedDept;
+
+      const rawCntr = (result.data['Counter'] || result.data['Counter name'] || result.data['counter'] || '').trim();
+      const detectedCntr = autoDetectCounterWeb(orgCity, rawCntr);
+      result.data['Counter'] = detectedCntr;
+      result.data['Counter name'] = detectedCntr;
+      result.data['counter'] = detectedCntr;
+      result.data['branchrefcode'] = detectedCntr;
+
+      for (const dk of ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
+        if (result.data[dk]) {
+          result.data[dk] = formatDdMmYyyyWeb(result.data[dk]);
+        }
+      }
+    }
 
 
     function readFileAsDataURL(file) {

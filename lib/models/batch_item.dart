@@ -301,8 +301,13 @@ class BatchItem {
     return '';
   }
 
-  /// Returns true only when all 15 mandatory BNF columns are filled and valid.
+  /// Returns true only when an LR has been successfully verified and all mandatory columns are valid.
   bool get isVerified {
+    if (record['pending_verification'] == 'true' ||
+        record['is_verified'] == 'false' ||
+        record['is_cancelled'] == 'true') {
+      return false;
+    }
     if (record['is_verified'] == 'true') return true;
     for (final key in mandatoryKeys) {
       final val = resolveField(key);

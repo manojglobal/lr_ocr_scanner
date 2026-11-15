@@ -1430,6 +1430,57 @@ class KeyValuePair(BaseModel):
     value: str
 
 
+MULTI_DOCUMENT_CONSIGNMENT_RULE = """
+### STEP 0B: MULTI-PAGE & MULTI-DOCUMENT CONSIGNMENT VERIFICATION
+You must inspect all pages in the document dossier and detect whether they belong to ONE consignment or MULTIPLE different consignments:
+- Identify every primary Consignment Note / LR tracking number (printed in 'CONSIGNMENT NOTE: No.', 'LR No.', 'Bilty No.', 'C-Note No.', 'G.R. No.').
+- CRITICAL: Never confuse invoice numbers, vehicle plate numbers, GST numbers, e-way bill numbers, or seal numbers as LR numbers.
+- `detected_lr_numbers`: Output an array of all unique Consignment Note / LR tracking numbers identified across the pages.
+- `has_multiple_different_lrs`:
+  * If different pages contain DIFFERENT Consignment Note numbers (meaning documents from multiple separate shipments were uploaded together) -> set `has_multiple_different_lrs: true` and `rejection_reason: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.'`.
+  * If all pages belong to the SAME Consignment Note (e.g. Page 1 + Page 2 of same LR, or LR + supporting invoice/DL/E-way bill) -> set `has_multiple_different_lrs: false` and list that single LR number in `detected_lr_numbers`.
+"""
+
+
+def _extract_lr_candidates_from_text(text: str) -> set[str]:
+    """Extracts Consignment Note / LR tracking numbers from raw text using standard patterns."""
+    if not text:
+        return set()
+    found = set()
+    for m in re.finditer(r'(?i)(?:consignment\s*note\s*:?\s*no\.?|c\s*note\s*:?\s*no\.?|lr\s*no\.?|bilty\s*no\.?)[\s:]*([A-Za-z0-9\-]+)', text):
+        val = _clean_grno(m.group(1))
+        if val and val != "0" and len(val) >= 3:
+            found.add(val.lower())
+    return found
+
+
+class PageLrScan(BaseModel):
+    is_consignment_note: bool = False
+    lr_number: str = ""
+    doc_type: str = ""
+
+
+PAGE_LR_PROMPT = """Inspect this transport document page carefully.
+Determine whether this page is a primary Consignment Note / Lorry Receipt (Bilty / C-Note / G.R. No).
+If it IS a Consignment Note / LR / Bilty:
+- Set is_consignment_note: true
+- Extract the primary Consignment Note / LR / Bilty / G.R. tracking number into lr_number.
+CRITICAL RULES:
+- Do NOT confuse Tax Invoice numbers, Bill numbers, GSTIN, Vehicle registration numbers, or E-Way Bill numbers as the LR number.
+- If this page is a Tax Invoice, Delivery Challan, Packing List, E-Way Bill, Driver License, or other supporting document (even if it mentions an LR number in reference or notes), set is_consignment_note: false and lr_number: "".
+- Only set is_consignment_note: true if this page itself IS the transport Consignment Note / Bilty receipt.
+"""
+
+
+def _normalize_lr_candidate(s: str) -> str:
+    if not s:
+        return ""
+    cleaned = re.sub(r'[^a-zA-Z0-9]', '', str(s).strip()).lower()
+    if cleaned.isdigit() and len(cleaned) > 1:
+        cleaned = str(int(cleaned))
+    return cleaned
+
+
 class GeminiOCRResponse(BaseModel):
     document_title: str
     is_valid_lr: bool = False
@@ -1439,6 +1490,8 @@ class GeminiOCRResponse(BaseModel):
     has_cargo_or_vehicle: bool = False
     has_freight_terms: bool = False
     rejection_reason: str = ""
+    detected_lr_numbers: list[str] = Field(default_factory=list)
+    has_multiple_different_lrs: bool = False
     key_value_pairs: list[KeyValuePair]
     confidence_notes: str
 
@@ -2058,7 +2111,9 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
 # --- ROUTE 4: Image Extraction API (Web & Android) ---
 @app.post("/extract-handwriting", response_model=ParsedDocument)
 async def extract_handwriting(
-    file: UploadFile = File(...),
+    request: Request,
+    file: UploadFile | None = File(default=None),
+    files: list[UploadFile] | None = File(default=None),
     custom_prompt: str | None = Form(default=None),
     user_id: str | None = Form(default=None),
     user_mobile: str | None = Form(default=None),
@@ -2071,24 +2126,58 @@ async def extract_handwriting(
         user_mobile=user_mobile,
         user_name=user_name
     )
-    print(f"\n[Step 1/5] Received file: '{file.filename}' (Content-Type: '{file.content_type}')")
 
-    image_bytes = await file.read()
-    raw_upload_bytes = image_bytes
-    print(f"[Step 2/5] Read image file ({len(image_bytes)} bytes)")
+    # Collect all uploaded files from multipart form
+    all_uploads: list[UploadFile] = []
+    try:
+        form = await request.form()
+        for f in form.getlist("files"):
+            if isinstance(f, UploadFile):
+                all_uploads.append(f)
+        for f in form.getlist("file"):
+            if isinstance(f, UploadFile) and f not in all_uploads:
+                all_uploads.append(f)
+    except Exception as e_form:
+        print(f"[Upload] Form parsing notice: {e_form}")
 
-    # Enforce maximum allowed file size limit of 10 MB per file
+    if not all_uploads:
+        if file:
+            all_uploads = [file]
+        elif files:
+            all_uploads = files
+
+    if not all_uploads:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
+
     MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
-    if len(image_bytes) > MAX_FILE_SIZE_BYTES:
-        size_mb = len(image_bytes) / (1024 * 1024)
-        print(f"[Size Limit Error] Uploaded file '{file.filename}' ({size_mb:.2f} MB) exceeds 10 MB limit.")
-        raise HTTPException(
-            status_code=413,
-            detail=f"File '{file.filename}' ({size_mb:.2f} MB) exceeds the allowed limit of 10 MB per file. Please upload a file under 10 MB."
-        )
+    total_files_count = len(all_uploads)
+    primary_filename = all_uploads[0].filename or "uploaded_doc"
+    display_filename = primary_filename if total_files_count == 1 else f"{primary_filename} (+{total_files_count - 1} files)"
 
-    # 1. Strictly validate active_prompt as a string (prevent FastAPI Form parameter leaks)
-    lower_filename = (file.filename or "").lower()
+    print(f"\n[Step 1/5] Received {total_files_count} file(s). Primary: '{primary_filename}'")
+
+    # Read and validate each file size
+    upload_bytes_list: list[bytes] = []
+    for uf in all_uploads:
+        try:
+            await uf.seek(0)
+        except Exception:
+            pass
+        b = await uf.read()
+        if len(b) == 0:
+            print(f"[Upload Error] Uploaded file '{uf.filename}' is empty (0 bytes).")
+            raise HTTPException(status_code=400, detail=f"Uploaded file '{uf.filename}' is empty.")
+        if len(b) > MAX_FILE_SIZE_BYTES:
+            size_mb = len(b) / (1024 * 1024)
+            print(f"[Size Limit Error] Uploaded file '{uf.filename}' ({size_mb:.2f} MB) exceeds 10 MB limit.")
+            raise HTTPException(
+                status_code=413,
+                detail=f"File '{uf.filename}' ({size_mb:.2f} MB) exceeds the allowed limit of 10 MB per file. Please upload files under 10 MB."
+            )
+        upload_bytes_list.append(b)
+
+    # 1. Prompt selection
+    lower_filename = primary_filename.lower()
     if isinstance(custom_prompt, str) and custom_prompt.strip():
         active_prompt = custom_prompt.strip()
         prompt_type = "Custom"
@@ -2108,142 +2197,327 @@ async def extract_handwriting(
         active_prompt = DEFAULT_HANDWRITTEN_OCR_PROMPT
         prompt_type = "Default Master OCR"
 
-    # 2. Determine safe MIME type
-    mime_type = file.content_type
-    lower_name = (file.filename or "").lower()
-    if not mime_type or mime_type == "application/octet-stream":
-        if lower_name.endswith(".jpg") or lower_name.endswith(".jpeg"):
-            mime_type = "image/jpeg"
-        elif lower_name.endswith(".webp"):
-            mime_type = "image/webp"
-        elif lower_name.endswith(".pdf"):
-            mime_type = "application/pdf"
-        else:
-            mime_type = "image/png"
-    elif lower_name.endswith(".pdf") or "pdf" in (mime_type or "").lower():
-        mime_type = "application/pdf"
-
-    # 3. Optimize high-resolution phone images, render PDF previews, and preserve orientation
+    # Multi-file combination and page rendering
     is_yellow_image = False
     preview_image_data_url = None
     pdf_preview_bytes = None
     pdf_all_preview_bytes = []
     pdf_page_count = 1
     target_page_idx = 0
+    detected_text_lrs = set()
+    pages_for_lr_scan: list[tuple[str, bytes]] = []
 
-    if mime_type == "application/pdf":
-        print(f"[DocType] Classified as PDF document ({len(image_bytes)} bytes). Preparing high-resolution pages for Gemini.")
-        try:
-            # Prevent PyMuPDF layout/onnxruntime from crashing on Python 3.14
-            import sys
-            for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
-                if _m not in sys.modules:
-                    sys.modules[_m] = None
-            import fitz
-            pdf_doc = fitz.open(stream=image_bytes, filetype="pdf")
-            pdf_page_count = len(pdf_doc)
-            print(f"[PDF Detection] Document contains {pdf_page_count} page(s).")
-            if pdf_page_count > 0:
-                target_page_idx = 0
-                for p_idx, p in enumerate(pdf_doc):
-                    txt_low = p.get_text().lower()
-                    if "patanjali" in txt_low:
-                        active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
-                        prompt_type = "Patanjali OCR"
-                    elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
-                        active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
-                        prompt_type = "Unicharm OCR"
-                    elif "himalaya" in txt_low:
-                        active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
-                        prompt_type = "Himalaya OCR"
-                    elif any(w in txt_low for w in ["gold plus", "gold_plus", "goldplus", "gold"]):
-                        active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
-                        prompt_type = "Gold Plus OCR"
-                    if any(w in txt_low for w in ["consignment", "lorry receipt", "c note", "bilty", "cngr"]):
-                        target_page_idx = p_idx
-                        break
+    import fitz
 
-                # Render all pages at high-definition 300 DPI for razor-sharp inspection
-                for p_idx, p in enumerate(pdf_doc):
+    if total_files_count > 1:
+        # Multi-file upload: combine PDFs, images, or mixed files into a single unified dossier in order
+        print(f"[Multi-Upload] Combining {total_files_count} files in original sequence...")
+        combined_pdf = fitz.open()
+
+        for idx, (uf, file_bytes) in enumerate(zip(all_uploads, upload_bytes_list)):
+            fn_low = (uf.filename or f"doc_{idx+1}").lower()
+            is_sub_pdf = fn_low.endswith(".pdf") or "pdf" in (uf.content_type or "").lower()
+
+            if is_sub_pdf:
+                try:
+                    sub_doc = fitz.open(stream=file_bytes, filetype="pdf")
+                    for p_idx, p in enumerate(sub_doc):
+                        txt = p.get_text()
+                        txt_low = txt.lower()
+                        if "patanjali" in txt_low:
+                            active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
+                            prompt_type = "Patanjali OCR"
+                        elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
+                            active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
+                            prompt_type = "Unicharm OCR"
+                        elif "himalaya" in txt_low:
+                            active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
+                            prompt_type = "Himalaya OCR"
+                        elif any(w in txt_low for w in ["gold plus", "gold_plus", "goldplus", "gold"]):
+                            active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
+                            prompt_type = "Gold Plus OCR"
+
+                        for cand in _extract_lr_candidates_from_text(txt):
+                            detected_text_lrs.add(cand)
+
+                        try:
+                            pix = p.get_pixmap(dpi=300)
+                            pdf_all_preview_bytes.append(pix.tobytes("jpeg"))
+                        except Exception as p_err:
+                            print(f"[Multi-Upload Render Error] File '{uf.filename}' page {p_idx+1}: {p_err}")
+
+                        # Collect page for pre-scan (first 3 pages per file)
+                        if p_idx < 3:
+                            try:
+                                pix150 = p.get_pixmap(dpi=150)
+                                pages_for_lr_scan.append((f"{uf.filename or f'file_{idx+1}'}_p{p_idx+1}", pix150.tobytes("jpeg")))
+                            except Exception as p150_err:
+                                print(f"[LR Pre-Scan Collect Error] File '{uf.filename}' page {p_idx+1}: {p150_err}")
+
+                    combined_pdf.insert_pdf(sub_doc)
+                except Exception as ex_pdf:
+                    print(f"[Multi-Upload PDF Open Error] '{uf.filename}': {ex_pdf}")
+            else:
+                # Image file (JPG, PNG, WebP)
+                try:
+                    pil_img = Image.open(io.BytesIO(file_bytes))
                     try:
-                        pix = p.get_pixmap(dpi=300)
-                        p_bytes = pix.tobytes("jpeg")
-                        pdf_all_preview_bytes.append(p_bytes)
-                    except Exception as p_ex:
-                        print(f"[PDF Preview Error] Failed rendering page {p_idx+1}: {p_ex}")
+                        pil_img = ImageOps.exif_transpose(pil_img)
+                    except Exception:
+                        pass
+                    if pil_img.mode in ("RGBA", "P"):
+                        pil_img = pil_img.convert("RGB")
+                    jbuf = io.BytesIO()
+                    pil_img.save(jbuf, format="JPEG", quality=95)
+                    jbytes = jbuf.getvalue()
 
-                if pdf_all_preview_bytes:
-                    t_idx = target_page_idx if target_page_idx < len(pdf_all_preview_bytes) else 0
-                    pdf_preview_bytes = pdf_all_preview_bytes[t_idx]
-                    b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
-                    preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
-                    print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 300 DPI (primary page: {t_idx+1})")
-                    # Evaluate orange/yellow bilty classification on the rendered primary page
-                    try:
-                        pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
-                        is_yellow_image = is_orange_yellow_image(pdf_pil)
-                        if is_yellow_image:
-                            print("[DocType] PDF Bilty classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
-                        else:
-                            print("[DocType] PDF Bilty classified as White printed consignment page")
-                    except Exception as c_err:
-                        print(f"[DocType Color Check Notice]: {c_err}")
-        except Exception as ex:
-            print(f"[PDF Preview Error]: {ex}")
-    else:
-        try:
-            pil_img = Image.open(io.BytesIO(image_bytes))
-            # Auto-orient based on camera EXIF tags so rotated mobile photos aren't sideways
+                    img_doc = fitz.open(stream=jbytes, filetype="jpeg")
+                    sub_pdf_bytes = img_doc.convert_to_pdf()
+                    img_pdf = fitz.open("pdf", sub_pdf_bytes)
+                    for p in img_pdf:
+                        try:
+                            pix = p.get_pixmap(dpi=300)
+                            pdf_all_preview_bytes.append(pix.tobytes("jpeg"))
+                        except Exception as p_err:
+                            print(f"[Multi-Upload Image Render Error] File '{uf.filename}': {p_err}")
+                    combined_pdf.insert_pdf(img_pdf)
+                    pages_for_lr_scan.append((f"{uf.filename or f'image_{idx+1}'}", jbytes))
+                except Exception as ex_img:
+                    print(f"[Multi-Upload Image Convert Error] '{uf.filename}': {ex_img}")
+
+        # Check if multiple distinct LR numbers were already detected in native text
+        if len(detected_text_lrs) > 1:
+            print(f"[Validation Rejected] Multiple different LR numbers found in document text: {detected_text_lrs}")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "error_code": "MULTIPLE_LRS",
+                    "title": "Multiple LRs Not Allowed",
+                    "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                    "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
+                }
+            )
+
+        raw_upload_bytes = combined_pdf.tobytes()
+        image_bytes = raw_upload_bytes
+        mime_type = "application/pdf"
+        pdf_page_count = len(pdf_all_preview_bytes)
+        print(f"[Multi-Upload Combined] Successfully combined into a single {pdf_page_count}-page PDF ({len(raw_upload_bytes)} bytes).")
+
+        if pdf_all_preview_bytes:
+            pdf_preview_bytes = pdf_all_preview_bytes[0]
+            b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
+            preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
             try:
-                pil_img = ImageOps.exif_transpose(pil_img)
+                pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
+                is_yellow_image = is_orange_yellow_image(pdf_pil)
             except Exception:
                 pass
+    else:
+        # Single file upload (existing flow)
+        image_bytes = upload_bytes_list[0]
+        raw_upload_bytes = image_bytes
+        single_uf = all_uploads[0]
 
-            is_yellow_image = is_orange_yellow_image(pil_img)
-            if is_yellow_image:
-                print("[DocType] Classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
+        # Determine safe MIME type
+        mime_type = single_uf.content_type
+        if not mime_type or mime_type == "application/octet-stream":
+            if lower_filename.endswith(".jpg") or lower_filename.endswith(".jpeg"):
+                mime_type = "image/jpeg"
+            elif lower_filename.endswith(".webp"):
+                mime_type = "image/webp"
+            elif lower_filename.endswith(".pdf"):
+                mime_type = "application/pdf"
             else:
-                print("[DocType] Classified as White printed consignment page")
+                mime_type = "image/png"
+        elif lower_filename.endswith(".pdf") or "pdf" in (mime_type or "").lower():
+            mime_type = "application/pdf"
 
-            if is_blank_or_solid_image(pil_img):
-                print(f"[Validation Rejected] File '{file.filename}' rejected: solid monochrome/blank image.")
-                return JSONResponse(
-                    status_code=422,
-                    content={
-                        "success": False,
-                        "error_code": "INVALID_LR",
-                        "title": "Invalid LR",
-                        "message": "Invalid LR – Please upload a valid LR document.",
-                        "detail": "Invalid LR – Please upload a valid LR document."
-                    }
-                )
+        if mime_type == "application/pdf":
+            print(f"[DocType] Classified as PDF document ({len(image_bytes)} bytes). Preparing high-resolution pages for Gemini.")
+            try:
+                import sys
+                for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
+                    if _m not in sys.modules:
+                        sys.modules[_m] = None
+                pdf_doc = fitz.open(stream=image_bytes, filetype="pdf")
+                pdf_page_count = len(pdf_doc)
+                print(f"[PDF Detection] Document contains {pdf_page_count} page(s).")
+                if pdf_page_count > 0:
+                    target_page_idx = 0
+                    for p_idx, p in enumerate(pdf_doc):
+                        txt = p.get_text()
+                        txt_low = txt.lower()
+                        if "patanjali" in txt_low:
+                            active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
+                            prompt_type = "Patanjali OCR"
+                        elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
+                            active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
+                            prompt_type = "Unicharm OCR"
+                        elif "himalaya" in txt_low:
+                            active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
+                            prompt_type = "Himalaya OCR"
+                        elif any(w in txt_low for w in ["gold plus", "gold_plus", "goldplus", "gold"]):
+                            active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
+                            prompt_type = "Gold Plus OCR"
+                        if any(w in txt_low for w in ["consignment", "lorry receipt", "c note", "bilty", "cngr"]):
+                            target_page_idx = p_idx
+                            break
 
-            orig_w, orig_h = pil_img.size
+                    for p_idx, p in enumerate(pdf_doc):
+                        for cand in _extract_lr_candidates_from_text(p.get_text()):
+                            detected_text_lrs.add(cand)
+                        try:
+                            pix = p.get_pixmap(dpi=300)
+                            p_bytes = pix.tobytes("jpeg")
+                            pdf_all_preview_bytes.append(p_bytes)
+                        except Exception as p_ex:
+                            print(f"[PDF Preview Error] Failed rendering page {p_idx+1}: {p_ex}")
 
-            # Preserve high resolution for legible handwriting while keeping within API boundaries
-            if max(orig_w, orig_h) > 2600:
-                scale = 2400.0 / max(orig_w, orig_h)
-                new_size = (int(orig_w * scale), int(orig_h * scale))
-                pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
+                        if pdf_page_count > 1 and p_idx < 10:
+                            try:
+                                pix150 = p.get_pixmap(dpi=150)
+                                pages_for_lr_scan.append((f"page_{p_idx+1}", pix150.tobytes("jpeg")))
+                            except Exception as p150_ex:
+                                print(f"[PDF Pre-Scan Error] Failed page {p_idx+1}: {p150_ex}")
 
-            buf = io.BytesIO()
-            if pil_img.mode in ("RGBA", "P"):
-                pil_img = pil_img.convert("RGB")
-            pil_img.save(buf, format="JPEG", quality=95)
-            image_bytes = buf.getvalue()
-            mime_type = "image/jpeg"
-            b64_str = base64.b64encode(image_bytes).decode("utf-8")
-            preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
-            print(f"[Optimize] Ready image: {orig_w}x{orig_h} ({len(image_bytes)} bytes)")
-        except Exception as img_err:
-            print(f"[Notice] Image resize pass-through: {img_err}")
+                    if pdf_all_preview_bytes:
+                        t_idx = target_page_idx if target_page_idx < len(pdf_all_preview_bytes) else 0
+                        pdf_preview_bytes = pdf_all_preview_bytes[t_idx]
+                        b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
+                        preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
+                        print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 300 DPI (primary page: {t_idx+1})")
+                        try:
+                            pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
+                            is_yellow_image = is_orange_yellow_image(pdf_pil)
+                            if is_yellow_image:
+                                print("[DocType] PDF Bilty classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
+                            else:
+                                print("[DocType] PDF Bilty classified as White printed consignment page")
+                        except Exception as c_err:
+                            print(f"[DocType Color Check Notice]: {c_err}")
+            except Exception as ex:
+                print(f"[PDF Preview Error]: {ex}")
+        else:
+            try:
+                pil_img = Image.open(io.BytesIO(image_bytes))
+                try:
+                    pil_img = ImageOps.exif_transpose(pil_img)
+                except Exception:
+                    pass
+
+                is_yellow_image = is_orange_yellow_image(pil_img)
+                if is_yellow_image:
+                    print("[DocType] Classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
+                else:
+                    print("[DocType] Classified as White printed consignment page")
+
+                if is_blank_or_solid_image(pil_img):
+                    print(f"[Validation Rejected] File '{primary_filename}' rejected: solid monochrome/blank image.")
+                    return JSONResponse(
+                        status_code=422,
+                        content={
+                            "success": False,
+                            "error_code": "INVALID_LR",
+                            "title": "Invalid LR",
+                            "message": "Invalid LR – Please upload a valid LR document.",
+                            "detail": "Invalid LR – Please upload a valid LR document."
+                        }
+                    )
+
+                orig_w, orig_h = pil_img.size
+                if max(orig_w, orig_h) > 2600:
+                    scale = 2400.0 / max(orig_w, orig_h)
+                    new_size = (int(orig_w * scale), int(orig_h * scale))
+                    pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
+
+                buf = io.BytesIO()
+                if pil_img.mode in ("RGBA", "P"):
+                    pil_img = pil_img.convert("RGB")
+                pil_img.save(buf, format="JPEG", quality=95)
+                image_bytes = buf.getvalue()
+                mime_type = "image/jpeg"
+                b64_str = base64.b64encode(image_bytes).decode("utf-8")
+                preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
+                print(f"[Optimize] Ready image: {orig_w}x{orig_h} ({len(image_bytes)} bytes)")
+            except Exception as img_err:
+                print(f"[Notice] Image resize pass-through: {img_err}")
 
     print(f"[Step 3/5] Initializing Gemini model ('{MODEL_NAME}') with [{prompt_type}] prompt...")
     model = genai.GenerativeModel(MODEL_NAME)
+
+    # === AUTHORITATIVE PRE-VALIDATION: ONLY ONE UNIQUE LR PER UPLOAD BATCH ===
+    if len(detected_text_lrs) > 1:
+        print(f"[Validation Rejected] Multiple different LR numbers found in document text: {detected_text_lrs}")
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error_code": "MULTIPLE_LRS",
+                "title": "Multiple LRs Not Allowed",
+                "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
+            }
+        )
+
+    if len(pages_for_lr_scan) > 1:
+        print(f"[LR Pre-Scan] Performing parallel LR detection across {len(pages_for_lr_scan)} document pages...")
+        distinct_detected_lrs = {}
+        for cand in detected_text_lrs:
+            norm = _normalize_lr_candidate(cand)
+            if norm and norm != "0" and len(norm) >= 2:
+                distinct_detected_lrs[norm] = cand
+
+        async def _scan_single_page(p_label: str, p_bytes: bytes) -> tuple[str, PageLrScan]:
+            def _call():
+                return model.generate_content(
+                    [{"mime_type": "image/jpeg", "data": p_bytes}, PAGE_LR_PROMPT],
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json",
+                        response_schema=_to_gemini_compatible_schema(PageLrScan),
+                        temperature=0.0,
+                    ),
+                    safety_settings=SAFETY_SETTINGS,
+                )
+            try:
+                r = await asyncio.to_thread(_call)
+                txt = r.text.strip()
+                if txt.startswith("```json"): txt = txt[7:]
+                if txt.startswith("```"): txt = txt[3:]
+                if txt.endswith("```"): txt = txt[:-3]
+                d = json.loads(txt.strip())
+                return p_label, PageLrScan(**d)
+            except Exception as e_p:
+                print(f"[LR Pre-Scan Error] {p_label}: {e_p}")
+                return p_label, PageLrScan(is_consignment_note=False, lr_number="")
+
+        scan_tasks = [_scan_single_page(lbl, pb) for lbl, pb in pages_for_lr_scan[:12]]
+        scan_results = await asyncio.gather(*scan_tasks)
+        for lbl, scan in scan_results:
+            norm = _normalize_lr_candidate(scan.lr_number)
+            print(f"[LR Pre-Scan] Page '{lbl}': is_consignment={scan.is_consignment_note}, raw='{scan.lr_number}', norm='{norm}', doc_type='{scan.doc_type}'")
+            if scan.is_consignment_note and norm and norm != "0" and len(norm) >= 2:
+                distinct_detected_lrs[norm] = scan.lr_number
+
+        if len(distinct_detected_lrs) > 1:
+            print(f"[Validation Rejected] Multiple different LR documents detected across pages/files: {list(distinct_detected_lrs.values())}")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "error_code": "MULTIPLE_LRS",
+                    "title": "Multiple LRs Not Allowed",
+                    "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                    "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
+                }
+            )
+        elif len(distinct_detected_lrs) == 1:
+            print(f"[LR Pre-Scan] Verified single LR across all documents: {list(distinct_detected_lrs.values())[0]}")
+
     print(f"[Step 4/5] Sending request to Gemini API (MIME type: {mime_type})...")
 
     try:
-        # Build multimodal payload: For PDFs, send high-resolution 300 DPI rendered pages (up to 8 pages to capture DL cards on pages 5-6)
         gemini_parts = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
             pages_to_send = pdf_all_preview_bytes[:15]
@@ -2252,7 +2526,7 @@ async def extract_handwriting(
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
         else:
             gemini_parts.append({"mime_type": mime_type, "data": image_bytes})
-        gemini_parts.append(active_prompt)
+        gemini_parts.append(active_prompt + "\n" + MULTI_DOCUMENT_CONSIGNMENT_RULE)
 
         def _sync_gemini_call():
             return model.generate_content(
@@ -2282,13 +2556,37 @@ async def extract_handwriting(
         # Canonicalize all fields to 49 BNF schema & standard aliases
         data_dict = canonicalize_extracted_data(data_dict)
 
+        # === MULTI-LR DETECTION VALIDATION GATE ===
+        has_multi_lrs = bool(raw_result.get("has_multiple_different_lrs", False))
+        detected_lrs = raw_result.get("detected_lr_numbers", [])
+        if isinstance(detected_lrs, list) and len(detected_lrs) > 1:
+            cleaned_lrs = set()
+            for lr_cand in detected_lrs:
+                c = _clean_grno(str(lr_cand).strip())
+                if c and c != "0":
+                    cleaned_lrs.add(c.lower())
+            if len(cleaned_lrs) > 1:
+                has_multi_lrs = True
+
+        if has_multi_lrs:
+            print(f"[Validation Rejected] Multiple different LR documents detected across pages/files: {detected_lrs}")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "error_code": "MULTIPLE_LRS",
+                    "title": "Multiple LRs Not Allowed",
+                    "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                    "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
+                }
+            )
+
         # === FAIL-SAFE GENUINE LR VALIDATION GATE ===
         is_valid_lr = bool(raw_result.get("is_valid_lr", False))
         has_consignment = bool(raw_result.get("has_consignment_note", False))
         doc_type = str(raw_result.get("document_type", "unknown")).lower()
         rejection_reason = str(raw_result.get("rejection_reason", "")).strip()
 
-        # Multi-signal verification across extracted key-value pairs
         has_lr_no = bool(str(data_dict.get("LR No *") or data_dict.get("grno") or data_dict.get("BNF LR No") or "").strip())
         has_parties = bool(
             raw_result.get("has_parties_or_movement")
@@ -2328,7 +2626,7 @@ async def extract_handwriting(
         )
 
         if not is_genuine_lr:
-            print(f"[Validation Rejected] File '{file.filename}' rejected: is_valid={is_valid_lr}, has_consignment={has_consignment}, doc_type='{doc_type}', signals={supporting_signals_count}, reason='{rejection_reason}'")
+            print(f"[Validation Rejected] File '{primary_filename}' rejected: is_valid={is_valid_lr}, has_consignment={has_consignment}, doc_type='{doc_type}', signals={supporting_signals_count}, reason='{rejection_reason}'")
             return JSONResponse(
                 status_code=422,
                 content={
@@ -2348,76 +2646,40 @@ async def extract_handwriting(
                 if item.get("key") == drv_key and not item.get("value"):
                     item["value"] = ""
 
-        # Sanitize any dummy/placeholder values
+        # Sanitize dummy values
         if str(data_dict.get("Mobile no   *") or "").strip() in ("9999999999", "0000000000", "99999 99999"):
             data_dict["Mobile no   *"] = ""
             for item in kv_pairs:
                 if item.get("key") == "Mobile no   *":
                     item["value"] = ""
 
-        # Clean pmark: Extract ONLY actual seal code or digits (strip Seal, Sealv0, No, =, :, etc.)
+        # Clean pmark
         pmark_candidate = (
             data_dict.get("pmark")
             or data_dict.get("Private Mark")
-            or data_dict.get("private mark")
+            or data_dict.get("pmark (*)")
             or data_dict.get("Seal No")
-            or data_dict.get("seal no")
-            or data_dict.get("seal_no")
-            or data_dict.get("seal")
+            or data_dict.get("Seal Number")
             or data_dict.get("Seal")
-            or data_dict.get("Seal No / Private Mark")
+            or ""
         )
-        if pmark_candidate:
-            cleaned_pm = _clean_pmark(pmark_candidate)
-            data_dict["pmark"] = cleaned_pm
-            has_pmark = False
-            for item in kv_pairs:
-                if item.get("key") in ("pmark", "Private Mark", "private mark", "Seal No", "seal no", "seal_no", "seal", "Seal", "Seal No / Private Mark"):
-                    item["key"] = "pmark"
-                    item["value"] = cleaned_pm
-                    has_pmark = True
-            if not has_pmark:
-                kv_pairs.append({"key": "pmark", "value": cleaned_pm})
-
-        # igst: Always output 0.00 or 0 for manual data entry purposes
-        data_dict["igst"] = "0.00"
+        cleaned_pmark = _clean_pmark(pmark_candidate)
+        data_dict["pmark"] = cleaned_pmark
         for item in kv_pairs:
-            if item.get("key") == "igst":
-                item["value"] = "0.00"
+            if item.get("key") in ("pmark", "Private Mark", "pmark (*)", "Seal No", "Seal Number"):
+                item["value"] = cleaned_pmark
 
-        # Ensure Vehicle Type defaults consistently to "Market"
-        current_veh_type = str(data_dict.get("Vehicle Type *") or data_dict.get("Vehicle Category") or "").strip()
-        if not current_veh_type or current_veh_type.lower() in ("none", "null", "nan", "") or current_veh_type.upper() == "MARKET":
-            data_dict["Vehicle Type *"] = "Market"
-            data_dict["Vehicle Category"] = "Market"
-        else:
-            data_dict["Vehicle Type *"] = current_veh_type
-            data_dict["Vehicle Category"] = current_veh_type
+        # Unnumbered bilty handling
+        raw_lr = data_dict.get("grno") or data_dict.get("grno (*)") or data_dict.get("LR No *") or data_dict.get("lrno")
+        is_orange_yellow_doc = is_yellow_image or prompt_type in ("Custom", "Default Master OCR")
+        if (raw_lr == "0" or str(data_dict.get("LR No *") or "").strip() == "0") and is_orange_yellow_doc:
+            data_dict["grno"] = "0"
+            data_dict["grno (*)"] = "0"
+            data_dict["LR No *"] = "0"
+            data_dict["LR No"] = "0"
+            data_dict["lrno"] = "0"
 
-        # Department: matched using Origin City from scanned LR against ManiFest.xlsx
-        cust_name = str(data_dict.get("Customer Name *") or data_dict.get("cngr *") or "").strip()
-        extracted_dept = data_dict.get("Depatment Name") or data_dict.get("department") or ""
-        org_city = str(data_dict.get("orgrefcode") or data_dict.get("from") or data_dict.get("origin") or "").strip()
-        data_dict["Depatment Name"] = auto_detect_department(origin_city=org_city, customer=cust_name, dept_raw=extracted_dept)
-        data_dict["department"] = data_dict["Depatment Name"]
-
-        # Counter: matched using Origin City from scanned LR against BookingCounterMast.xlsx
-        extracted_cntr = data_dict.get("Counter") or data_dict.get("Counter name") or data_dict.get("counter") or ""
-        data_dict["Counter"] = auto_detect_counter(origin_city=org_city, counter_raw=extracted_cntr)
-        data_dict["counter"] = data_dict["Counter"]
-        data_dict["Counter name"] = data_dict["Counter"]
-        data_dict["branchrefcode"] = data_dict["Counter"]
-
-        # Ensure canonical Product Type default for new records (NEVER overwrite productcode)
-        if not data_dict.get("product_type") or str(data_dict.get("product_type")).strip() == "":
-            data_dict["product_type"] = "Surface-FTL"
-            data_dict["ProductName"] = "Surface-FTL"
-
-        # If productcode was populated with a Product Type dropdown option, clear it so it stays empty
-        if data_dict.get("productcode") in {"Surface-FTL", "Surface-PTL", "Global-TT", "Global-MT", "AIR"}:
-            data_dict["productcode"] = ""
-
-        # Freight: Must be mandatory manual input. Keep empty by default; do not output 0 or automatic value.
+        # Freight: Must be mandatory manual input
         data_dict["freight  *"] = ""
         data_dict["freight"] = ""
 
@@ -2438,7 +2700,6 @@ async def extract_handwriting(
                     data_dict["cngegstno *"] = matched_cnge_gst
                     data_dict["cngegstno"] = matched_cnge_gst
 
-            # Sanitize GST numbers - remove all whitespace and ensure uppercase
             if data_dict.get("cngrgstno *"):
                 data_dict["cngrgstno *"] = re.sub(r'\s+', '', str(data_dict["cngrgstno *"])).upper()
                 data_dict["cngrgstno"] = data_dict["cngrgstno *"]
@@ -2448,7 +2709,6 @@ async def extract_handwriting(
         except Exception as e_gst:
             print(f"[Master] Party GST auto-lookup notice: {e_gst}")
 
-        # Enrich the 15 affected fields systematically if empty/missing
         stock_pkgs_val = data_dict.get("stockpckgs") or data_dict.get("stockpkgs") or data_dict.get("bookedpckgs") or data_dict.get("packages") or data_dict.get("pkgs") or data_dict.get("quantity") or ""
         data_dict["stockpckgs"] = stock_pkgs_val
         data_dict["stockpkgs"] = stock_pkgs_val
@@ -2504,7 +2764,6 @@ async def extract_handwriting(
         else:
             data_dict["dlvtype"] = "G"
 
-        # Freight: Keep empty by default; do not output 0 or automatic value
         data_dict["freight  *"] = ""
         data_dict["freight"] = ""
 
@@ -2514,56 +2773,10 @@ async def extract_handwriting(
         else:
             data_dict["oamount"] = "0.00"
 
-        # Clean pmark according to rule (strip prefixes/labels)
-        pmark_raw = (
-            data_dict.get("pmark")
-            or data_dict.get("Private Mark")
-            or data_dict.get("private mark")
-            or data_dict.get("Seal No")
-            or data_dict.get("seal no")
-            or data_dict.get("seal_no")
-            or data_dict.get("seal")
-            or data_dict.get("Seal")
-            or data_dict.get("Seal No / Private Mark")
-        )
-        if pmark_raw is not None:
-            data_dict["pmark"] = _clean_pmark(pmark_raw)
-
-        # Clean grno / LR No * to strictly 5-digit numeric (strip TG... prefixes)
-        raw_lr = data_dict.get("grno") or data_dict.get("grno (*)") or data_dict.get("LR No *") or data_dict.get("lrno")
-        if raw_lr:
-            cleaned_lr = _clean_grno(raw_lr)
-            if cleaned_lr:
-                if "grno" in data_dict:
-                    data_dict["grno"] = cleaned_lr
-                if "grno (*)" in data_dict:
-                    data_dict["grno (*)"] = cleaned_lr
-                if "LR No *" in data_dict:
-                    data_dict["LR No *"] = cleaned_lr
-
-        # Patanjali specific rules enforcement
-        is_patanjali = (
-            prompt_type == "Patanjali OCR"
-            or "patanjali" in str(data_dict.get("Customer Name *") or "").lower()
-            or "patanjali" in str(data_dict.get("cngr *") or "").lower()
-            or "patanjali" in str(data_dict.get("cngr") or "").lower()
-        )
-        if is_patanjali:
-            curr_lr = str(data_dict.get("grno") or data_dict.get("grno (*)") or data_dict.get("LR No *") or "").strip()
-            veh_num = str(data_dict.get("Vehicle No *") or "").replace(" ", "").upper()
-            if not curr_lr or curr_lr in ("0", "None", "null") or (veh_num and curr_lr.upper() == veh_num) or (curr_lr.isdigit() and len(curr_lr) >= 7):
-                data_dict["grno"] = ""
-                data_dict["grno (*)"] = ""
-                data_dict["LR No *"] = ""
-            else:
-                cleaned_margin = _clean_grno(curr_lr)
-                if cleaned_margin == "0":
-                    cleaned_margin = ""
-                data_dict["grno"] = cleaned_margin
-                data_dict["grno (*)"] = cleaned_margin
-                data_dict["LR No *"] = cleaned_margin
-
-            # Enforce Patanjali charges rule (freight remains empty by default)
+        # Special customer rules
+        if prompt_type == "Himalaya OCR" or "himalaya" in str(data_dict.get("Customer Name *") or "").lower():
+            if not data_dict.get("Customer Name *"):
+                data_dict["Customer Name *"] = "HIMALAYA WELLNESS COMPANY"
             data_dict["freight  *"] = ""
             data_dict["freight"] = ""
             data_dict["cgst"] = "0.00"
@@ -2572,7 +2785,6 @@ async def extract_handwriting(
             data_dict["received"] = "0.00"
             data_dict["advance"] = "0.00"
 
-        # Unicharm specific rules enforcement
         is_unicharm = (
             prompt_type == "Unicharm OCR"
             or any(w in str(data_dict.get("Customer Name *") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
@@ -2602,30 +2814,23 @@ async def extract_handwriting(
             if not data_dict.get("Vehicle Type *"):
                 data_dict["Vehicle Type *"] = "Market"
 
-        # igst: Always output 0.00 or 0 for manual data entry purposes
         data_dict["igst"] = "0.00"
         if not data_dict.get("cgst"):
             data_dict["cgst"] = "0"
         if not data_dict.get("sgst"):
             data_dict["sgst"] = "0"
 
-        # Standardize all date fields strictly to DD/MM/YYYY format (never show 12-OCT-2026 or 05 Oct 26)
         for date_key in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *"):
             if data_dict.get(date_key):
                 data_dict[date_key] = _format_date_ddmmyyyy(data_dict[date_key])
 
-        # Final canonicalization pass ensuring all 49 BNF columns and aliases are fully populated
         data_dict = canonicalize_extracted_data(data_dict)
-
-        # Sync kv_pairs with fully enriched data_dict
         kv_pairs = [{"key": k, "value": v} for k, v in data_dict.items()]
-
 
         now_ts = file_lifecycle_service.get_current_timestamp()
         now_dt = datetime.now()
         upload_id = f"LR_{now_dt.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
-        # Extract and sanitize LR number from extracted fields
         extracted_lr = str(
             data_dict.get("lrno")
             or data_dict.get("LR No *")
@@ -2638,32 +2843,31 @@ async def extract_handwriting(
         lr_clean = re.sub(r'[^a-zA-Z0-9]', '', extracted_lr)[:25]
         lr_tag = f"_LR_{lr_clean}" if lr_clean else ""
 
-        # Clean original filename
-        orig_base = os.path.basename(file.filename or "uploaded_doc")
-        orig_name_part, orig_ext = os.path.splitext(orig_base)
-        if not orig_ext:
-            orig_ext = ".pdf" if mime_type == "application/pdf" else ".jpg"
+        if total_files_count > 1:
+            first_base = os.path.basename(primary_filename)
+            orig_name_part, _ = os.path.splitext(first_base)
+            orig_name_part = f"{orig_name_part}_combined_{total_files_count}_files"
+            orig_ext = ".pdf"
+        else:
+            orig_base = os.path.basename(primary_filename)
+            orig_name_part, orig_ext = os.path.splitext(orig_base)
+            if not orig_ext:
+                orig_ext = ".pdf" if mime_type == "application/pdf" else ".jpg"
+
         clean_name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', orig_name_part)[:35]
-
-        unique_filename = f"{upload_id}{lr_tag}_{clean_name}{orig_ext}"
-
-        # Bytes to save: use original bytes
         bytes_to_save = raw_upload_bytes if raw_upload_bytes else image_bytes
 
-        # 1. Save directly into backend/export/upload_LR/ with unique descriptive timestamped filename (never overwritten)
         snapshot_lr_filename, snapshot_lr_path = audit_snapshot.save_uploaded_lr_document(
             file_bytes=bytes_to_save,
-            original_filename=file.filename,
+            original_filename=f"{clean_name}{orig_ext}",
             lr_no=lr_clean
         )
         print(f"[Upload Vault] Successfully saved LR document to {snapshot_lr_path}")
 
-        # If document is a PDF, persist all rendered 300 DPI preview pages directly into backend/export/upload_LR/
         preview_saved_url = None
         preview_pages_urls = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
             for p_idx, p_bytes in enumerate(pdf_all_preview_bytes):
-                # Page 1 preview uses original naming for backward compatibility
                 page_suffix = "_preview.jpg" if p_idx == 0 else f"_page_{p_idx + 1}.jpg"
                 p_filename = f"{upload_id}{lr_tag}_{clean_name}{page_suffix}"
                 p_file_path = os.path.join(UPLOAD_LR_DIR, p_filename)
@@ -2675,9 +2879,8 @@ async def extract_handwriting(
                 except Exception as e_prev:
                     print(f"[Upload Vault Error] Failed to save page {p_idx+1} preview: {e_prev}")
             if preview_pages_urls:
-                # Page 1 is always the primary preview image
                 preview_saved_url = preview_pages_urls[0]
-                print(f"[Upload Vault] Successfully saved {len(preview_pages_urls)} PDF 300 DPI preview image(s) (primary: {preview_saved_url})")
+                print(f"[Upload Vault] Successfully saved {len(preview_pages_urls)} preview image(s) (primary: {preview_saved_url})")
         elif preview_saved_url:
             preview_pages_urls = [preview_saved_url]
 
@@ -2696,7 +2899,7 @@ async def extract_handwriting(
                     "upload_id": upload_id,
                     "lr_no": lr_clean,
                     "saved_filename": snapshot_lr_filename,
-                    "original_filename": file.filename,
+                    "original_filename": primary_filename,
                     "snapshot_path": snapshot_lr_path,
                     "user_id": actor.get("user_id") or "",
                     "user_mobile": actor.get("user_mobile") or "",
@@ -2720,7 +2923,7 @@ async def extract_handwriting(
         rel_saved_path = os.path.relpath(snapshot_lr_path, BASE_DIR).replace("\\", "/")
 
         parsed_output = ParsedDocument(
-            filename=file.filename,
+            filename=display_filename,
             document_title=raw_result.get("document_title", "Handwritten Document"),
             data=data_dict,
             key_value_pairs=kv_pairs,
@@ -2738,8 +2941,8 @@ async def extract_handwriting(
             file_path=rel_saved_path,
             file_url=f"/snapshots/{snapshot_lr_filename}",
             preview_url=preview_saved_url or f"/snapshots/{snapshot_lr_filename}",
-            page_count=pdf_page_count if (mime_type == "application/pdf" and pdf_page_count > 0) else 1,
-            preview_pages=preview_pages_urls,
+            page_count=pdf_page_count,
+            preview_pages=preview_pages_urls
         )
 
         print(f"[Success] Extracted {len(data_dict)} key-value pair(s)")

@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<String> _dismissedRecentLrs = {};
 
   bool _isShowingInvalidLrDialog = false;
+  bool _isShowingMultipleLrsDialog = false;
 
 
 
@@ -190,6 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     widget.controller.addListener(_checkDuplicateNotice);
     widget.controller.addListener(_checkInvalidLrNotice);
+    widget.controller.addListener(_checkMultipleLrsNotice);
     widget.controller.addListener(_checkConnectionErrorNotice);
 
     widget.controller.addListener(_syncRecentUploadsOnControllerChange);
@@ -206,6 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     widget.controller.removeListener(_checkDuplicateNotice);
     widget.controller.removeListener(_checkInvalidLrNotice);
+    widget.controller.removeListener(_checkMultipleLrsNotice);
     widget.controller.removeListener(_checkConnectionErrorNotice);
 
     widget.controller.removeListener(_syncRecentUploadsOnControllerChange);
@@ -215,6 +218,65 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 
+
+  void _checkMultipleLrsNotice() {
+    if (!mounted) return;
+    if (widget.controller.multipleLrsNoticePending) {
+      final msg = widget.controller.multipleLrsNoticeMessage ??
+          'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
+      widget.controller.acknowledgeMultipleLrsNotice();
+
+      if (_isShowingMultipleLrsDialog) return;
+      _isShowingMultipleLrsDialog = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          _isShowingMultipleLrsDialog = false;
+          return;
+        }
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Multiple LRs Not Allowed',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              msg,
+              style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  _isShowingMultipleLrsDialog = false;
+                  Navigator.of(ctx).pop();
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        ).then((_) {
+          _isShowingMultipleLrsDialog = false;
+        }).catchError((_) {
+          _isShowingMultipleLrsDialog = false;
+        });
+      });
+    }
+  }
 
   void _checkInvalidLrNotice() {
     if (!mounted) return;
@@ -1816,121 +1878,55 @@ void _checkDuplicateNotice() {
 
 
   Future<void> _handleGalleryUpload() async {
-
     try {
-
-      // Enforce upload of only 1 LR at a time matching Web
-
-      final file = await FilePicker.pickFile(
-
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
-
         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
-
       );
 
+      if (files.isEmpty) return;
 
-
-      if (file == null) return;
-
-
-
-      // Validate maximum size of 10 MB per file matching Web showFileSizeValidationModal
-
-      final size = file.lengthSync() ?? (await file.length()) ?? (file.path != null && File(file.path!).existsSync() ? File(file.path!).lengthSync() : 0);
-
-      if (size > 10 * 1024 * 1024) {
-
-        if (mounted) {
-
-          final sizeMb = (size / (1024 * 1024)).toStringAsFixed(2);
-
-          showDialog<void>(
-
-            context: context,
-
-            builder: (ctx) => AlertDialog(
-
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-
-              title: const Row(
-
-                children: [
-
-                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
-
-                  SizedBox(width: 8),
-
-                  Text('File Size Validation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-
-                ],
-
-              ),
-
-              content: Column(
-
-                mainAxisSize: MainAxisSize.min,
-
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-
-                  Text(
-
-                    'Limit Exceeded',
-
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
-
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-
-                    'File "${file.name}" ($sizeMb MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.',
-
-                    style: const TextStyle(fontSize: 13),
-
-                  ),
-
-                ],
-
-              ),
-
-              actions: [
-
-                FilledButton(
-
-                  onPressed: () => Navigator.of(ctx).pop(),
-
-                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A)),
-
-                  child: const Text('OK'),
-
+      // Validate maximum size of 10 MB per file
+      for (final f in files) {
+        final fSize = f.lengthSync() ?? (await f.length()) ?? (f.path != null && File(f.path!).existsSync() ? File(f.path!).lengthSync() : 0);
+        if (fSize > 10 * 1024 * 1024) {
+          if (mounted) {
+            final sizeMb = (fSize / (1024 * 1024)).toStringAsFixed(2);
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                    SizedBox(width: 8),
+                    Text('File Size Validation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
                 ),
-
-              ],
-
-            ),
-
-          );
-
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Limit Exceeded', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                    const SizedBox(height: 8),
+                    Text('File "' + f.name + '" (' + sizeMb + ' MB) exceeds the allowed limit of 10 MB per file. Please choose files smaller than 10 MB.', style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A)),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
         }
-
-        return;
-
       }
 
-
-
-      final path = await _resolvePlatformFilePath(file);
-
-      if (path == null || path.isEmpty) return;
-
-
-
       final countBefore = widget.controller.items.length;
-
       BuildContext? processingDialogContext;
       if (mounted) {
         showDialog<void>(
@@ -1944,7 +1940,23 @@ void _checkDuplicateNotice() {
       }
 
       try {
-        await widget.controller.addFilePaths([path]);
+        if (files.length > 1) {
+          final paths = <String>[];
+          for (final f in files) {
+            final p = await _resolvePlatformFilePath(f);
+            if (p != null && p.isNotEmpty) {
+              paths.add(p);
+            }
+          }
+          if (paths.isNotEmpty) {
+            await widget.controller.addMultipleFilesAsSingleLr(paths);
+          }
+        } else {
+          final path = await _resolvePlatformFilePath(files.first);
+          if (path != null && path.isNotEmpty) {
+            await widget.controller.addFilePaths([path]);
+          }
+        }
       } finally {
         if (processingDialogContext != null && Navigator.of(processingDialogContext!).canPop()) {
           Navigator.of(processingDialogContext!).pop();
@@ -1953,36 +1965,55 @@ void _checkDuplicateNotice() {
         }
       }
 
-
-
-      // If new item was added, open Step 2: LR & Master Verification
-
-      if (mounted && widget.controller.items.length > countBefore) {
-
-        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-
-        if (!isCurrent) return;
-
-        final newItem = widget.controller.items[countBefore];
-
-        Navigator.of(context).push(
-
-          MaterialPageRoute(
-
-            builder: (_) => EditBiltyScreen(
-
-              item: newItem,
-
-              controller: widget.controller,
-
+      if (widget.controller.multipleLrsNoticePending) {
+        final msg = widget.controller.multipleLrsNoticeMessage ??
+            'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
+        widget.controller.acknowledgeMultipleLrsNotice();
+        if (mounted) {
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Multiple LRs Not Allowed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              content: Text(msg, style: const TextStyle(fontSize: 13, height: 1.4)),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-
-          ),
-
-        );
-
+          );
+        }
+        return;
       }
 
+      if (mounted && widget.controller.items.length > countBefore) {
+        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        if (!isCurrent) return;
+        final newItem = widget.controller.items.last;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EditBiltyScreen(
+              item: newItem,
+              controller: widget.controller,
+            ),
+          ),
+        );
+      }
     } catch (_) {
 
       // Fallback to ImagePicker single gallery

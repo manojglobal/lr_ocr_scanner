@@ -200,6 +200,13 @@ class GeminiBackendService {
           }
         } catch (_) {}
 
+        if (errorCode == 'MULTIPLE_LRS' || detailMsg.contains('Multiple LR') || detailMsg.contains('Multiple LRs')) {
+          return ExtractionResult.failure(
+            errorCode: 'MULTIPLE_LRS',
+            errorMessage: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
+          );
+        }
+
         if (streamedResponse.statusCode == 422 || errorCode == 'INVALID_LR') {
           return ExtractionResult.failure(
             errorCode: 'INVALID_LR',
@@ -324,6 +331,140 @@ class GeminiBackendService {
     }
 
   }
+
+  /// Sends multiple files (PDFs, images, or mixed) to POST /extract-handwriting to be combined into a single LR.
+  Future<ExtractionResult> extractMultipleFiles(
+    List<String> filePaths, {
+    String? customPrompt,
+    String? userId,
+    String? userMobile,
+    String? userName,
+    String? sessionToken,
+  }) async {
+    if (filePaths.isEmpty) {
+      return ExtractionResult.failure(errorMessage: 'No files provided for extraction.');
+    }
+
+    final uri = Uri.parse('$_currentServerUrl/extract-handwriting');
+    final request = http.MultipartRequest('POST', uri);
+
+    for (final p in filePaths) {
+      final file = File(p);
+      if (!await file.exists()) continue;
+      final lowerPath = p.toLowerCase();
+      MediaType mediaType = MediaType('image', 'jpeg');
+      if (lowerPath.endsWith('.pdf')) {
+        mediaType = MediaType('application', 'pdf');
+      } else if (lowerPath.endsWith('.png')) {
+        mediaType = MediaType('image', 'png');
+      } else if (lowerPath.endsWith('.webp')) {
+        mediaType = MediaType('image', 'webp');
+      }
+      final sendFileName = p.split(RegExp(r'[/\\]')).last;
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          p,
+          filename: sendFileName,
+          contentType: mediaType,
+        ),
+      );
+    }
+
+    if (customPrompt != null && customPrompt.isNotEmpty) {
+      request.fields['custom_prompt'] = customPrompt;
+    }
+    if (userId != null && userId.isNotEmpty) {
+      request.fields['user_id'] = userId;
+    }
+    if (userMobile != null && userMobile.isNotEmpty) {
+      request.fields['user_mobile'] = userMobile;
+    }
+    if (userName != null && userName.isNotEmpty) {
+      request.fields['user_name'] = userName;
+    }
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $sessionToken';
+    }
+
+    try {
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 240));
+      final responseBody = await streamedResponse.stream.bytesToString().timeout(const Duration(seconds: 60));
+
+      if (streamedResponse.statusCode != 200) {
+        String detailMsg = responseBody;
+        String? errorCode;
+        try {
+          final errJson = jsonDecode(responseBody);
+          if (errJson is Map) {
+            if (errJson.containsKey('error_code')) {
+              errorCode = errJson['error_code']?.toString();
+            }
+            if (errJson.containsKey('detail')) {
+              detailMsg = errJson['detail']?.toString() ?? '';
+            } else if (errJson.containsKey('message')) {
+              detailMsg = errJson['message']?.toString() ?? '';
+            }
+          }
+        } catch (_) {}
+
+        if (errorCode == 'MULTIPLE_LRS' || detailMsg.contains('Multiple LR') || detailMsg.contains('Multiple LRs')) {
+          return ExtractionResult.failure(
+            errorCode: 'MULTIPLE_LRS',
+            errorMessage: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
+          );
+        }
+
+        if (streamedResponse.statusCode == 422 || errorCode == 'INVALID_LR') {
+          return ExtractionResult.failure(
+            errorCode: 'INVALID_LR',
+            errorMessage: 'Invalid LR – Please upload a valid LR document.',
+          );
+        }
+
+        return ExtractionResult.failure(
+          errorCode: errorCode,
+          errorMessage: 'Server Error (${streamedResponse.statusCode}): $detailMsg',
+        );
+      }
+
+      final Map<String, dynamic> jsonResponse = jsonDecode(responseBody);
+      final String documentTitle = jsonResponse['document_title'] ?? 'Handwritten Document';
+      final Map<String, dynamic> rawData = jsonResponse['data'] ?? {};
+      final Map<String, String> data = {};
+      rawData.forEach((k, v) {
+        data[k.toString()] = v?.toString() ?? '';
+      });
+
+      for (final metaKey in ['preview_image', 'preview_url', 'file_url', 'saved_filename', 'file_path', 'upload_id']) {
+        if (jsonResponse[metaKey] != null && jsonResponse[metaKey].toString().isNotEmpty) {
+          data[metaKey] = jsonResponse[metaKey].toString();
+        }
+      }
+      if (jsonResponse['page_count'] != null) {
+        data['page_count'] = jsonResponse['page_count'].toString();
+      }
+      if (jsonResponse['preview_pages'] is List) {
+        data['preview_pages'] = jsonEncode(jsonResponse['preview_pages']);
+      }
+
+      final tableInfo = _detectTableOrColumns(data, documentTitle);
+
+      return ExtractionResult.success(
+        data: data,
+        missingFields: const [],
+        rawText: jsonEncode(data),
+        structureType: tableInfo.rows.isNotEmpty ? 'mixed' : 'form',
+        tableHeaders: tableInfo.headers,
+        tableRows: tableInfo.rows,
+      );
+    } catch (e) {
+      return ExtractionResult.failure(
+        errorMessage: 'Network or extraction failure: $e',
+      );
+    }
+  }
+
 
 
 
@@ -653,7 +794,7 @@ class GeminiBackendService {
 
   /// - 'valid': true/false
 
-  /// - 'user': Map<String, dynamic>? (when valid)
+  /// - 'user': `Map<String, dynamic>?` (when valid)
 
   /// - 'offline': true (when server is unreachable/network error)
 

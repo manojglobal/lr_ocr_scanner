@@ -81,6 +81,22 @@ class BatchProcessingController extends ChangeNotifier {
   String? _fallbackNoticeMessage;
   bool _invalidLrNoticePending = false;
   String? _invalidLrNoticeMessage;
+  bool _multipleLrsNoticePending = false;
+  String? _multipleLrsNoticeMessage;
+
+  bool get multipleLrsNoticePending => _multipleLrsNoticePending;
+  String? get multipleLrsNoticeMessage => _multipleLrsNoticeMessage;
+
+  void triggerMultipleLrsNotice([String? message]) {
+    _multipleLrsNoticePending = true;
+    _multipleLrsNoticeMessage = message ?? 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
+    notifyListeners();
+  }
+
+  void acknowledgeMultipleLrsNotice() {
+    _multipleLrsNoticePending = false;
+    _multipleLrsNoticeMessage = null;
+  }
   String? _lastInvalidLrId;
   String? _lastInvalidLrFileName;
   bool _connectionErrorNoticePending = false;
@@ -916,6 +932,167 @@ bool _duplicateNoticePending = false;
     return anyAdded;
   }
 
+  /// Uploads multiple files (PDFs, images, or mixed) belonging to the same LR in a single operation.
+  /// If multiple different LR numbers are detected, rejects with triggerMultipleLrsNotice.
+  /// If valid, creates exactly ONE BatchItem in _items and returns true.
+  Future<bool> addMultipleFilesAsSingleLr(List<String> paths) async {
+    if (paths.isEmpty) return false;
+
+    // Check pre-OCR duplicate by filename/path before sending
+    for (final p in paths) {
+      final fn = p.split(RegExp(r'[/\\]')).last;
+      final hash = computeImageHash(p);
+      if (isDuplicate(imagePath: p, imageHash: hash, fileName: fn)) {
+        triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
+        return false;
+      }
+    }
+
+    _isProcessing = true;
+    _statusMessage = 'Reading Consignment (${paths.length} files)...';
+    notifyListeners();
+
+    try {
+      final permanentPaths = <String>[];
+      for (final p in paths) {
+        permanentPaths.add(await _ensurePermanentFile(p));
+      }
+
+      final result = await _geminiService.extractMultipleFiles(
+        permanentPaths,
+        userMobile: _activeUserMobile,
+        userName: _activeUserName,
+        sessionToken: _activeSessionToken,
+      );
+
+      if (result.isMultipleLrs || result.errorCode == 'MULTIPLE_LRS') {
+        _isProcessing = false;
+        triggerMultipleLrsNotice(result.message);
+        return false;
+      }
+
+      if (result.isInvalidLr || result.status == ExtractionStatus.failed) {
+        _isProcessing = false;
+        if (result.isInvalidLr) {
+          triggerInvalidLrNotice('Invalid LR – Please upload a valid LR document.');
+        } else {
+          triggerConnectionErrorNotice(result.message ?? 'Server error during extraction.');
+        }
+        return false;
+      }
+
+      // Check post-OCR duplicate against extracted LR number
+      final candidateLr = normalizeLrNo(extractLrNoFromRecord(result.data));
+      if (candidateLr.isNotEmpty && isDuplicate(lrNo: candidateLr)) {
+        _isProcessing = false;
+        triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
+        return false;
+      }
+
+      final rec = Map<String, String>.from(result.data);
+      rec['pending_verification'] = 'true';
+      rec['is_verified'] = 'false';
+
+      final docId = _uuid.v4();
+      final primaryFn = permanentPaths.first.split(RegExp(r'[/\\]')).last;
+      final displayName = '$primaryFn (+${permanentPaths.length - 1} files)';
+
+      final now = DateTime.now();
+      final detailsLabel = 'Consignment added (${permanentPaths.length} files combined)';
+      final initialVersions = [
+        {
+          'version': 1,
+          'timestamp': now.toIso8601String(),
+          'action': 'add',
+          'user_name': _activeUserName ?? 'Logistics User',
+          'user_mobile': _activeUserMobile ?? '',
+          'ocr_engine': 'server',
+          'details': detailsLabel,
+          'diff': null,
+          'snapshot_data': Map<String, String>.from(rec),
+        }
+      ];
+      final initialHistory = [
+        {
+          'timestamp': now.toIso8601String(),
+          'user': _activeUserName ?? 'Logistics User',
+          'mobile': _activeUserMobile ?? '',
+          'action': 'add',
+          'version': 1,
+          'ocr_engine': 'server',
+          'details': detailsLabel,
+        }
+      ];
+
+      final item = BatchItem(
+        id: docId,
+        imagePath: permanentPaths.first,
+        fileName: displayName,
+        status: BatchItemStatus.completed,
+        createdAt: now,
+        processedAt: now,
+        imageHash: computeImageHash(permanentPaths.first),
+        record: rec,
+        versions: initialVersions,
+        editHistory: initialHistory,
+        structureType: result.structureType,
+        tableHeaders: result.tableHeaders,
+        tableRows: result.tableRows,
+      );
+
+      _items.add(item);
+
+      // Record completed LR into history cache immediately
+      try {
+        final completedDoc = _cleanDocForStorage({
+          'id': item.id,
+          'fileName': item.fileName,
+          'saved_filename': item.record['saved_filename'] ?? '',
+          'imagePath': item.imagePath,
+          'lrNo': item.record['LR No *'] ?? item.record['grno'] ?? item.record['BNF LR No'] ?? '',
+          'isPdf': item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf'),
+          'createdAt': item.createdAt.toIso8601String(),
+          'status': 'completed',
+          'isVerified': item.isVerified,
+          'preview_url': item.record['preview_url'] ?? '',
+          'preview_path': item.record['preview_path'] ?? '',
+          'preview_image': '',
+          'record': _cleanDocForStorage(item.record),
+        });
+        const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
+        final curId = completedDoc['id']?.toString().trim() ?? '';
+        final curFn = completedDoc['fileName']?.toString().trim().toLowerCase() ?? '';
+        final curSv = (completedDoc['saved_filename'] ?? '').toString().trim().toLowerCase();
+
+        _previousUploadsCache.removeWhere((r) {
+          final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim();
+          final rFn = (r['fileName'] ?? r['filename'] ?? '').toString().trim().toLowerCase();
+          final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
+          if (curId.isNotEmpty && rId.isNotEmpty && curId == rId) return true;
+          if (curSv.isNotEmpty && rSv.isNotEmpty && curSv == rSv) return true;
+          if (curFn.isNotEmpty && rFn.isNotEmpty && !genericFns.contains(curFn) && curFn == rFn) return true;
+          return false;
+        });
+        _previousUploadsCache.insert(0, completedDoc);
+        Future<void>(() async {
+          try {
+            final p = await SharedPreferences.getInstance();
+            await p.setString('bnf_recent_uploaded_lrs', jsonEncode(_previousUploadsCache));
+          } catch (_) {}
+        });
+      } catch (_) {}
+
+      _isProcessing = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isProcessing = false;
+      triggerConnectionErrorNotice('Extraction failed: $e');
+      return false;
+    }
+  }
+
+
   /// Adds a single selected photo from the gallery to the queue and starts processing.
   Future<bool> addFromGallerySingle() async {
     final hasPermission = await _permissionService.requestGalleryPermission();
@@ -1092,6 +1269,24 @@ bool _duplicateNoticePending = false;
                 if (isOrangeYellow) {
                   parseResult.data['BNF LR No'] = '';
                 }
+              } else if (serverResult.isMultipleLrs || serverResult.errorCode == 'MULTIPLE_LRS') {
+                debugPrint('Multiple LRs rejected by server for item. Discarding.');
+                final rejectedId = item.id;
+                final rejectedFn = item.fileName;
+                final rejectedPath = item.imagePath;
+                final rejectedSaved = item.record['saved_filename']?.toString() ?? '';
+                _items.removeWhere((i) => i.id == item.id);
+                purgeFromPreviousUploads(
+                  id: rejectedId,
+                  fileName: rejectedFn,
+                  imagePath: rejectedPath,
+                  savedFilename: rejectedSaved,
+                );
+                triggerMultipleLrsNotice(
+                  serverResult.message ??
+                      'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
+                );
+                continue;
               } else if (serverResult.isInvalidLr || serverResult.errorCode == 'INVALID_LR') {
                 debugPrint('Invalid LR rejected by server for item . Discarding.');
                 final rejectedId = item.id;
