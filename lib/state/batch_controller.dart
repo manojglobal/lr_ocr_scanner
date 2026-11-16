@@ -251,12 +251,14 @@ bool _duplicateNoticePending = false;
   String _currentProcessingFileName = '';
   int _processingFileIndex = 1;
   int _processingTotalFiles = 1;
+  bool _isProcessingMultiPage = false;
 
   // Getters
   List<BatchItem> get items => List.unmodifiable(_items);
   List<BatchItem> get deletedItems => List.unmodifiable(_deletedItems);
   List<Map<String, dynamic>> get previousUploadsCache => List.unmodifiable(_previousUploadsCache);
   bool get isProcessing => _isProcessing;
+  bool get isProcessingMultiPage => _isProcessingMultiPage;
   bool get useGeminiBackend => _useGeminiBackend;
   bool get fallbackNotificationPending => _fallbackNotificationPending;
   String? get fallbackNoticeMessage => _fallbackNoticeMessage;
@@ -859,6 +861,9 @@ bool _duplicateNoticePending = false;
       return false;
     }
 
+    _isProcessingMultiPage = paths.length > 1;
+    notifyListeners();
+
     // Ensure permanent copies of each captured page
     final permanentPaths = <String>[];
     for (final p in paths) {
@@ -901,6 +906,7 @@ bool _duplicateNoticePending = false;
 
     // Pre-OCR duplicate check
     if (isDuplicate(imagePath: submissionFilePath, imageHash: imageHash, fileName: submissionFileName)) {
+      _isProcessingMultiPage = false;
       triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
       return false;
     }
@@ -982,6 +988,7 @@ bool _duplicateNoticePending = false;
     }
 
     _isProcessing = true;
+    _isProcessingMultiPage = totalPages > 1 || paths.length > 1;
     _statusMessage = 'Reading Consignment (${paths.length} files)...';
     notifyListeners();
 
@@ -1122,10 +1129,12 @@ bool _duplicateNoticePending = false;
       } catch (_) {}
 
       _isProcessing = false;
+      _isProcessingMultiPage = false;
       notifyListeners();
       return true;
     } catch (e) {
       _isProcessing = false;
+      _isProcessingMultiPage = false;
       triggerConnectionErrorNotice('Extraction failed: $e');
       return false;
     }
@@ -1275,6 +1284,16 @@ bool _duplicateNoticePending = false;
         _processingFileIndex++;
         final item = _items[pendingIndex];
         _currentProcessingFileName = item.fileName;
+        int itemPages = 1;
+        if (item.imagePath.toLowerCase().endsWith('.pdf')) {
+          try {
+            itemPages = await PdfAssemblerService.countPdfPages(item.imagePath);
+          } catch (_) {}
+        }
+        if (itemPages <= 1 && item.record != null && item.record!['page_count'] != null) {
+          itemPages = int.tryParse(item.record!['page_count'] ?? '1') ?? 1;
+        }
+        _isProcessingMultiPage = itemPages > 1;
         _currentOcrStep = 1; // Step 1: Image(s) Uploaded
 
         // Transition to processing
@@ -1668,6 +1687,7 @@ bool _duplicateNoticePending = false;
       }
     } finally {
       _isProcessing = false;
+      _isProcessingMultiPage = false;
       if (_processingCompleter != null && !_processingCompleter!.isCompleted) {
         _processingCompleter!.complete();
       }

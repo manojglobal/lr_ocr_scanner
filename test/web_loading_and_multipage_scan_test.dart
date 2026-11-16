@@ -151,6 +151,32 @@ void main() {
       // Step 5 active -> CircularProgressIndicator
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Data Validated & Blanks Preserved'), findsOneWidget);
+      // By default isMultiPage is false, notice must not be shown
+      expect(find.byKey(const Key('ocr_multipage_notice')), findsNothing);
+    });
+
+    testWidgets('Shows blue multi-page notice only when isMultiPage is true', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: OcrProcessingDialog(
+              currentStep: 2,
+              currentFile: 'multi_lr.pdf',
+              isMultiPage: true,
+            ),
+          ),
+        ),
+      );
+
+      final noticeFinder = find.byKey(const Key('ocr_multipage_notice'));
+      expect(noticeFinder, findsOneWidget);
+      expect(
+        find.text('LR contains more pages, so scanning may take a little time. Please wait...'),
+        findsOneWidget,
+      );
+
+      final textWidget = tester.widget<Text>(noticeFinder);
+      expect(textWidget.style?.color, const Color(0xFF0284C7));
     });
   });
 
@@ -307,6 +333,7 @@ void main() {
         parserService: FormatParserService(),
         excelService: ExcelService(),
         geminiService: GeminiBackendService(),
+        useGeminiBackend: false,
       );
 
       final success = await ctrl.addMultiPageScan([testFile1.path, testFile2.path]);
@@ -336,6 +363,7 @@ void main() {
         parserService: FormatParserService(),
         excelService: ExcelService(),
         geminiService: GeminiBackendService(),
+        useGeminiBackend: false,
       );
 
       final firstAdd = await ctrl.addMultiPageScan([testFile1.path, testFile2.path]);

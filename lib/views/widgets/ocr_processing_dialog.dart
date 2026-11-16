@@ -14,6 +14,7 @@ class OcrProcessingDialog extends StatefulWidget {
   final String currentFile;
   final int fileIndex;
   final int totalFiles;
+  final bool isMultiPage;
 
   const OcrProcessingDialog({
     super.key,
@@ -22,6 +23,7 @@ class OcrProcessingDialog extends StatefulWidget {
     this.currentFile = 'LR Document',
     this.fileIndex = 1,
     this.totalFiles = 1,
+    this.isMultiPage = false,
   });
 
   @override
@@ -68,7 +70,8 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
           final fTotal = widget.controller!.processingTotalFiles > 0
               ? widget.controller!.processingTotalFiles
               : widget.totalFiles;
-          return _buildCard(context, step, file, fIndex, fTotal);
+          final isMulti = (widget.controller!.isProcessingMultiPage) || widget.isMultiPage;
+          return _buildCard(context, step, file, fIndex, fTotal, isMulti);
         },
       );
     }
@@ -79,6 +82,7 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
       widget.currentFile,
       widget.fileIndex,
       widget.totalFiles,
+      widget.isMultiPage,
     );
   }
 
@@ -88,6 +92,7 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
     String file,
     int fIndex,
     int fTotal,
+    bool isMultiPage,
   ) {
     String titleText = 'Extracting LR Information...';
     if (fTotal > 1) {
@@ -123,10 +128,11 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
             ),
           ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Animated Scanner Graphic matching Web screen3_ocr
             AnimatedBuilder(
@@ -188,6 +194,20 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
                 height: 1.4,
               ),
             ),
+            if (isMultiPage) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'LR contains more pages, so scanning may take a little time. Please wait...',
+                key: Key('ocr_multipage_notice'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF0284C7),
+                  height: 1.4,
+                ),
+              ),
+            ],
             const SizedBox(height: 22),
 
             // 5-Step Process Checklist matching Web commit 28792914
@@ -242,6 +262,7 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
             ),
           ],
         ),
+      ),
       ),
     ),
   );

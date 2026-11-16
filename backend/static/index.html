@@ -628,6 +628,8 @@
 
           <p class="text-xs text-slate-500 mt-1" id="ocrProcessingSub">Please wait while the system reads and extracts the consignment details from your LR image.</p>
 
+          <p id="ocrMultiPageNotice" class="text-xs text-sky-600 font-medium mt-1.5" style="display: none;">LR contains more pages, so scanning may take a little time. Please wait...</p>
+
         </div>
 
 
@@ -9225,9 +9227,8 @@
 
 
     function hideUploadLoading() {
-
-      // Screen transition to Step 2 handles completion
-
+      const multiNoticeEl = document.getElementById('ocrMultiPageNotice');
+      if (multiNoticeEl) multiNoticeEl.style.display = 'none';
     }
 
 
@@ -9287,6 +9288,12 @@
 
       let processedCount = 0;
       navigateTo('screen3_ocr');
+
+      const isMultiPage = totalBatchPages > 1 || validFiles.length > 1;
+      const multiNoticeEl = document.getElementById('ocrMultiPageNotice');
+      if (multiNoticeEl) {
+        multiNoticeEl.style.display = isMultiPage ? 'block' : 'none';
+      }
 
       try {
         if (validFiles.length > 1) {
