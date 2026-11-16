@@ -7,7 +7,7 @@ import os
 import re
 import socket
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
@@ -15,9 +15,27 @@ from fastapi.staticfiles import StaticFiles
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from PIL import Image, ImageOps, ImageEnhance
+import zipfile
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.styles import stylesheet as openpyxl_stylesheet
 from openpyxl.utils import get_column_letter
+
+# Ensure openpyxl cell styles serialize applyNumberFormat="1" for all styled number formats
+_attrs = list(openpyxl_stylesheet.CellStyle.__attrs__)
+if "applyNumberFormat" not in _attrs:
+    _attrs.append("applyNumberFormat")
+openpyxl_stylesheet.CellStyle.__attrs__ = tuple(_attrs)
+
+_orig_from_array = openpyxl_stylesheet.CellStyle.from_array
+@classmethod
+def _patched_from_array(cls, style):
+    xf = _orig_from_array.__func__(cls, style)
+    if getattr(style, "numFmtId", 0) != 0:
+        xf.applyNumberFormat = True
+    return xf
+openpyxl_stylesheet.CellStyle.from_array = _patched_from_array
+
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
@@ -949,6 +967,96 @@ def _format_date_ddmmyyyy(raw) -> str:
         except ValueError:
             pass
     return s
+
+
+DATE_COLUMN_KEYS = {
+    "grdate", "drivingvalidupto", "loadingstartdate", "validupto", "invoiedate",
+    "stockdt", "grdt", "invoiedt", "exportdate", "date", "biltydate", "lrdate",
+    "bookingdate", "deliverydate", "dispatchdate", "entrydate", "invoicedate",
+    "dlvalidupto", "dlvalidtill", "valid_up_to"
+}
+
+
+def _parse_to_datetime_obj(raw) -> datetime | None:
+    """
+    Parses any date string (e.g., '12-OCT-2026', '12-10-2026', '2026-10-12', '12/10/2026')
+    or datetime/date object into a native datetime.datetime object (with midnight time).
+    Returns None if raw is empty, invalid or unparseable.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw.replace(hour=0, minute=0, second=0, microsecond=0)
+    if isinstance(raw, date):
+        return datetime(raw.year, raw.month, raw.day, 0, 0)
+
+    s = str(raw).strip()
+    if not s or s.lower() in ("none", "null", "nan", ""):
+        return None
+
+    # Discard time portions if attached
+    s_clean = re.sub(r'T\d{2}:.*$', '', s)
+    s_clean = re.sub(r'\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?.*$', '', s_clean).strip()
+
+    # Pattern 1: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+    m = re.match(r'^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$', s_clean)
+    if m:
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if year < 100:
+            year += 2000
+        try:
+            return datetime(year, month, day, 0, 0)
+        except ValueError:
+            pass
+
+    for fmt in (
+        "%d-%b-%Y", "%d-%b-%y", "%d-%B-%Y", "%d-%B-%y",
+        "%d %b %Y", "%d %b %y", "%d %B %y",
+        "%d/%b/%Y", "%d/%b/%y",
+        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+        "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"
+    ):
+        try:
+            parsed = datetime.strptime(s_clean, fmt)
+            return parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+        except ValueError:
+            pass
+
+    return None
+
+
+def ensure_excel_date_number_formats(excel_bytes: bytes) -> bytes:
+    """
+    Guarantees that all cellXfs with numFmtId != 0 in xl/styles.xml explicitly have applyNumberFormat="1".
+    This ensures Microsoft Excel, ERP systems, and external spreadsheet readers properly display
+    native Excel DateTimes in DD-MM-YYYY format instead of raw numeric serial values.
+    """
+    if not excel_bytes or not isinstance(excel_bytes, (bytes, bytearray)):
+        return excel_bytes
+    try:
+        in_buf = io.BytesIO(excel_bytes)
+        out_buf = io.BytesIO()
+        with zipfile.ZipFile(in_buf, "r") as zin:
+            with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    content = zin.read(item.filename)
+                    if item.filename == "xl/styles.xml":
+                        text = content.decode("utf-8")
+                        def _patch_xf(match):
+                            xf_str = match.group(0)
+                            num_fmt_match = re.search(r'numFmtId="([^"]+)"', xf_str)
+                            if num_fmt_match and num_fmt_match.group(1) not in ("0", ""):
+                                if 'applyNumberFormat=' not in xf_str:
+                                    xf_str = re.sub(r'(<xf\b)', r'\1 applyNumberFormat="1"', xf_str, count=1)
+                            return xf_str
+                        patched_text = re.sub(r'<xf\b[^>]*>', _patch_xf, text)
+                        content = patched_text.encode("utf-8")
+                    zout.writestr(item, content)
+        return out_buf.getvalue()
+    except Exception as e:
+        print(f"[Excel Number Format Patch Notice] {e}")
+        return bytes(excel_bytes)
+
 
 
 def _calculate_transit_days(start_val, end_val) -> int | str:
@@ -2108,6 +2216,52 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
     return data_dict
 
 
+# --- Helper: Assemble Multi-Page PDF API ---
+@app.post("/api/assemble-pdf")
+async def api_assemble_pdf(files: list[UploadFile] = File(...)):
+    """
+    Assembles multiple uploaded images into a single multi-page PDF document.
+    Enforces maximum 15 pages validation.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided for PDF assembly.")
+    if len(files) > 15:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error_code": "PAGE_LIMIT_EXCEEDED",
+                "title": "Page Limit Exceeded",
+                "message": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
+                "detail": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer."
+            }
+        )
+    import fitz
+    doc = fitz.open()
+    for uf in files:
+        b = await uf.read()
+        try:
+            img = fitz.open(stream=b, filetype="jpeg")
+            pdf_bytes = img.convert_to_pdf()
+            img_pdf = fitz.open("pdf", pdf_bytes)
+            doc.insert_pdf(img_pdf)
+        except Exception:
+            try:
+                pil_img = Image.open(io.BytesIO(b))
+                if pil_img.mode in ("RGBA", "P"):
+                    pil_img = pil_img.convert("RGB")
+                jbuf = io.BytesIO()
+                pil_img.save(jbuf, format="JPEG", quality=95)
+                img = fitz.open(stream=jbuf.getvalue(), filetype="jpeg")
+                pdf_bytes = img.convert_to_pdf()
+                img_pdf = fitz.open("pdf", pdf_bytes)
+                doc.insert_pdf(img_pdf)
+            except Exception as e:
+                print(f"[Assemble PDF error] {e}")
+    out_bytes = doc.tobytes()
+    return Response(content=out_bytes, media_type="application/pdf")
+
+
 # --- ROUTE 4: Image Extraction API (Web & Android) ---
 @app.post("/extract-handwriting", response_model=ParsedDocument)
 async def extract_handwriting(
@@ -2141,10 +2295,10 @@ async def extract_handwriting(
         print(f"[Upload] Form parsing notice: {e_form}")
 
     if not all_uploads:
-        if file:
+        if file and hasattr(file, "filename") and hasattr(file, "read"):
             all_uploads = [file]
-        elif files:
-            all_uploads = files
+        elif files and isinstance(files, (list, tuple)):
+            all_uploads = [f for f in files if hasattr(f, "filename") and hasattr(f, "read")]
 
     if not all_uploads:
         raise HTTPException(status_code=400, detail="No files uploaded.")
@@ -2175,6 +2329,40 @@ async def extract_handwriting(
                 detail=f"File '{uf.filename}' ({size_mb:.2f} MB) exceeds the allowed limit of 10 MB per file. Please upload files under 10 MB."
             )
         upload_bytes_list.append(b)
+
+    # Authoritative Pre-Validation: Maximum 15 Pages Allowed Per Upload Batch
+    MAX_UPLOAD_PAGES_LIMIT = 15
+    total_batch_pages = 0
+    import fitz
+
+    for uf, b in zip(all_uploads, upload_bytes_list):
+        fn_low = (uf.filename or "").lower()
+        is_pdf_file = fn_low.endswith(".pdf") or "pdf" in (uf.content_type or "").lower() or (len(b) >= 4 and b[:4] == b"%PDF")
+        if is_pdf_file:
+            try:
+                temp_pdf = fitz.open(stream=b, filetype="pdf")
+                total_batch_pages += len(temp_pdf)
+                temp_pdf.close()
+            except Exception as e_pdf:
+                print(f"[Page Count Notice] Could not count PDF pages for {uf.filename}: {e_pdf}")
+                total_batch_pages += 1
+        else:
+            total_batch_pages += 1
+
+    if total_batch_pages > MAX_UPLOAD_PAGES_LIMIT:
+        print(f"[Validation Rejected] Upload batch exceeds page limit: {total_batch_pages} pages > {MAX_UPLOAD_PAGES_LIMIT} max.")
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error_code": "PAGE_LIMIT_EXCEEDED",
+                "title": "Page Limit Exceeded",
+                "message": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
+                "detail": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
+                "total_pages": total_batch_pages,
+                "max_pages": MAX_UPLOAD_PAGES_LIMIT
+            }
+        )
 
     # 1. Prompt selection
     lower_filename = primary_filename.lower()
@@ -3073,14 +3261,24 @@ def _build_workbook_for_docs(
 
         for r_idx, doc in enumerate(docs, start=2):
             row_vals = map_to_gr_row(_get_doc_data(doc), headers)
-            ws1.append(row_vals)
             ws1.row_dimensions[r_idx].height = 20
-            for col_idx in range(1, len(row_vals) + 1):
+            for col_idx, (h, val) in enumerate(zip(headers, row_vals), start=1):
                 c = ws1.cell(row=r_idx, column=col_idx)
                 c.font = data_font
                 c.border = thin_border
                 c.alignment = left_align
                 c.fill = no_fill
+                clean_h = re.sub(r'[^a-zA-Z0-9]', '', str(h or '')).lower()
+                if clean_h in DATE_COLUMN_KEYS:
+                    dt_val = _parse_to_datetime_obj(val)
+                    if dt_val is not None:
+                        c.value = dt_val
+                        c.number_format = 'dd-mm-yyyy'
+                    else:
+                        c.value = None if str(val or '').strip().lower() in ("", "none", "null", "nan") else val
+                        c.number_format = 'dd-mm-yyyy'
+                else:
+                    c.value = val
 
         for col in ws1.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
@@ -3130,12 +3328,23 @@ def _build_workbook_for_docs(
         for r_offset, doc in enumerate(docs):
             curr_row = data_start_row + r_offset
             row_vals = map_to_gr_row(_get_doc_data(doc), headers)
-            for col_idx, val in enumerate(row_vals, start=1):
-                c = ws1.cell(row=curr_row, column=col_idx, value=val)
+            for col_idx, (h, val) in enumerate(zip(headers, row_vals), start=1):
+                c = ws1.cell(row=curr_row, column=col_idx)
                 c.font = data_font
                 c.border = thin_border
                 c.alignment = left_align
                 c.fill = no_fill
+                clean_h = re.sub(r'[^a-zA-Z0-9]', '', str(h or '')).lower()
+                if clean_h in DATE_COLUMN_KEYS:
+                    dt_val = _parse_to_datetime_obj(val)
+                    if dt_val is not None:
+                        c.value = dt_val
+                        c.number_format = 'dd-mm-yyyy'
+                    else:
+                        c.value = None if str(val or '').strip().lower() in ("", "none", "null", "nan") else val
+                        c.number_format = 'dd-mm-yyyy'
+                else:
+                    c.value = val
             ws1.row_dimensions[curr_row].height = 20
 
         for col in ws1.columns:
@@ -3204,13 +3413,24 @@ def _build_workbook_for_docs(
             ws1.append(row_vals)
             ws1.row_dimensions[row_num].height = 22
 
-            for col_idx in range(1, len(row_vals) + 1):
+            for col_idx, (h, val) in enumerate(zip(headers, row_vals), start=1):
                 cell = ws1.cell(row=row_num, column=col_idx)
                 cell.font = data_font
                 cell.border = thin_border
                 cell.alignment = center_align if col_idx == 1 else left_align
                 if r_idx % 2 == 0:
                     cell.fill = zebra_fill
+                clean_h = re.sub(r'[^a-zA-Z0-9]', '', str(h or '')).lower()
+                if clean_h in DATE_COLUMN_KEYS:
+                    dt_val = _parse_to_datetime_obj(val)
+                    if dt_val is not None:
+                        cell.value = dt_val
+                        cell.number_format = 'dd-mm-yyyy'
+                    else:
+                        cell.value = None if str(val or '').strip().lower() in ("", "none", "null", "nan") else val
+                        cell.number_format = 'dd-mm-yyyy'
+                else:
+                    cell.value = val
 
         for col in ws1.columns:
             max_len = 0
@@ -3308,12 +3528,23 @@ def _build_workbook_for_docs(
             doc_data = _get_doc_data(doc)
             gr_49_vals = map_to_gr_row(doc_data, GR_BNF_49_HEADERS)
             row_vals = [user_name, export_date, export_time, exported_at, *gr_49_vals]
-            for col_idx, val in enumerate(row_vals, start=1):
-                c = ws_history.cell(row=r_idx, column=col_idx, value=val)
+            for col_idx, (h, val) in enumerate(zip(history_full_headers, row_vals), start=1):
+                c = ws_history.cell(row=r_idx, column=col_idx)
                 c.font = data_font
                 c.border = thin_border
                 c.alignment = left_align
                 c.fill = no_fill
+                clean_h = re.sub(r'[^a-zA-Z0-9]', '', str(h or '')).lower()
+                if clean_h in DATE_COLUMN_KEYS:
+                    dt_val = _parse_to_datetime_obj(val)
+                    if dt_val is not None:
+                        c.value = dt_val
+                        c.number_format = 'dd-mm-yyyy'
+                    else:
+                        c.value = None if str(val or '').strip().lower() in ("", "none", "null", "nan") else val
+                        c.number_format = 'dd-mm-yyyy'
+                else:
+                    c.value = val
             ws_history.row_dimensions[r_idx].height = 20
 
         for col in ws_history.columns:
@@ -3329,7 +3560,7 @@ def _build_workbook_for_docs(
     # Save to buffer
     buf = io.BytesIO()
     wb.save(buf)
-    file_bytes = buf.getvalue()
+    file_bytes = ensure_excel_date_number_formats(buf.getvalue())
 
     if fmt in ("gr_stock_38", "gr_stock", "importgrstock"):
         prefix = "ImportGRStock"
@@ -4277,6 +4508,7 @@ async def download_exported_file(
         except Exception:
             pass
 
+        clean_bytes = ensure_excel_date_number_formats(clean_bytes)
         return StreamingResponse(
             io.BytesIO(clean_bytes),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4306,10 +4538,12 @@ async def download_exported_file(
             has_history = "History" in wb_test.sheetnames
             wb_test.close()
             if not has_history:
-                return FileResponse(
-                    file_path,
+                with open(file_path, "rb") as f_disk:
+                    disk_bytes = f_disk.read()
+                fixed_disk_bytes = ensure_excel_date_number_formats(disk_bytes)
+                return StreamingResponse(
+                    io.BytesIO(fixed_disk_bytes),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    filename=safe_name,
                     headers={
                         "Content-Disposition": f'attachment; filename="{safe_name}"',
                         "Access-Control-Expose-Headers": "Content-Disposition",
@@ -4338,7 +4572,7 @@ async def download_exported_file(
             buf = io.BytesIO()
             wb.save(buf)
             buf.seek(0)
-            clean_bytes = buf.getvalue()
+            clean_bytes = ensure_excel_date_number_formats(buf.getvalue())
 
             # Cache the clean bytes for future downloads
             with _USER_EXCEL_CACHE_LOCK:

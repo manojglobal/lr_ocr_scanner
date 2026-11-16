@@ -65,6 +65,9 @@ class ExtractionResult {
   /// True if multiple different LR documents were detected in a single upload batch.
   bool get isMultipleLrs => errorCode == 'MULTIPLE_LRS' || (message != null && message!.contains('Multiple LR'));
 
+  /// True if the upload batch exceeded the 15-page limit.
+  bool get isPageLimitExceeded => errorCode == 'PAGE_LIMIT_EXCEEDED' || (message != null && (message!.contains('15 pages') || message!.contains('Page Limit Exceeded')));
+
 
 
   /// Detected column headers if a tabular structure is present.

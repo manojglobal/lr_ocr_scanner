@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/user_cloud_service.dart';
+import '../services/pdf_assembler_service.dart';
 
 import '../models/batch_item.dart';
 
@@ -72,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isShowingInvalidLrDialog = false;
   bool _isShowingMultipleLrsDialog = false;
+  bool _isShowingPageLimitDialog = false;
 
 
 
@@ -193,6 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.controller.addListener(_checkInvalidLrNotice);
     widget.controller.addListener(_checkMultipleLrsNotice);
     widget.controller.addListener(_checkConnectionErrorNotice);
+    widget.controller.addListener(_checkPageLimitNotice);
 
     widget.controller.addListener(_syncRecentUploadsOnControllerChange);
 
@@ -210,11 +213,74 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.controller.removeListener(_checkInvalidLrNotice);
     widget.controller.removeListener(_checkMultipleLrsNotice);
     widget.controller.removeListener(_checkConnectionErrorNotice);
+    widget.controller.removeListener(_checkPageLimitNotice);
 
     widget.controller.removeListener(_syncRecentUploadsOnControllerChange);
 
     super.dispose();
 
+  }
+
+  void _showPageLimitExceededDialog([String? customMsg]) {
+    if (!mounted || _isShowingPageLimitDialog) return;
+    _isShowingPageLimitDialog = true;
+
+    final msg = customMsg ??
+        'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Page Limit Exceeded',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          msg,
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0284C7),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              _isShowingPageLimitDialog = false;
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    ).then((_) {
+      _isShowingPageLimitDialog = false;
+    }).catchError((_) {
+      _isShowingPageLimitDialog = false;
+    });
+  }
+
+  void _checkPageLimitNotice() {
+    if (!mounted) return;
+    if (widget.controller.pageLimitNoticePending) {
+      final msg = widget.controller.pageLimitNoticeMessage ??
+          'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
+      widget.controller.acknowledgePageLimitNotice();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showPageLimitExceededDialog(msg);
+      });
+    }
   }
 
 
@@ -1926,6 +1992,36 @@ void _checkDuplicateNotice() {
         }
       }
 
+      // Resolve platform file paths
+      final paths = <String>[];
+      for (final f in files) {
+        final p = await _resolvePlatformFilePath(f);
+        if (p != null && p.isNotEmpty) {
+          paths.add(p);
+        }
+      }
+
+      if (paths.isEmpty) return;
+
+      // Validate total page count across all selected files (max 15 pages)
+      int totalPages = 0;
+      for (final p in paths) {
+        final ext = p.split('.').last.toLowerCase();
+        if (ext == 'pdf') {
+          final count = await PdfAssemblerService.countPdfPages(p);
+          totalPages += (count > 0 ? count : 1);
+        } else {
+          totalPages += 1; // Each image counts as 1 page
+        }
+      }
+
+      if (totalPages > 15) {
+        if (mounted) {
+          _showPageLimitExceededDialog();
+        }
+        return;
+      }
+
       final countBefore = widget.controller.items.length;
       BuildContext? processingDialogContext;
       if (mounted) {
@@ -1940,22 +2036,10 @@ void _checkDuplicateNotice() {
       }
 
       try {
-        if (files.length > 1) {
-          final paths = <String>[];
-          for (final f in files) {
-            final p = await _resolvePlatformFilePath(f);
-            if (p != null && p.isNotEmpty) {
-              paths.add(p);
-            }
-          }
-          if (paths.isNotEmpty) {
-            await widget.controller.addMultipleFilesAsSingleLr(paths);
-          }
+        if (paths.length > 1) {
+          await widget.controller.addMultipleFilesAsSingleLr(paths);
         } else {
-          final path = await _resolvePlatformFilePath(files.first);
-          if (path != null && path.isNotEmpty) {
-            await widget.controller.addFilePaths([path]);
-          }
+          await widget.controller.addFilePaths([paths.first]);
         }
       } finally {
         if (processingDialogContext != null && Navigator.of(processingDialogContext!).canPop()) {
@@ -1963,6 +2047,16 @@ void _checkDuplicateNotice() {
         } else if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
+      }
+
+      if (widget.controller.pageLimitNoticePending) {
+        final msg = widget.controller.pageLimitNoticeMessage ??
+            'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
+        widget.controller.acknowledgePageLimitNotice();
+        if (mounted) {
+          _showPageLimitExceededDialog(msg);
+        }
+        return;
       }
 
       if (widget.controller.multipleLrsNoticePending) {
@@ -2985,6 +3079,26 @@ void _checkDuplicateNotice() {
 
                                 textAlign: TextAlign.center,
 
+                              ),
+
+                              const SizedBox(height: 6),
+
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF0F9FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                                ),
+                                child: const Text(
+                                  'Maximum upload limit: 15 pages.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0284C7),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
 
                               const SizedBox(height: 20),

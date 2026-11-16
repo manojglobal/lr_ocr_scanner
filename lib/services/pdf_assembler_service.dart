@@ -101,13 +101,6 @@ class PdfAssemblerService {
     writeString('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
 
     final int totalPages = pages.length;
-    // Object IDs:
-    // 1: Catalog
-    // 2: Pages
-    // For page i (0-based):
-    // Page obj id: 3 + i * 3
-    // Content obj id: 4 + i * 3
-    // Image obj id: 5 + i * 3
     final int totalObjects = 2 + (totalPages * 3);
 
     // Helper to record offset of next object
@@ -200,20 +193,15 @@ class PdfAssemblerService {
       '%%EOF\n',
     );
 
-    return builder.takeBytes();
+    return builder.toBytes();
   }
 
-  /// Parses JPEG width and height directly from SOF0/SOF2 marker for fast performance.
   static _Dimensions? _getJpegDimensions(Uint8List bytes) {
-    if (bytes.length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) return null;
     int offset = 2;
     while (offset < bytes.length - 8) {
-      if (bytes[offset] != 0xFF) {
-        offset++;
-        continue;
-      }
+      if (bytes[offset] != 0xFF) break;
       final marker = bytes[offset + 1];
-      // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
+      // SOF markers: SOF0 (0xC0) to SOF2 (0xC2)
       if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2) {
         final h = (bytes[offset + 5] << 8) | bytes[offset + 6];
         final w = (bytes[offset + 7] << 8) | bytes[offset + 8];
@@ -226,6 +214,46 @@ class PdfAssemblerService {
       offset += 2 + length;
     }
     return null;
+  }
+
+  /// Counts the total number of pages in a PDF file.
+  /// Inspects the PDF's internal catalog/page tree structure without requiring heavy external dependencies.
+  static Future<int> countPdfPages(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return 1;
+      final bytes = await file.readAsBytes();
+      return countPdfPagesFromBytes(bytes);
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  /// Counts the total number of pages from raw PDF bytes.
+  static int countPdfPagesFromBytes(Uint8List bytes) {
+    try {
+      if (bytes.length < 10) return 1;
+      // Decode with latin1 to safely examine byte characters
+      final content = latin1.decode(bytes);
+
+      // Strategy 1: Check root /Pages object count: /Type\s*/Pages\b.*?/Count\s+(\d+)
+      final pagesCountMatches = RegExp(r'/Type\s*/Pages\b[^>]*?/Count\s+(\d+)').allMatches(content);
+      int maxPages = 0;
+      for (final m in pagesCountMatches) {
+        final val = int.tryParse(m.group(1) ?? '');
+        if (val != null && val > maxPages) {
+          maxPages = val;
+        }
+      }
+      if (maxPages > 0) return maxPages;
+
+      // Strategy 2: Count individual page objects: /Type\s*/Page\b(?!s)
+      final pageMatches = RegExp(r'/Type\s*/Page\b(?!s)').allMatches(content);
+      if (pageMatches.isNotEmpty) {
+        return pageMatches.length;
+      }
+    } catch (_) {}
+    return 1;
   }
 }
 

@@ -83,9 +83,24 @@ class BatchProcessingController extends ChangeNotifier {
   String? _invalidLrNoticeMessage;
   bool _multipleLrsNoticePending = false;
   String? _multipleLrsNoticeMessage;
+  bool _pageLimitNoticePending = false;
+  String? _pageLimitNoticeMessage;
 
   bool get multipleLrsNoticePending => _multipleLrsNoticePending;
   String? get multipleLrsNoticeMessage => _multipleLrsNoticeMessage;
+  bool get pageLimitNoticePending => _pageLimitNoticePending;
+  String? get pageLimitNoticeMessage => _pageLimitNoticeMessage;
+
+  void triggerPageLimitNotice([String? message]) {
+    _pageLimitNoticePending = true;
+    _pageLimitNoticeMessage = message ?? 'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
+    notifyListeners();
+  }
+
+  void acknowledgePageLimitNotice() {
+    _pageLimitNoticePending = false;
+    _pageLimitNoticeMessage = null;
+  }
 
   void triggerMultipleLrsNotice([String? message]) {
     _multipleLrsNoticePending = true;
@@ -839,6 +854,10 @@ bool _duplicateNoticePending = false;
   /// Adds a multi-page scan session (multiple photos of a single LR) to the queue as ONE single LR item.
   Future<bool> addMultiPageScan(List<String> paths) async {
     if (paths.isEmpty) return false;
+    if (paths.length > 15) {
+      triggerPageLimitNotice();
+      return false;
+    }
 
     // Ensure permanent copies of each captured page
     final permanentPaths = <String>[];
@@ -938,6 +957,20 @@ bool _duplicateNoticePending = false;
   Future<bool> addMultipleFilesAsSingleLr(List<String> paths) async {
     if (paths.isEmpty) return false;
 
+    // Check maximum 15 pages limit across all combined files
+    int totalPages = 0;
+    for (final p in paths) {
+      if (p.toLowerCase().endsWith('.pdf')) {
+        totalPages += await PdfAssemblerService.countPdfPages(p);
+      } else {
+        totalPages += 1;
+      }
+    }
+    if (totalPages > 15) {
+      triggerPageLimitNotice();
+      return false;
+    }
+
     // Check pre-OCR duplicate by filename/path before sending
     for (final p in paths) {
       final fn = p.split(RegExp(r'[/\\]')).last;
@@ -964,6 +997,12 @@ bool _duplicateNoticePending = false;
         userName: _activeUserName,
         sessionToken: _activeSessionToken,
       );
+
+      if (result.isPageLimitExceeded || result.errorCode == 'PAGE_LIMIT_EXCEEDED') {
+        _isProcessing = false;
+        triggerPageLimitNotice(result.message);
+        return false;
+      }
 
       if (result.isMultipleLrs || result.errorCode == 'MULTIPLE_LRS') {
         _isProcessing = false;
@@ -1142,6 +1181,20 @@ bool _duplicateNoticePending = false;
 
   /// Ingests multiple files (images, PDFs) and processes them sequentially.
   Future<bool> addFilePaths(List<String> paths) async {
+    if (paths.isEmpty) return false;
+    int totalPages = 0;
+    for (final p in paths) {
+      if (p.toLowerCase().endsWith('.pdf')) {
+        totalPages += await PdfAssemblerService.countPdfPages(p);
+      } else {
+        totalPages += 1;
+      }
+    }
+    if (totalPages > 15) {
+      triggerPageLimitNotice();
+      return false;
+    }
+
     bool anyAdded = false;
     for (final path in paths) {
       final permanentPath = await _ensurePermanentFile(path);
@@ -1304,6 +1357,24 @@ bool _duplicateNoticePending = false;
                   'Invalid LR – Please upload a valid LR document.',
                   rejectedId: rejectedId,
                   rejectedFileName: rejectedFn,
+                );
+                continue;
+              } else if (serverResult.isPageLimitExceeded || serverResult.errorCode == 'PAGE_LIMIT_EXCEEDED') {
+                debugPrint('Page limit exceeded for item. Discarding.');
+                final rejectedId = item.id;
+                final rejectedFn = item.fileName;
+                final rejectedPath = item.imagePath;
+                final rejectedSaved = item.record['saved_filename']?.toString() ?? '';
+                _items.removeWhere((i) => i.id == item.id);
+                purgeFromPreviousUploads(
+                  id: rejectedId,
+                  fileName: rejectedFn,
+                  imagePath: rejectedPath,
+                  savedFilename: rejectedSaved,
+                );
+                triggerPageLimitNotice(
+                  serverResult.message ??
+                      'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.',
                 );
                 continue;
               } else {

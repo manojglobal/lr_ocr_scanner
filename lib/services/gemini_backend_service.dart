@@ -200,6 +200,13 @@ class GeminiBackendService {
           }
         } catch (_) {}
 
+        if (errorCode == 'PAGE_LIMIT_EXCEEDED' || detailMsg.contains('15 pages') || detailMsg.contains('Page Limit Exceeded')) {
+          return ExtractionResult.failure(
+            errorCode: 'PAGE_LIMIT_EXCEEDED',
+            errorMessage: 'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.',
+          );
+        }
+
         if (errorCode == 'MULTIPLE_LRS' || detailMsg.contains('Multiple LR') || detailMsg.contains('Multiple LRs')) {
           return ExtractionResult.failure(
             errorCode: 'MULTIPLE_LRS',
@@ -407,6 +414,13 @@ class GeminiBackendService {
             }
           }
         } catch (_) {}
+
+        if (errorCode == 'PAGE_LIMIT_EXCEEDED' || detailMsg.contains('15 pages') || detailMsg.contains('Page Limit Exceeded')) {
+          return ExtractionResult.failure(
+            errorCode: 'PAGE_LIMIT_EXCEEDED',
+            errorMessage: 'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.',
+          );
+        }
 
         if (errorCode == 'MULTIPLE_LRS' || detailMsg.contains('Multiple LR') || detailMsg.contains('Multiple LRs')) {
           return ExtractionResult.failure(

@@ -56,6 +56,79 @@ class ExcelService {
     return s;
   }
 
+  static const Set<String> dateColumnKeys = {
+    'grdate', 'drivingvalidupto', 'loadingstartdate', 'validupto', 'invoiedate',
+    'stockdt', 'grdt', 'invoiedt', 'exportdate', 'date', 'biltydate', 'lrdate',
+    'bookingdate', 'deliverydate', 'dispatchdate', 'entrydate'
+  };
+
+  static bool isDateHeader(String header) {
+    final cleanH = header.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return dateColumnKeys.contains(cleanH);
+  }
+
+  /// Parses any date string (DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, DD-Mon-YYYY) into a DateTime object.
+  /// Returns null if unparseable or empty.
+  static DateTime? parseToDateTime(String? val) {
+    if (val == null) return null;
+    final s = val.trim();
+    if (s.isEmpty || s.toLowerCase() == 'none' || s.toLowerCase() == 'null' || s.toLowerCase() == 'nan') return null;
+
+    final cleanS = s.split(RegExp(r'[\sT]'))[0].trim();
+
+    // Pattern 1: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+    final dmyMatch = RegExp(r'^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$').firstMatch(cleanS);
+    if (dmyMatch != null) {
+      final d = int.tryParse(dmyMatch.group(1)!);
+      final m = int.tryParse(dmyMatch.group(2)!);
+      var y = int.tryParse(dmyMatch.group(3)!);
+      if (d != null && m != null && y != null) {
+        if (y < 100) y += 2000;
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          try {
+            return DateTime(y, m, d);
+          } catch (_) {}
+        }
+      }
+    }
+
+    // Pattern 2: YYYY-MM-DD, YYYY/MM/DD
+    final ymdMatch = RegExp(r'^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$').firstMatch(cleanS);
+    if (ymdMatch != null) {
+      final y = int.tryParse(ymdMatch.group(1)!);
+      final m = int.tryParse(ymdMatch.group(2)!);
+      final d = int.tryParse(ymdMatch.group(3)!);
+      if (y != null && m != null && d != null) {
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          try {
+            return DateTime(y, m, d);
+          } catch (_) {}
+        }
+      }
+    }
+
+    // Pattern 3: DD-Mon-YYYY, DD Mon YYYY (e.g. 12-OCT-2026, 05 Oct 26)
+    const monthMap = {
+      'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+      'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    };
+    final alphaMatch = RegExp(r'^(\d{1,2})[\/\-\.\s]+([a-zA-Z]{3,9})[\/\-\.\s]+(\d{2,4})$').firstMatch(cleanS);
+    if (alphaMatch != null) {
+      final d = int.tryParse(alphaMatch.group(1)!);
+      final mStr = alphaMatch.group(2)!.toLowerCase().substring(0, 3);
+      var y = int.tryParse(alphaMatch.group(3)!);
+      final m = monthMap[mStr];
+      if (d != null && m != null && y != null) {
+        if (y < 100) y += 2000;
+        try {
+          return DateTime(y, m, d);
+        } catch (_) {}
+      }
+    }
+
+    return DateTime.tryParse(cleanS);
+  }
+
   /// Canonical 49-column LR format matching docs/LR_Format.xlsx exactly (0 asterisks in Excel export)
   static const List<String> lrFormat49Headers = [
     'Branch',
@@ -662,9 +735,33 @@ class ExcelService {
         for (int col = 0; col < rowValues.length; col++) {
           final val = rowValues[col];
           final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: targetRow));
-          cell.value = TextCellValue(val);
-          if (rowStyle != null) {
-            cell.cellStyle = rowStyle;
+          final header = col < headers.length ? headers[col] : '';
+          final isDate = isDateHeader(header);
+
+          if (isDate) {
+            final dt = parseToDateTime(val);
+            if (dt != null) {
+              cell.value = DateTimeCellValue(
+                year: dt.year,
+                month: dt.month,
+                day: dt.day,
+                hour: 0,
+                minute: 0,
+              );
+              cell.cellStyle = (rowStyle ?? CellStyle()).copyWith(
+                numberFormat: CustomDateTimeNumFormat(formatCode: 'dd-mm-yyyy'),
+              );
+            } else {
+              cell.value = TextCellValue(val.trim().isEmpty || ['none', 'null', 'nan'].contains(val.trim().toLowerCase()) ? '' : val);
+              cell.cellStyle = (rowStyle ?? CellStyle()).copyWith(
+                numberFormat: CustomDateTimeNumFormat(formatCode: 'dd-mm-yyyy'),
+              );
+            }
+          } else {
+            cell.value = TextCellValue(val);
+            if (rowStyle != null) {
+              cell.cellStyle = rowStyle;
+            }
           }
 
           if (val.length > (maxColLengths[col] ?? 0)) {
@@ -796,8 +893,33 @@ class ExcelService {
       for (int col = 0; col < rowValues.length; col++) {
         final val = rowValues[col];
         final cell = overviewSheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: targetRow));
-        cell.value = TextCellValue(val);
-        if (rowStyle != null) cell.cellStyle = rowStyle;
+        final header = col < overviewHeaders.length ? overviewHeaders[col] : '';
+        final isDate = isDateHeader(header);
+
+        if (isDate) {
+          final dt = parseToDateTime(val);
+          if (dt != null) {
+            cell.value = DateTimeCellValue(
+              year: dt.year,
+              month: dt.month,
+              day: dt.day,
+              hour: 0,
+              minute: 0,
+            );
+            cell.cellStyle = (rowStyle ?? CellStyle()).copyWith(
+              numberFormat: CustomDateTimeNumFormat(formatCode: 'dd-mm-yyyy'),
+            );
+          } else {
+            cell.value = TextCellValue(val.trim().isEmpty || ['none', 'null', 'nan'].contains(val.trim().toLowerCase()) ? '' : val);
+            cell.cellStyle = (rowStyle ?? CellStyle()).copyWith(
+              numberFormat: CustomDateTimeNumFormat(formatCode: 'dd-mm-yyyy'),
+            );
+          }
+        } else {
+          cell.value = TextCellValue(val);
+          if (rowStyle != null) cell.cellStyle = rowStyle;
+        }
+
         if (val.length > (overviewLengths[col] ?? 0)) {
           overviewLengths[col] = val.length;
         }
@@ -1039,7 +1161,7 @@ class ExcelService {
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
     final second = dt.second.toString().padLeft(2, '0');
-    final baseName = 'LR_Report_${day}_${month}_${year}_${hour}_${minute}_${second}';
+    final baseName = 'LR_Report_${day}_${month}_${year}_${hour}_${minute}_$second';
 
     if (checkDirectory == null) {
       return '$baseName.xlsx';
@@ -1128,7 +1250,7 @@ class ExcelService {
       await FileLifecycleService.instance.recordFileCreation(
         file.path,
         'excel',
-        customMeta: {'size_bytes': bytes.length},
+        customMeta: {'size_bytes': bytes.length, 'export_id': uniqueExportId},
       );
     } catch (_) {}
     return file;
@@ -1480,7 +1602,32 @@ class ExcelService {
       for (int col = 0; col < rowVals.length; col++) {
         final val = rowVals[col];
         final cell = auditSheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: targetRow));
-        cell.value = TextCellValue(val);
+        final header = col < allHeaders.length ? allHeaders[col] : '';
+        final isDate = isDateHeader(header);
+
+        if (isDate) {
+          final dt = parseToDateTime(val);
+          if (dt != null) {
+            cell.value = DateTimeCellValue(
+              year: dt.year,
+              month: dt.month,
+              day: dt.day,
+              hour: 0,
+              minute: 0,
+            );
+            cell.cellStyle = CellStyle(
+              numberFormat: CustomDateTimeNumFormat(formatCode: 'dd-mm-yyyy'),
+            );
+          } else {
+            cell.value = TextCellValue(val.trim().isEmpty || ['none', 'null', 'nan'].contains(val.trim().toLowerCase()) ? '' : val);
+            cell.cellStyle = CellStyle(
+              numberFormat: CustomDateTimeNumFormat(formatCode: 'dd-mm-yyyy'),
+            );
+          }
+        } else {
+          cell.value = TextCellValue(val);
+        }
+
         if (val.length > (auditLengths[col] ?? 0)) {
           auditLengths[col] = val.length;
         }

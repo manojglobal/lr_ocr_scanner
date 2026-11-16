@@ -188,6 +188,16 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
 
   Future<void> _capturePhoto() async {
     if (_isCapturing || _isInitializing) return;
+    if (_capturedPages.length >= 15) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Maximum upload limit: 15 pages reached.'),
+          backgroundColor: Color(0xFFDC2626),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
     setState(() => _isCapturing = true);
 
     try {
@@ -755,7 +765,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'Align Consignment Note within border',
+                  'Align Consignment Note within border • Max 15 pages',
                   style: TextStyle(color: Colors.lightBlueAccent, fontSize: 11, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -783,7 +793,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> with WidgetsBinding
             const SizedBox(height: 8),
             Text(
               _capturedPages.isEmpty
-                  ? 'Capture consignment note photos one by one. All pages will be combined into 1 multi-page PDF.'
+                  ? 'Capture consignment note photos one by one (Maximum upload limit: 15 pages). All pages will be combined into 1 multi-page PDF.'
                   : '${_capturedPages.length} page${_capturedPages.length == 1 ? '' : 's'} added. Tap "+ Add Page" to photograph the next page, or "Done" to scan as 1 LR.',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
               textAlign: TextAlign.center,

@@ -32,6 +32,7 @@ void main() {
             'total_amount': r'$1,500.00',
             'tax': r'$150.00',
             'payment_method': 'Credit Card',
+            'freight': '100',
           },
           missingFields: const [],
         ),
@@ -47,6 +48,7 @@ void main() {
             'date': '2026-09-21',
             'vendor': 'Supplier Gamma',
             'total_amount': r'$250.00',
+            'freight': '100',
           },
           // Missing required fields will make it partial
           missingFields: const ['tax'],
@@ -58,6 +60,7 @@ void main() {
           status: BatchItemStatus.error,
           createdAt: now,
           errorMessage: 'Unreadable image',
+          record: {'freight': '100'},
         ),
       ];
 
@@ -323,6 +326,43 @@ void main() {
       } finally {
         tempDir.deleteSync(recursive: true);
       }
+    });
+
+    test('converts date strings to native Excel DateTimeCellValue with DD-MM-YYYY format', () {
+      final now = DateTime(2026, 10, 31);
+      final item = BatchItem(
+        id: 'date-test-1',
+        imagePath: '/path/to/test.jpg',
+        fileName: 'test.jpg',
+        status: BatchItemStatus.completed,
+        createdAt: now,
+        record: {
+          'grno': '54321',
+          'cngr': 'Alpha Trans',
+          'cnge': 'Omega Retail',
+          'freight': '2500',
+          'GrDate': '31-10-2026',
+          'ValidUpto': '15-11-2026',
+          'InvoieDate': '28-10-2026',
+          'DrivingValidUpto': '01-01-2030',
+          'LoadingStartDate': '31-10-2026',
+        },
+      );
+
+      final bytes = excelService.generateExcelBytes(
+        items: [item],
+        schema: DocumentSchema.grBnf,
+      );
+
+      expect(bytes, isNotEmpty);
+      final decoded = Excel.decodeBytes(bytes);
+      final sheet = decoded.sheets['Sheet1']!;
+
+      // Column 2 is GrDate
+      final grDateCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 1));
+      // With standard lowercase 'dd-mm-yyyy' format, spreadsheet parsers immediately recognize and decode it as a Date
+      expect(grDateCell.value.toString(), contains('2026-10-31'));
+      expect(grDateCell.cellStyle?.numberFormat?.formatCode, 'dd-mm-yyyy');
     });
   });
 }
