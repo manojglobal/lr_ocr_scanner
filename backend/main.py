@@ -2429,18 +2429,13 @@ async def extract_handwriting(
                             detected_text_lrs.add(cand)
 
                         try:
-                            pix = p.get_pixmap(dpi=300)
-                            pdf_all_preview_bytes.append(pix.tobytes("jpeg"))
+                            pix150 = p.get_pixmap(dpi=150)
+                            p_bytes = pix150.tobytes("jpeg")
+                            pdf_all_preview_bytes.append(p_bytes)
+                            if p_idx < 3:
+                                pages_for_lr_scan.append((f"{uf.filename or f'file_{idx+1}'}_p{p_idx+1}", p_bytes))
                         except Exception as p_err:
                             print(f"[Multi-Upload Render Error] File '{uf.filename}' page {p_idx+1}: {p_err}")
-
-                        # Collect page for pre-scan (first 3 pages per file)
-                        if p_idx < 3:
-                            try:
-                                pix150 = p.get_pixmap(dpi=150)
-                                pages_for_lr_scan.append((f"{uf.filename or f'file_{idx+1}'}_p{p_idx+1}", pix150.tobytes("jpeg")))
-                            except Exception as p150_err:
-                                print(f"[LR Pre-Scan Collect Error] File '{uf.filename}' page {p_idx+1}: {p150_err}")
 
                     combined_pdf.insert_pdf(sub_doc)
                 except Exception as ex_pdf:
@@ -2464,7 +2459,7 @@ async def extract_handwriting(
                     img_pdf = fitz.open("pdf", sub_pdf_bytes)
                     for p in img_pdf:
                         try:
-                            pix = p.get_pixmap(dpi=300)
+                            pix = p.get_pixmap(dpi=150)
                             pdf_all_preview_bytes.append(pix.tobytes("jpeg"))
                         except Exception as p_err:
                             print(f"[Multi-Upload Image Render Error] File '{uf.filename}': {p_err}")
@@ -2557,25 +2552,20 @@ async def extract_handwriting(
                         for cand in _extract_lr_candidates_from_text(p.get_text()):
                             detected_text_lrs.add(cand)
                         try:
-                            pix = p.get_pixmap(dpi=300)
-                            p_bytes = pix.tobytes("jpeg")
+                            pix150 = p.get_pixmap(dpi=150)
+                            p_bytes = pix150.tobytes("jpeg")
                             pdf_all_preview_bytes.append(p_bytes)
+                            if pdf_page_count > 1 and p_idx < 10:
+                                pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
                         except Exception as p_ex:
                             print(f"[PDF Preview Error] Failed rendering page {p_idx+1}: {p_ex}")
-
-                        if pdf_page_count > 1 and p_idx < 10:
-                            try:
-                                pix150 = p.get_pixmap(dpi=150)
-                                pages_for_lr_scan.append((f"page_{p_idx+1}", pix150.tobytes("jpeg")))
-                            except Exception as p150_ex:
-                                print(f"[PDF Pre-Scan Error] Failed page {p_idx+1}: {p150_ex}")
 
                     if pdf_all_preview_bytes:
                         t_idx = target_page_idx if target_page_idx < len(pdf_all_preview_bytes) else 0
                         pdf_preview_bytes = pdf_all_preview_bytes[t_idx]
                         b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
                         preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
-                        print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 300 DPI (primary page: {t_idx+1})")
+                        print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 150 DPI (primary page: {t_idx+1})")
                         try:
                             pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
                             is_yellow_image = is_orange_yellow_image(pdf_pil)
@@ -2709,7 +2699,7 @@ async def extract_handwriting(
         gemini_parts = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
             pages_to_send = pdf_all_preview_bytes[:15]
-            print(f"[Gemini Input] Sending {len(pages_to_send)} rendered 300 DPI page image(s) to Gemini for maximum precision.")
+            print(f"[Gemini Input] Sending {len(pages_to_send)} rendered 150 DPI page image(s) to Gemini for rapid high-precision extraction.")
             for p_bytes in pages_to_send:
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
         else:
@@ -5449,4 +5439,4 @@ if __name__ == "__main__":
     print(f"  Network / Phone Access  : http://{local_ip}:8000")
     print(f"  Download Android APK    : http://{local_ip}:8000/download-apk")
     print("=" * 65)
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
