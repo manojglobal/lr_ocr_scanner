@@ -2416,6 +2416,7 @@ async def extract_handwriting(
     target_page_idx = 0
     detected_text_lrs = set()
     pages_for_lr_scan: list[tuple[str, bytes]] = []
+    pdf_page_texts: list[str] = []
 
     import fitz
 
@@ -2570,14 +2571,31 @@ async def extract_handwriting(
                             target_page_idx = p_idx
                             break
 
+                    pdf_page_texts = []
                     for p_idx, p in enumerate(pdf_doc):
-                        for cand in _extract_lr_candidates_from_text(p.get_text()):
+                        page_txt = p.get_text()
+                        pdf_page_texts.append(page_txt)
+                        txt_cands = _extract_lr_candidates_from_text(page_txt)
+                        for cand in txt_cands:
                             detected_text_lrs.add(cand)
                         try:
                             pix150 = p.get_pixmap(dpi=150)
                             p_bytes = pix150.tobytes("jpeg")
                             pdf_all_preview_bytes.append(p_bytes)
-                            if pdf_page_count > 1 and p_idx < 10:
+
+                            # Smart Bilty Candidate Detection for Pre-Scan:
+                            # Page 1 is always included as primary consignment note.
+                            # Additional pages are included ONLY if they contain bilty keywords or LR candidates,
+                            # or if text is empty (scanned image fallback for first 3 pages).
+                            page_txt_low = page_txt.lower()
+                            is_bilty_kw = any(w in page_txt_low for w in ["consignment", "lorry receipt", "c note", "c-note", "bilty", "cngr"]) or bool(txt_cands)
+                            is_permit_or_dl = any(w in page_txt_low for w in ["national permit", "goods carriage permit", "form 23", "driving licence", "driver licence", "licence to drive"]) and not any(w in page_txt_low for w in ["consignment note", "lorry receipt", "bilty no"])
+
+                            if p_idx == 0:
+                                pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
+                            elif is_bilty_kw and not is_permit_or_dl and len(pages_for_lr_scan) < 4:
+                                pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
+                            elif not page_txt.strip() and p_idx < 3 and len(pages_for_lr_scan) < 3:
                                 pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
                         except Exception as p_ex:
                             print(f"[PDF Preview Error] Failed rendering page {p_idx+1}: {p_ex}")
@@ -2725,7 +2743,43 @@ async def extract_handwriting(
     try:
         gemini_parts = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
-            pages_to_send = pdf_all_preview_bytes[:15]
+            if len(pdf_all_preview_bytes) <= 6:
+                pages_to_send = pdf_all_preview_bytes
+            else:
+                # Intelligent relevant-page selection for large PDFs (>6 pages):
+                # Ensure primary Bilty, E-Way Bill, Tax Invoices, and Driver License are included, skipping permits.
+                selected_indices = {0}
+                if target_page_idx < len(pdf_all_preview_bytes):
+                    selected_indices.add(target_page_idx)
+
+                ewb_idx = None
+                inv_indices = []
+                dl_idx = None
+                rc_idx = None
+                for idx, raw_t in enumerate(pdf_page_texts):
+                    t_low = (raw_t or "").lower()
+                    if ewb_idx is None and any(w in t_low for w in ["e-way bill", "eway bill", "electronic way bill"]):
+                        ewb_idx = idx
+                    if len(inv_indices) < 2 and any(w in t_low for w in ["tax invoice", "commercial invoice", "invoice no"]):
+                        inv_indices.append(idx)
+                    if dl_idx is None and any(w in t_low for w in ["driving licence", "driving license", "licence to drive"]):
+                        dl_idx = idx
+                    if rc_idx is None and any(w in t_low for w in ["certificate of registration", "form 23", "chassis no"]):
+                        rc_idx = idx
+
+                for i in [ewb_idx, dl_idx, rc_idx] + inv_indices:
+                    if i is not None and i < len(pdf_all_preview_bytes) and len(selected_indices) < 6:
+                        selected_indices.add(i)
+
+                for idx in range(len(pdf_all_preview_bytes)):
+                    if len(selected_indices) >= 6:
+                        break
+                    selected_indices.add(idx)
+
+                sorted_indices = sorted(list(selected_indices))
+                pages_to_send = [pdf_all_preview_bytes[i] for i in sorted_indices]
+                print(f"[Smart Page Selection] Filtered {len(pdf_all_preview_bytes)} total pages down to {len(pages_to_send)} core relevant pages: {[i+1 for i in sorted_indices]}.")
+
             print(f"[Gemini Input] Sending {len(pages_to_send)} rendered 150 DPI page image(s) to Gemini for rapid high-precision extraction.")
             for p_bytes in pages_to_send:
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
