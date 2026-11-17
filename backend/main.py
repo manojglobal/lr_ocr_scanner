@@ -1568,6 +1568,28 @@ class PageLrScan(BaseModel):
     doc_type: str = ""
 
 
+class PageLrEntry(BaseModel):
+    page_label: str
+    is_consignment_note: bool = False
+    lr_number: str = ""
+    doc_type: str = ""
+
+
+class CombinedLrPreScan(BaseModel):
+    pages: list[PageLrEntry] = Field(default_factory=list)
+    has_multiple_different_lrs: bool = False
+    unique_lrs_found: list[str] = Field(default_factory=list)
+
+
+COMBINED_LR_PRE_SCAN_PROMPT = """Inspect the attached document pages in sequence.
+For EACH page, determine:
+1. Is this page a primary Consignment Note / Bilty receipt? (Only set is_consignment_note: true if this page itself IS the transport Consignment Note / Bilty receipt. If it is a Tax Invoice, Delivery Challan, Packing List, E-Way Bill, Driver License, or RC card, set is_consignment_note: false and lr_number: "").
+2. If is_consignment_note is true, extract the primary Consignment Note / LR tracking number into lr_number. (Never confuse invoice numbers, GSTIN, or vehicle numbers as LR numbers).
+3. If different pages contain DIFFERENT Consignment Note numbers -> set has_multiple_different_lrs: true.
+4. Output the page_label (e.g. page_1, page_2...) and classification for every page.
+"""
+
+
 PAGE_LR_PROMPT = """Inspect this transport document page carefully.
 Determine whether this page is a primary Consignment Note / Lorry Receipt (Bilty / C-Note / G.R. No).
 If it IS a Consignment Note / LR / Bilty:
@@ -2640,43 +2662,48 @@ async def extract_handwriting(
         )
 
     if len(pages_for_lr_scan) > 1:
-        print(f"[LR Pre-Scan] Performing parallel LR detection across {len(pages_for_lr_scan)} document pages...")
+        print(f"[LR Pre-Scan] Performing fast single-call multi-page LR detection across {len(pages_for_lr_scan)} document pages...")
         distinct_detected_lrs = {}
         for cand in detected_text_lrs:
             norm = _normalize_lr_candidate(cand)
             if norm and norm != "0" and len(norm) >= 2:
                 distinct_detected_lrs[norm] = cand
 
-        async def _scan_single_page(p_label: str, p_bytes: bytes) -> tuple[str, PageLrScan]:
-            def _call():
-                return model.generate_content(
-                    [{"mime_type": "image/jpeg", "data": p_bytes}, PAGE_LR_PROMPT],
-                    generation_config=genai.GenerationConfig(
-                        response_mime_type="application/json",
-                        response_schema=_to_gemini_compatible_schema(PageLrScan),
-                        temperature=0.0,
-                    ),
-                    safety_settings=SAFETY_SETTINGS,
-                )
-            try:
-                r = await asyncio.to_thread(_call)
-                txt = r.text.strip()
-                if txt.startswith("```json"): txt = txt[7:]
-                if txt.startswith("```"): txt = txt[3:]
-                if txt.endswith("```"): txt = txt[:-3]
-                d = json.loads(txt.strip())
-                return p_label, PageLrScan(**d)
-            except Exception as e_p:
-                print(f"[LR Pre-Scan Error] {p_label}: {e_p}")
-                return p_label, PageLrScan(is_consignment_note=False, lr_number="")
+        def _sync_combined_pre_scan():
+            pre_parts = []
+            for lbl, pb in pages_for_lr_scan[:12]:
+                pre_parts.append({"mime_type": "image/jpeg", "data": pb})
+            pre_parts.append(COMBINED_LR_PRE_SCAN_PROMPT)
+            return model.generate_content(
+                pre_parts,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=_to_gemini_compatible_schema(CombinedLrPreScan),
+                    temperature=0.0,
+                ),
+                safety_settings=SAFETY_SETTINGS,
+            )
 
-        scan_tasks = [_scan_single_page(lbl, pb) for lbl, pb in pages_for_lr_scan[:12]]
-        scan_results = await asyncio.gather(*scan_tasks)
-        for lbl, scan in scan_results:
-            norm = _normalize_lr_candidate(scan.lr_number)
-            print(f"[LR Pre-Scan] Page '{lbl}': is_consignment={scan.is_consignment_note}, raw='{scan.lr_number}', norm='{norm}', doc_type='{scan.doc_type}'")
-            if scan.is_consignment_note and norm and norm != "0" and len(norm) >= 2:
-                distinct_detected_lrs[norm] = scan.lr_number
+        try:
+            r = await asyncio.to_thread(_sync_combined_pre_scan)
+            txt = r.text.strip()
+            if txt.startswith("```json"): txt = txt[7:]
+            if txt.startswith("```"): txt = txt[3:]
+            if txt.endswith("```"): txt = txt[:-3]
+            d = json.loads(txt.strip())
+            scan_obj = CombinedLrPreScan(**d)
+            for p_entry in scan_obj.pages:
+                norm = _normalize_lr_candidate(p_entry.lr_number)
+                print(f"[LR Pre-Scan] Page '{p_entry.page_label}': is_consignment={p_entry.is_consignment_note}, raw='{p_entry.lr_number}', norm='{norm}', doc_type='{p_entry.doc_type}'")
+                if p_entry.is_consignment_note and norm and norm != "0" and len(norm) >= 2:
+                    distinct_detected_lrs[norm] = p_entry.lr_number
+            if scan_obj.has_multiple_different_lrs:
+                for cand_lr in scan_obj.unique_lrs_found:
+                    norm = _normalize_lr_candidate(cand_lr)
+                    if norm and norm != "0":
+                        distinct_detected_lrs[norm] = cand_lr
+        except Exception as e_p:
+            print(f"[LR Pre-Scan Fallback/Error]: {e_p}")
 
         if len(distinct_detected_lrs) > 1:
             print(f"[Validation Rejected] Multiple different LR documents detected across pages/files: {list(distinct_detected_lrs.values())}")
