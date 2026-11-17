@@ -2743,44 +2743,9 @@ async def extract_handwriting(
     try:
         gemini_parts = []
         if mime_type == "application/pdf" and pdf_all_preview_bytes:
-            if len(pdf_all_preview_bytes) <= 6:
-                pages_to_send = pdf_all_preview_bytes
-            else:
-                # Intelligent relevant-page selection for large PDFs (>6 pages):
-                # Ensure primary Bilty, E-Way Bill, Tax Invoices, and Driver License are included, skipping permits.
-                selected_indices = {0}
-                if target_page_idx < len(pdf_all_preview_bytes):
-                    selected_indices.add(target_page_idx)
-
-                ewb_idx = None
-                inv_indices = []
-                dl_idx = None
-                rc_idx = None
-                for idx, raw_t in enumerate(pdf_page_texts):
-                    t_low = (raw_t or "").lower()
-                    if ewb_idx is None and any(w in t_low for w in ["e-way bill", "eway bill", "electronic way bill"]):
-                        ewb_idx = idx
-                    if len(inv_indices) < 2 and any(w in t_low for w in ["tax invoice", "commercial invoice", "invoice no"]):
-                        inv_indices.append(idx)
-                    if dl_idx is None and any(w in t_low for w in ["driving licence", "driving license", "licence to drive"]):
-                        dl_idx = idx
-                    if rc_idx is None and any(w in t_low for w in ["certificate of registration", "form 23", "chassis no"]):
-                        rc_idx = idx
-
-                for i in [ewb_idx, dl_idx, rc_idx] + inv_indices:
-                    if i is not None and i < len(pdf_all_preview_bytes) and len(selected_indices) < 6:
-                        selected_indices.add(i)
-
-                for idx in range(len(pdf_all_preview_bytes)):
-                    if len(selected_indices) >= 6:
-                        break
-                    selected_indices.add(idx)
-
-                sorted_indices = sorted(list(selected_indices))
-                pages_to_send = [pdf_all_preview_bytes[i] for i in sorted_indices]
-                print(f"[Smart Page Selection] Filtered {len(pdf_all_preview_bytes)} total pages down to {len(pages_to_send)} core relevant pages: {[i+1 for i in sorted_indices]}.")
-
-            print(f"[Gemini Input] Sending {len(pages_to_send)} rendered 150 DPI page image(s) to Gemini for rapid high-precision extraction.")
+            # Scan ALL pages uploaded (up to the 15-page limit) so all driver credentials, invoices, and permits are captured
+            pages_to_send = pdf_all_preview_bytes
+            print(f"[Gemini Input] Sending ALL {len(pages_to_send)} rendered 150 DPI page image(s) to Gemini for complete full-document extraction.")
             for p_bytes in pages_to_send:
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
         else:
