@@ -1181,8 +1181,9 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     if cngegst:
         cngegst = re.sub(r'\s+', '', str(cngegst)).upper()
     packing = get_val("packing", "packaging", "package type")
-    pmark = _clean_pmark(get_val("pmark", "private mark", "p mark", "brand mark", "seal no", "seal"))
-    goods = get_val("goods", "goods description", "commodity", "item description", "material")
+    pmark = ""  # Private marka strictly blank per business rule
+    raw_goods_direct = data.get("goods") or data.get("Goods") or data.get("Description of Goods")
+    goods = str(raw_goods_direct).strip() if (raw_goods_direct and str(raw_goods_direct).strip()) else get_val("goods", "goods description", "commodity", "item description", "material")
     # Freight: Must be mandatory manual input. Extract entered value, keep empty if not provided.
     freight_raw = clean_num(get_val("freight  *", "freight", "Freight", "freight charges", "freight charge", "freight amount"))
     freight = freight_raw if (freight_raw is not None and str(freight_raw).strip() != "") else ""
@@ -1208,10 +1209,10 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     invdt = _format_date_ddmmyyyy(get_val("invoiedt", "invoice date", "bill date", default=grdt))
 
     vehno = get_val("Vehicle No *", "Vehicle No", "vehicle no", "truck no", "lorry no", "veh no", "reg no", "registration no", "rc no")
-    raw_vehtype = get_val("Vehicle Type *", "Vehicle Type", "vehicle type", "truck type", "lorry type", "body type", "vehicle category", "category", default="Market")
-    vehtype = "Market" if not raw_vehtype or str(raw_vehtype).strip() in ("", "None", "none", "null") else str(raw_vehtype).strip()
-    if vehtype.upper() == "MARKET":
-        vehtype = "Market"
+    raw_vehcategory = data.get("Vehicle Category *") or data.get("Vehicle Category") or get_val("Vehicle Category *", "Vehicle Category", "vehicle category", default="Market")
+    vehcategory = "Market" if not raw_vehcategory or str(raw_vehcategory).strip() in ("", "None", "none", "null") else str(raw_vehcategory).strip()
+    raw_vehtype = data.get("Vehicle Type *") or data.get("Vehicle Type") or data.get("VehicleTypeName") or get_val("Vehicle Type *", "Vehicle Type", "vehicle type", "truck type", "lorry type", "body type")
+    vehtype = str(raw_vehtype).strip() if (raw_vehtype and str(raw_vehtype).strip() and str(raw_vehtype).strip().lower() not in ("none", "null", "nan")) else ""
     driver = get_val("Driver Name *", "Driver Name", "driver name", "driver", "pilot", "owner/driver name", "owner or driver name", "driver/owner name", "owner name", "driver_name")
     mobile = get_val("Mobile no   *", "Mobile no *", "mobile no", "driver mobile", "phone no", "mobile", "contact no", "driver_mobile", "driver phone")
     license = get_val("Liscense No *", "Liscense No", "license no", "dl no", "driving license", "licence no", "driving licence no", "driving licence number", "dl number", "license_no")
@@ -1231,7 +1232,12 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
     valid_up_to = _format_date_ddmmyyyy(raw_dl_upto) if raw_dl_upto else ""
 
     loading_date = _format_date_ddmmyyyy(get_val("Loading Start date *", "Loading Start date", "loading start date", "loading date", "dispatch date", default=grdt))
-    customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
+    # Customer Name: Directly prioritize user edits from Customer Name * or Customer to prevent stale alias collisions
+    raw_cust_direct = data.get("Customer Name *") or data.get("Customer") or data.get("Customer Name") or data.get("customer")
+    if raw_cust_direct and str(raw_cust_direct).strip() and str(raw_cust_direct).strip().lower() not in ("none", "null", "nan"):
+        customer = str(raw_cust_direct).strip()
+    else:
+        customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
     lrno = _clean_grno(get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)) or grno
     bnflr = get_val("BNF LR No", "bnf lr no", "bnf lr", "bnf no")
     # Auto-detect Department from Origin City matched against ManiFest.xlsx
@@ -1392,6 +1398,8 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         "goods": goods,
         "Vehicle No *": vehno,
         "Vehicle Type *": vehtype,
+        "Vehicle Category": vehcategory,
+        "Vehicle Category *": vehcategory,
         "Driver Name *": driver,
         "Mobile no   *": mobile,
         "Liscense No *": license,
@@ -1506,7 +1514,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
             else:
                 v = None
         if h in ("pmark", "PMark"):
-            v = _clean_pmark(v) or None
+            v = None
         if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *", "GrDate", "DrivingValidUpto", "LoadingStartDate", "InvoieDate"):
             v = _format_date_ddmmyyyy(v) or None
         if v is not None and isinstance(v, str):
@@ -1973,18 +1981,20 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
         data_dict["Vehicle No"] = clean_veh
         data_dict["vehno"] = clean_veh
 
-    # 4. Vehicle Type
+    # 4. Vehicle Category & Vehicle Type (decoupled)
+    raw_veh_cat = get_val("Vehicle Category *", "Vehicle Category", "vehicle category", default="Market")
+    veh_cat_val = "Market" if not raw_veh_cat or str(raw_veh_cat).strip().lower() in ("none", "null", "nan", "") else str(raw_veh_cat).strip()
+    data_dict["Vehicle Category *"] = veh_cat_val
+    data_dict["Vehicle Category"] = veh_cat_val
+
     raw_veh_type = get_val(
-        "Vehicle Type *", "Vehicle Type", "vehicle category", "truck type", "lorry type",
-        "body type", "category", default="Market"
+        "Vehicle Type *", "Vehicle Type", "VehicleTypeName", "truck type", "lorry type",
+        "body type"
     )
-    if not raw_veh_type or str(raw_veh_type).strip().lower() in ("none", "null", "nan", "") or str(raw_veh_type).strip().upper() == "MARKET":
-        veh_type_val = "Market"
-    else:
-        veh_type_val = str(raw_veh_type).strip()
+    veh_type_val = str(raw_veh_type).strip() if (raw_veh_type and str(raw_veh_type).strip().lower() not in ("none", "null", "nan", "", "market")) else ""
     data_dict["Vehicle Type *"] = veh_type_val
     data_dict["Vehicle Type"] = veh_type_val
-    data_dict["Vehicle Category"] = veh_type_val
+    data_dict["VehicleTypeName"] = veh_type_val
 
     # 5. Consignor (cngr)
     raw_cngr = get_val(
@@ -2047,13 +2057,28 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
     if raw_dest:
         data_dict["destrefcode"] = raw_dest
 
-    # 10. Goods Description
+    # 10. Goods Description (Blank if extracted OCR value does not match GoodsMaster source data)
     raw_goods = get_val(
         "goods", "description (said to contain)", "description", "said to contain",
         "nature of goods", "commodity", "item description", "material", "goods description"
     )
-    if raw_goods:
-        data_dict["goods"] = raw_goods
+    if raw_goods and str(raw_goods).strip().lower() not in ("none", "null", "nan", ""):
+        try:
+            master_goods_list = _load_goods_names()
+        except Exception:
+            master_goods_list = []
+        clean_raw_g = str(raw_goods).strip().lower()
+        matched_goods = next((g for g in master_goods_list if g.strip().lower() == clean_raw_g), None)
+        if matched_goods:
+            data_dict["goods"] = matched_goods
+            data_dict["Goods"] = matched_goods
+        else:
+            # If extracted OCR value does not match available source data, leave blank
+            data_dict["goods"] = ""
+            data_dict["Goods"] = ""
+    else:
+        data_dict["goods"] = ""
+        data_dict["Goods"] = ""
 
     # 11. Packages
     raw_pkgs = get_val(
@@ -2205,10 +2230,10 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
     if not data_dict.get("custrefcode"):
         data_dict["custrefcode"] = get_val("custrefcode", "party code", "customer code", default="CM001")
 
-    # 22. Seal (pmark)
-    pmark_raw = get_val("pmark", "private mark", "seal no", "seal", "container seal", "brand mark")
-    if pmark_raw:
-        data_dict["pmark"] = _clean_pmark(pmark_raw)
+    # 22. Seal / Private Marka (pmark) - strictly forced blank per business rules
+    data_dict["pmark"] = ""
+    data_dict["PMark"] = ""
+    data_dict["Private Mark"] = ""
 
     # 23. Driver compliance fields
     data_dict["Driver Name *"] = get_val("Driver Name *", "driver name", "driver", "pilot", default="")
@@ -3806,6 +3831,8 @@ async def api_logout(response: Response, request: Request, authorization: str | 
 # =========================================================================
 MANIFEST_FILE_PATH = _resolve_project_file("ManiFest.xlsx")
 COUNTERS_FILE_PATH = _resolve_project_file("BookingCounterMast.xlsx")
+VEHICLE_TYPE_MASTER_PATH = _resolve_project_file("VehicleTypeMaster.xlsx")
+GOODS_MASTER_PATH = _resolve_project_file("GoodsMaster.xlsx")
 
 def _clean_party_key(s: str) -> str:
     return "".join(c for c in str(s).lower() if c.isalnum())
@@ -3827,6 +3854,8 @@ _MANIFEST_CACHE_LOCK = threading.RLock()
 _CACHED_MANIFEST_PARTIES = None
 _CACHED_MANIFEST_DATA = None
 _CACHED_COUNTERS_DATA = None
+_CACHED_VEHICLE_TYPE_RECORDS = None
+_CACHED_GOODS_MASTER_RECORDS = None
 
 def _load_manifest_parties() -> tuple[list[dict[str, str]], dict[str, str]]:
     global _CACHED_MANIFEST_PARTIES
@@ -4002,6 +4031,89 @@ def _load_counters_data() -> list[str]:
         # BookingCounterMast.xlsx is the strict single source of truth - zero synthetic std_counters
         _CACHED_COUNTERS_DATA = counters
         return _CACHED_COUNTERS_DATA
+
+def _load_vehicle_type_records() -> list[dict[str, str]]:
+    """Loads all vehicle types and categories from VehicleTypeMaster.xlsx."""
+    global _CACHED_VEHICLE_TYPE_RECORDS
+    with _MANIFEST_CACHE_LOCK:
+        if _CACHED_VEHICLE_TYPE_RECORDS is not None:
+            return _CACHED_VEHICLE_TYPE_RECORDS
+        records = []
+        if os.path.isfile(VEHICLE_TYPE_MASTER_PATH):
+            wb = None
+            try:
+                wb = openpyxl.load_workbook(VEHICLE_TYPE_MASTER_PATH, data_only=True)
+                ws = wb.active
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row or len(row) < 4:
+                        continue
+                    t_name = str(row[3] or "").strip()
+                    if not t_name or t_name.lower() in ("none", "null", ""):
+                        continue
+                    records.append({
+                        "type_name": t_name,
+                        "vehicle_type": str(row[1] or "").strip(),
+                        "type_code": str(row[2] or "").strip(),
+                        "category": str(row[4] or "").strip() if len(row) > 4 and row[4] else ""
+                    })
+            except Exception as ex:
+                print(f"[MasterData] Error loading VehicleTypeMaster.xlsx: {ex}")
+            finally:
+                if wb:
+                    try: wb.close()
+                    except Exception: pass
+        _CACHED_VEHICLE_TYPE_RECORDS = records
+        return _CACHED_VEHICLE_TYPE_RECORDS
+
+def _load_vehicle_type_names() -> list[str]:
+    """Returns sorted unique Type Names from VehicleTypeMaster.xlsx."""
+    recs = _load_vehicle_type_records()
+    names = []
+    for r in recs:
+        tn = r["type_name"]
+        if tn not in names:
+            names.append(tn)
+    return names
+
+def _load_goods_master_records() -> list[dict[str, str]]:
+    """Loads all active goods records (Active == 'Y') from GoodsMaster.xlsx."""
+    global _CACHED_GOODS_MASTER_RECORDS
+    with _MANIFEST_CACHE_LOCK:
+        if _CACHED_GOODS_MASTER_RECORDS is not None:
+            return _CACHED_GOODS_MASTER_RECORDS
+        records = []
+        if os.path.isfile(GOODS_MASTER_PATH):
+            wb = None
+            try:
+                wb = openpyxl.load_workbook(GOODS_MASTER_PATH, data_only=True)
+                ws = wb.active
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row or len(row) < 2:
+                        continue
+                    g_name = str(row[1] or "").strip()
+                    if not g_name or g_name.lower() in ("none", "null", ""):
+                        continue
+                    is_active = str(row[3] or "").strip().upper() == "Y"
+                    if not is_active:
+                        continue
+                    records.append({
+                        "goods_name": g_name,
+                        "group_name": str(row[2] or "").strip() if len(row) > 2 and row[2] else "",
+                        "hsn_code": str(row[5] or "").strip() if len(row) > 5 and row[5] else ""
+                    })
+            except Exception as ex:
+                print(f"[MasterData] Error loading GoodsMaster.xlsx: {ex}")
+            finally:
+                if wb:
+                    try: wb.close()
+                    except Exception: pass
+        _CACHED_GOODS_MASTER_RECORDS = records
+        return _CACHED_GOODS_MASTER_RECORDS
+
+def _load_goods_names() -> list[str]:
+    """Returns list of active Goods Names from GoodsMaster.xlsx."""
+    recs = _load_goods_master_records()
+    return [r["goods_name"] for r in recs]
 
 def validate_department_exact(dept: str, customer: str | None = None) -> bool:
     """Validates Department value strictly against ManiFest.xlsx.
@@ -4260,6 +4372,22 @@ async def api_get_master_counters():
     counters = _load_counters_data()
     records = _load_booking_counter_records()
     return {"success": True, "counters": counters, "records": records}
+
+@app.get("/api/master/vehicle-types")
+async def api_get_master_vehicle_types():
+    types = _load_vehicle_type_names()
+    records = _load_vehicle_type_records()
+    return {"success": True, "vehicle_types": types, "types": types, "vehicleTypes": types, "records": records}
+
+@app.get("/api/master/goods-master")
+async def api_get_master_goods():
+    goods = _load_goods_names()
+    records = _load_goods_master_records()
+    return {"success": True, "goods": goods, "records": records}
+
+@app.get("/api/master/goods")
+async def api_get_master_goods_alias():
+    return await api_get_master_goods()
 
 @app.get("/api/master/driver")
 async def api_get_master_driver(vehicle_no: str = Query(default="")):

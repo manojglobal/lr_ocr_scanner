@@ -942,11 +942,23 @@
 
               </div>
 
-              <div>
+              <div class="relative">
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Vehicle Type *</label>
 
-                <input type="text" id="edit_vehtype" value="Market" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+                <div class="relative">
+
+                  <input type="text" id="edit_vehtype" placeholder="Search Vehicle Type (e.g. 32 FT Open, TAURUS)..." autocomplete="off" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+
+                  <button type="button" id="btn_toggle_vehtype" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" title="Toggle vehicle type options">
+
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+
+                  </button>
+
+                </div>
+
+                <div id="vehtype_dropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-50 divide-y divide-slate-100 text-xs"></div>
 
               </div>
 
@@ -1000,11 +1012,23 @@
 
             <div id="tabContent_goods" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-2.5">
 
-              <div class="sm:col-span-2">
+              <div class="sm:col-span-2 relative">
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Description of Goods</label>
 
-                <input type="text" id="edit_goods" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-sky-500 focus:bg-white transition" />
+                <div class="relative">
+
+                  <input type="text" id="edit_goods" placeholder="Search Description of Goods (e.g. AUTO PARTS)..." autocomplete="off" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+
+                  <button type="button" id="btn_toggle_goods" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" title="Toggle goods options">
+
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+
+                  </button>
+
+                </div>
+
+                <div id="goods_dropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-50 divide-y divide-slate-100 text-xs"></div>
 
               </div>
 
@@ -1044,7 +1068,7 @@
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Seal No / Private Mark</label>
 
-                <input type="text" id="edit_pmark" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-sky-500 focus:bg-white transition" />
+                <input type="text" id="edit_pmark" placeholder="Leave blank" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-sky-500 focus:bg-white transition" />
 
               </div>
 
@@ -3571,7 +3595,7 @@
         case 'GrType':
           return data['GrType'] || data['grtype(Don’t know)'] || data['grtype'] || data['Payment Term'] || '';
         case 'Customer':
-          return data['Customer'] || data['Customer Name *'] || data['Customer Name'] || data['customer_name'] || data['cngr *'] || data['cngr'] || data['consignor'] || '';
+          return data['Customer Name *'] || data['Customer Name'] || data['Customer'] || data['customer_name'] || data['customer'] || data['cngr *'] || data['cngr'] || data['consignor'] || '';
         case 'CustomerDepartment':
           return data['CustomerDepartment'] || data['Depatment Name'] || data['Department Name'] || data['Department'] || '';
         case 'Countername':
@@ -3598,8 +3622,7 @@
         case 'Packing':
           return data['Packing'] || data['packing'] || data['packaging'] || '';
         case 'PMark':
-          fieldKey = 'pmark';
-          break;
+          return '';
         case 'Goods':
           fieldKey = 'goods';
           break;
@@ -3607,7 +3630,7 @@
           fieldKey = 'Vehicle No *';
           break;
         case 'VehicleTypeName':
-          return data['VehicleTypeName'] || data['Vehicle Type *'] || data['Vehicle Type'] || data['Vehicle Category'] || 'Market';
+          return data['VehicleTypeName'] || data['Vehicle Type *'] || data['Vehicle Type'] || data['vehtype'] || '';
         case 'DriverName':
           fieldKey = 'Driver Name *';
           break;
@@ -3745,9 +3768,7 @@
 
       if (fieldKey === 'pmark') {
 
-        const rawPm = String(data['pmark'] || data['Private Mark'] || data['private mark'] || data['Seal No'] || data['seal_no'] || data['seal'] || data['Seal'] || data['Seal No / Private Mark'] || '').trim();
-
-        return rawPm.replace(/^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+/i, '').replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '');
+        return '';
 
       }
 
@@ -3884,9 +3905,7 @@
 
       if (fieldKey === 'pmark') {
 
-        const rawPm = String(data['pmark'] || data['Private Mark'] || data['private mark'] || data['Seal No'] || data['seal_no'] || data['seal'] || data['Seal'] || data['Seal No / Private Mark'] || '').trim();
-
-        return rawPm.replace(/^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+/i, '').replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '');
+        return '';
 
       }
 
@@ -9711,6 +9730,18 @@
 
     let masterCountersList = [];
 
+    let masterVehicleTypes = [
+      "32 FT Open",
+      "32 FT TRAULLA",
+      "20 FT Open",
+      "10 Axle Trolly",
+      "8 Axle Trolly",
+      "TAURUS",
+      "14 FT Open"
+    ];
+
+    let masterGoodsList = [];
+
     const CITY_SPELLING_ALIASES_WEB = {
       'CALCUTTA': 'KOLKATA',
       'BOMBAY': 'MUMBAI',
@@ -10098,9 +10129,304 @@
 
       }
 
+      try {
+
+        const respVeh = await fetch('/api/master/vehicle-types');
+
+        const dVeh = await respVeh.json();
+
+        const typesList = dVeh.types || dVeh.vehicle_types || dVeh.vehicleTypes || [];
+
+        if (dVeh.success && Array.isArray(typesList) && typesList.length > 0) {
+
+          masterVehicleTypes = typesList;
+
+        }
+
+      } catch (e) {
+
+        console.warn('Failed to load Vehicle Types master data:', e);
+
+      }
+
+      try {
+
+        const respGoods = await fetch('/api/master/goods-master');
+
+        const dGoods = await respGoods.json();
+
+        if (dGoods.success && Array.isArray(dGoods.goods)) {
+
+          masterGoodsList = dGoods.goods;
+
+          if (activeItem && activeItem.data) {
+            const curG = (activeItem.data['goods'] || activeItem.data['Goods'] || '').trim();
+            if (curG && masterGoodsList.length > 0) {
+              const mG = masterGoodsList.find(g => g.trim().toLowerCase() === curG.toLowerCase());
+              if (!mG) {
+                activeItem.data['goods'] = '';
+                activeItem.data['Goods'] = '';
+                const gInput = document.getElementById('edit_goods');
+                if (gInput) gInput.value = '';
+              } else {
+                activeItem.data['goods'] = mG;
+                activeItem.data['Goods'] = mG;
+                const gInput = document.getElementById('edit_goods');
+                if (gInput) gInput.value = mG;
+              }
+            }
+          }
+
+        }
+
+      } catch (e) {
+
+        console.warn('Failed to load Goods Master data:', e);
+
+      }
+
+      initSearchableDropdownsWeb();
+
     }
 
+    function escapeHtmlStr(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
+    function handleDropdownKeynav(e, dropdownId, selectFn) {
+      const dd = document.getElementById(dropdownId);
+      if (!dd || dd.classList.contains('hidden')) return;
+
+      const items = Array.from(dd.querySelectorAll('[data-val]'));
+      if (items.length === 0) return;
+
+      let currentIndex = items.findIndex(el => el.classList.contains('bg-sky-100'));
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        currentIndex = (currentIndex + 1) % items.length;
+        items.forEach((el, i) => {
+          if (i === currentIndex) {
+            el.classList.add('bg-sky-100', 'text-sky-900', 'font-medium');
+            el.scrollIntoView({ block: 'nearest' });
+          } else {
+            el.classList.remove('bg-sky-100', 'text-sky-900', 'font-medium');
+          }
+        });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        currentIndex = (currentIndex - 1 + items.length) % items.length;
+        items.forEach((el, i) => {
+          if (i === currentIndex) {
+            el.classList.add('bg-sky-100', 'text-sky-900', 'font-medium');
+            el.scrollIntoView({ block: 'nearest' });
+          } else {
+            el.classList.remove('bg-sky-100', 'text-sky-900', 'font-medium');
+          }
+        });
+      } else if (e.key === 'Enter') {
+        if (currentIndex >= 0 && currentIndex < items.length) {
+          e.preventDefault();
+          selectFn(items[currentIndex].getAttribute('data-val'));
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        dd.classList.add('hidden');
+      }
+    }
+
+    function renderVehicleTypeDropdown(query = '', isTyping = false) {
+      const dd = document.getElementById('vehtype_dropdown');
+      if (!dd) return;
+      const q = (query || '').trim().toLowerCase();
+      const list = masterVehicleTypes.length > 0 ? masterVehicleTypes : [];
+      let filtered = q ? list.filter(item => item.toLowerCase().includes(q)) : list;
+
+      if (!isTyping && filtered.length === 0 && list.length > 0) {
+        filtered = list;
+      }
+
+      const displayItems = filtered.slice(0, 7);
+
+      if (displayItems.length === 0) {
+        dd.innerHTML = `<div class="px-3 py-2 text-slate-400 italic text-[11px] text-center">No matching vehicle types found</div>`;
+      } else {
+        dd.innerHTML = displayItems.map((item, idx) => `
+          <div class="vehtype-item px-3 py-1.5 hover:bg-sky-50 hover:text-sky-700 cursor-pointer text-slate-700 select-none transition-colors" data-index="${idx}" data-val="${item.replace(/"/g, '&quot;')}">
+            ${escapeHtmlStr(item)}
+          </div>
+        `).join('');
+
+        dd.querySelectorAll('.vehtype-item').forEach(el => {
+          el.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            selectVehicleType(el.getAttribute('data-val'));
+          });
+        });
+      }
+      dd.classList.remove('hidden');
+    }
+
+    function selectVehicleType(val) {
+      const input = document.getElementById('edit_vehtype');
+      if (input) input.value = val;
+      hideVehicleTypeDropdown();
+      if (typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem();
+    }
+
+    function hideVehicleTypeDropdown() {
+      const dd = document.getElementById('vehtype_dropdown');
+      if (dd) dd.classList.add('hidden');
+    }
+
+    function renderGoodsDropdown(query = '') {
+      const dd = document.getElementById('goods_dropdown');
+      if (!dd) return;
+      const q = (query || '').trim().toLowerCase();
+      const list = masterGoodsList.length > 0 ? masterGoodsList : [];
+      const filtered = q ? list.filter(item => item.toLowerCase().includes(q)) : list;
+      const displayItems = filtered.slice(0, 50);
+
+      if (displayItems.length === 0) {
+        dd.innerHTML = `<div class="px-3 py-2 text-slate-400 italic text-[11px] text-center">No matching goods found (keep typing or press Enter)</div>`;
+      } else {
+        dd.innerHTML = displayItems.map((item, idx) => `
+          <div class="goods-item px-3 py-1.5 hover:bg-sky-50 hover:text-sky-700 cursor-pointer text-slate-700 select-none transition-colors" data-index="${idx}" data-val="${item.replace(/"/g, '&quot;')}">
+            ${escapeHtmlStr(item)}
+          </div>
+        `).join('');
+
+        dd.querySelectorAll('.goods-item').forEach(el => {
+          el.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            selectGoods(el.getAttribute('data-val'));
+          });
+        });
+      }
+      dd.classList.remove('hidden');
+    }
+
+    function selectGoods(val) {
+      const input = document.getElementById('edit_goods');
+      if (input) input.value = val;
+      hideGoodsDropdown();
+      if (typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem();
+    }
+
+    function hideGoodsDropdown() {
+      const dd = document.getElementById('goods_dropdown');
+      if (dd) dd.classList.add('hidden');
+    }
+
+    function initSearchableDropdownsWeb() {
+      const vehInput = document.getElementById('edit_vehtype');
+      const vehToggle = document.getElementById('btn_toggle_vehtype');
+      const goodsInput = document.getElementById('edit_goods');
+      const goodsToggle = document.getElementById('btn_toggle_goods');
+
+      if (vehInput && !vehInput._searchBound) {
+        vehInput._searchBound = true;
+        vehInput.addEventListener('click', () => {
+          const val = vehInput.value.trim().toLowerCase();
+          if (val === 'market' || !masterVehicleTypes.some(t => t.toLowerCase().includes(val))) {
+            renderVehicleTypeDropdown('', false);
+          } else {
+            renderVehicleTypeDropdown(vehInput.value, false);
+          }
+        });
+        vehInput.addEventListener('input', () => {
+          renderVehicleTypeDropdown(vehInput.value, true);
+        });
+        vehInput.addEventListener('focus', () => {
+          const val = vehInput.value.trim().toLowerCase();
+          if (val === 'market' || !masterVehicleTypes.some(t => t.toLowerCase().includes(val))) {
+            renderVehicleTypeDropdown('', false);
+          } else {
+            renderVehicleTypeDropdown(vehInput.value, false);
+          }
+        });
+        vehInput.addEventListener('keydown', (e) => {
+          handleDropdownKeynav(e, 'vehtype_dropdown', selectVehicleType);
+        });
+      }
+
+      if (vehToggle && !vehToggle._searchBound) {
+        vehToggle._searchBound = true;
+        vehToggle.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const dd = document.getElementById('vehtype_dropdown');
+          if (dd && !dd.classList.contains('hidden')) {
+            hideVehicleTypeDropdown();
+          } else {
+            renderVehicleTypeDropdown('', false);
+            if (vehInput) {
+              vehInput.focus();
+              vehInput.select();
+            }
+          }
+        });
+      }
+
+      if (goodsInput && !goodsInput._searchBound) {
+        goodsInput._searchBound = true;
+        goodsInput.addEventListener('click', () => {
+          renderGoodsDropdown(goodsInput.value);
+        });
+        goodsInput.addEventListener('input', () => {
+          renderGoodsDropdown(goodsInput.value);
+        });
+        goodsInput.addEventListener('focus', () => {
+          renderGoodsDropdown(goodsInput.value);
+        });
+        goodsInput.addEventListener('keydown', (e) => {
+          handleDropdownKeynav(e, 'goods_dropdown', selectGoods);
+        });
+      }
+
+      if (goodsToggle && !goodsToggle._searchBound) {
+        goodsToggle._searchBound = true;
+        goodsToggle.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const dd = document.getElementById('goods_dropdown');
+          if (dd && !dd.classList.contains('hidden')) {
+            hideGoodsDropdown();
+          } else {
+            renderGoodsDropdown(goodsInput ? goodsInput.value : '');
+            if (goodsInput) goodsInput.focus();
+          }
+        });
+      }
+
+      const editCust = document.getElementById('edit_customer');
+      if (editCust && !editCust._syncBound) {
+        editCust._syncBound = true;
+        editCust.addEventListener('input', () => {
+          const val = editCust.value.trim();
+          const custCust = document.getElementById('custom_customer');
+          if (custCust) custCust.value = val;
+          if (activeItem && activeItem.data) {
+            activeItem.data['Customer Name *'] = val;
+            activeItem.data['Customer Name'] = val;
+            activeItem.data['Customer'] = val;
+            activeItem.data['customer'] = val;
+          }
+        });
+      }
+
+      if (!window._dropdownOutsideClickBound) {
+        window._dropdownOutsideClickBound = true;
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('#edit_vehtype') && !e.target.closest('#btn_toggle_vehtype') && !e.target.closest('#vehtype_dropdown')) {
+            hideVehicleTypeDropdown();
+          }
+          if (!e.target.closest('#edit_goods') && !e.target.closest('#btn_toggle_goods') && !e.target.closest('#goods_dropdown')) {
+            hideGoodsDropdown();
+          }
+        });
+      }
+    }
 
     // --- Step 2 & Customization Form Validation & Red Highlighting ---
 
@@ -10490,6 +10816,12 @@
 
       highlightEmptyFieldsStep2();
 
+      if (typeof initSearchableDropdownsWeb === 'function') {
+
+        initSearchableDropdownsWeb();
+
+      }
+
       highlightEmptyCustomizationFields();
 
 
@@ -10631,7 +10963,7 @@
 
       setVal('edit_vehno', d['Vehicle No *'] || d['vehno'] || d['Vehicle No'] || '');
 
-      setVal('edit_vehtype', d['Vehicle Type *'] || d['vehtype'] || d['Vehicle Category'] || 'Market');
+      setVal('edit_vehtype', d['Vehicle Type *'] || d['VehicleTypeName'] || d['Vehicle Type'] || d['vehtype'] || '');
 
 
 
@@ -10673,9 +11005,21 @@
 
 
 
-      // Tab 3: Cargo Details (Single authoritative Seal No / Private Mark)
-
-      setVal('edit_goods', d['goods'] || '');
+      // Tab 3: Cargo Details (Leave Goods blank if extracted value does not match GoodsMaster source data)
+      let currentGoods = (d['goods'] || d['Goods'] || '').trim();
+      if (currentGoods && Array.isArray(masterGoodsList) && masterGoodsList.length > 0) {
+        const matchedGoods = masterGoodsList.find(g => g.trim().toLowerCase() === currentGoods.toLowerCase());
+        if (matchedGoods) {
+          currentGoods = matchedGoods;
+          d['goods'] = matchedGoods;
+          d['Goods'] = matchedGoods;
+        } else {
+          currentGoods = '';
+          d['goods'] = '';
+          d['Goods'] = '';
+        }
+      }
+      setVal('edit_goods', currentGoods);
 
       setVal('edit_pkgs', d['bookedpckgs'] || d['stockpkgs'] || d['stockpckgs'] || d['packages'] || '');
 
@@ -10685,7 +11029,7 @@
 
       setVal('edit_cweight', d['bookedcweight'] || d['stockcweight'] || d['bookedaweight'] || '');
 
-      setVal('edit_pmark', d['pmark'] || d['Private Mark'] || d['private mark'] || d['Seal No'] || d['seal_no'] || d['seal'] || d['Seal'] || d['Seal No / Private Mark'] || '');
+      setVal('edit_pmark', '');
 
       setVal('edit_valgoods', d['valgoods'] || '');
 
@@ -10747,6 +11091,12 @@
 
       highlightEmptyFieldsStep2();
 
+      if (typeof initSearchableDropdownsWeb === 'function') {
+
+        initSearchableDropdownsWeb();
+
+      }
+
     }
 
 
@@ -10782,6 +11132,12 @@
       // Re-evaluate empty fields on the active tab so red highlights are always visible
 
       highlightEmptyFieldsStep2();
+
+      if (typeof initSearchableDropdownsWeb === 'function') {
+
+        initSearchableDropdownsWeb();
+
+      }
 
 
 
@@ -11869,7 +12225,14 @@
       const ewayDtEl = document.getElementById('edit_ewaybilldt');
       if (ewayDtEl) d['ewaybilldt'] = ewayDtEl.value.trim();
 
-      d['Customer Name *'] = document.getElementById('edit_customer').value.trim();
+      const custInput = document.getElementById('edit_customer');
+      const custVal = custInput ? custInput.value.trim() : '';
+      d['Customer Name *'] = custVal;
+      d['Customer Name'] = custVal;
+      d['Customer'] = custVal;
+      d['customer'] = custVal;
+      const customCustEl = document.getElementById('custom_customer');
+      if (customCustEl) customCustEl.value = custVal;
 
       d['orgrefcode'] = document.getElementById('edit_org').value.trim();
 
@@ -11877,7 +12240,15 @@
 
       d['Vehicle No *'] = document.getElementById('edit_vehno').value.trim();
 
-      d['Vehicle Type *'] = document.getElementById('edit_vehtype')?.value.trim() || 'Market';
+      const vehCatVal = document.getElementById('custom_veh_category')?.value.trim() || d['Vehicle Category *'] || d['Vehicle Category'] || 'Market';
+      d['Vehicle Category *'] = vehCatVal;
+      d['Vehicle Category'] = vehCatVal;
+
+      const vehTypeVal = document.getElementById('edit_vehtype')?.value.trim() || '';
+      d['Vehicle Type *'] = vehTypeVal;
+      d['VehicleTypeName'] = vehTypeVal;
+      d['Vehicle Type'] = vehTypeVal;
+      d['vehtype'] = vehTypeVal;
 
 
 
@@ -11912,6 +12283,7 @@
 
 
       d['goods'] = goodsVal;
+      d['Goods'] = goodsVal;
 
       d['bookedpckgs'] = pkgsVal;
 
@@ -11921,7 +12293,9 @@
 
       d['bookedcweight'] = cwVal;
 
-      d['pmark'] = pmVal;
+      d['pmark'] = '';
+      d['PMark'] = '';
+      d['Private Mark'] = '';
 
 
 
@@ -12404,7 +12778,8 @@
 
 
       activeItem.data['Customer Name *'] = custVal;
-
+      activeItem.data['Customer Name'] = custVal;
+      activeItem.data['Customer'] = custVal;
       activeItem.data['customer'] = custVal;
 
       activeItem.data['Depatment Name'] = deptVal;
@@ -12418,7 +12793,11 @@
       activeItem.data['branchrefcode'] = counterVal;
 
       activeItem.data['Vehicle Category'] = vehCatVal;
-      activeItem.data['Vehicle Type *'] = vehCatVal;
+      activeItem.data['Vehicle Category *'] = vehCatVal;
+      const actualVehType = document.getElementById('edit_vehtype')?.value.trim() || activeItem.data['Vehicle Type *'] || activeItem.data['VehicleTypeName'] || '';
+      activeItem.data['Vehicle Type *'] = actualVehType;
+      activeItem.data['VehicleTypeName'] = actualVehType;
+      activeItem.data['Vehicle Type'] = actualVehType;
       activeItem.data['freight  *'] = frtVal;
       activeItem.data['freight'] = frtVal;
       activeItem.data['product_type'] = prodTypeVal;
@@ -12478,7 +12857,11 @@
 
       const editGrno = document.getElementById('edit_grno')?.value.trim() || activeItem.data['grno'] || activeItem.data['LR No *'] || '';
 
-      const editCustomer = document.getElementById('custom_customer')?.value.trim() || document.getElementById('edit_customer')?.value.trim() || '';
+      const editCustEl = document.getElementById('edit_customer');
+      const customCustEl = document.getElementById('custom_customer');
+      const editCustomer = (editCustEl?.value.trim()) || (customCustEl?.value.trim()) || activeItem.data['Customer Name *'] || activeItem.data['Customer'] || '';
+      if (customCustEl) customCustEl.value = editCustomer;
+      if (editCustEl) editCustEl.value = editCustomer;
 
       const editCngr = document.getElementById('edit_cngr')?.value.trim() || '';
 
@@ -12627,7 +13010,8 @@
       }
 
       activeItem.data['Customer Name *'] = editCustomer;
-
+      activeItem.data['Customer Name'] = editCustomer;
+      activeItem.data['Customer'] = editCustomer;
       activeItem.data['customer'] = editCustomer;
 
       activeItem.data['Depatment Name'] = deptVal;
@@ -12641,7 +13025,11 @@
       activeItem.data['branchrefcode'] = counterVal;
 
       activeItem.data['Vehicle Category'] = vehCatVal;
-      activeItem.data['Vehicle Type *'] = vehCatVal;
+      activeItem.data['Vehicle Category *'] = vehCatVal;
+      const actualVehType = document.getElementById('edit_vehtype')?.value.trim() || activeItem.data['Vehicle Type *'] || activeItem.data['VehicleTypeName'] || '';
+      activeItem.data['Vehicle Type *'] = actualVehType;
+      activeItem.data['VehicleTypeName'] = actualVehType;
+      activeItem.data['Vehicle Type'] = actualVehType;
       activeItem.data['freight  *'] = frtVal;
       activeItem.data['freight'] = frtVal;
       activeItem.data['product_type'] = prodTypeVal;
