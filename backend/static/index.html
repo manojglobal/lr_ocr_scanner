@@ -3584,8 +3584,13 @@
 
       // Direct LR Format Header Mapping (matching docs/LR_Format.xlsx exactly)
       switch (fieldKey) {
-        case 'Branch':
-          return data['Branch'] || data['branchrefcode'] || data['Counter'] || data['counter'] || data['Booking Counter'] || '';
+        case 'Branch': {
+          const cnt = data['Countername'] || data['Counter name'] || data['Counter'] || data['counter'] || '';
+          const mappedBranch = getBranchNameForCounterWeb(cnt);
+          if (mappedBranch) return mappedBranch;
+          const rawBr = data['Branch'] || data['branchrefcode'] || '';
+          return (rawBr && rawBr !== cnt) ? rawBr : '';
+        }
         case 'GrNo':
           fieldKey = 'grno (*)';
           break;
@@ -3690,11 +3695,9 @@
           fieldKey = 'Extra Mt';
           break;
         case 'CustomerRefcode':
-          fieldKey = 'custrefcode';
-          break;
+          return '';
         case 'DeliveryType':
-          fieldKey = 'dlvtype';
-          break;
+          return '';
         case 'EwayBillNo':
           fieldKey = 'ewaybillno';
           break;
@@ -3876,7 +3879,13 @@
 
       if (fieldKey === 'stockdt ' || fieldKey === 'stockdt') return data['stockdt '] || data['stockdt'] || data['grdt'] || '';
 
-      if (fieldKey === 'branchrefcode') return data['branchrefcode'] || data['Counter'] || data['counter'] || data['Booking Counter'] || '';
+      if (fieldKey === 'branchrefcode') {
+        const cnt = data['Countername'] || data['Counter name'] || data['Counter'] || data['counter'] || '';
+        const mappedBranch = getBranchNameForCounterWeb(cnt);
+        if (mappedBranch) return mappedBranch;
+        const rawBr = data['Branch'] || data['branchrefcode'] || '';
+        return (rawBr && rawBr !== cnt) ? rawBr : '';
+      }
 
       if (fieldKey === 'Depatment Name' || fieldKey === 'Department Name') return data['Depatment Name'] || data['Department Name'] || data['Department'] || data['department'] || '';
 
@@ -4019,43 +4028,19 @@
 
       if (fieldKey === 'custrefcode') {
 
-        return data['custrefcode'] || data['customer ref code'] || data['customer code'] || data['party code'] || data['account code'] || data['party no'] || 'CM001';
+        return '';
 
       }
 
       if (fieldKey === 'staxpaidby') {
 
-        const stax = data['staxpaidby'] || data['stax paid by'] || data['gst paid by'] || '';
-
-        if (stax) {
-
-          const u = String(stax).trim().toUpperCase();
-
-          return (u.startsWith('E') || u.includes('CONSIGNEE')) ? 'E' : ((u.startsWith('T') || u.includes('TRANSPORTER')) ? 'T' : 'C');
-
-        }
-
-        const payTerm = String(data['grtype(Don’t know)'] || data['grtype'] || '').toUpperCase();
-
-        const isToPay = payTerm === 'T' || payTerm.includes('TO PAY') || payTerm.includes('TOPAY');
-
-        return isToPay ? 'E' : 'C';
+        return '';
 
       }
 
       if (fieldKey === 'dlvtype') {
 
-        const dlv = data['dlvtype'] || data['delivery type'] || data['dlv type'] || '';
-
-        if (dlv) {
-
-          const u = String(dlv).trim().toUpperCase();
-
-          return (u.startsWith('D') || u.includes('DOOR')) ? 'D' : 'G';
-
-        }
-
-        return 'G';
+        return '';
 
       }
 
@@ -9121,11 +9106,13 @@
 
       if (!data['ftl']) data['ftl'] = 'N';
 
-      if (!data['custrefcode']) data['custrefcode'] = 'CM001';
+      data['custrefcode'] = '';
+      data['CustomerRefcode'] = '';
 
-      if (!data['staxpaidby']) data['staxpaidby'] = 'C';
+      data['staxpaidby'] = '';
 
-      if (!data['dlvtype']) data['dlvtype'] = 'G';
+      data['dlvtype'] = '';
+      data['DeliveryType'] = '';
 
       if (!data['oamount']) data['oamount'] = '0';
 
@@ -9693,10 +9680,19 @@
 
       const rawCntr = (result.data['Counter'] || result.data['Counter name'] || result.data['counter'] || '').trim();
       const detectedCntr = autoDetectCounterWeb(orgCity, rawCntr);
+      const detectedBranch = getBranchNameForCounterWeb(detectedCntr);
       result.data['Counter'] = detectedCntr;
       result.data['Counter name'] = detectedCntr;
       result.data['counter'] = detectedCntr;
-      result.data['branchrefcode'] = detectedCntr;
+      result.data['Branch'] = detectedBranch;
+      result.data['branchrefcode'] = detectedBranch;
+
+      // Web-only rule: CustomerRefcode, staxpaidby, and DeliveryType must always remain empty
+      result.data['custrefcode'] = '';
+      result.data['CustomerRefcode'] = '';
+      result.data['staxpaidby'] = '';
+      result.data['dlvtype'] = '';
+      result.data['DeliveryType'] = '';
 
       for (const dk of ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
         if (result.data[dk]) {
@@ -9792,6 +9788,27 @@
       { counter_name: 'RAIPUR-01', branch_name: 'RAIPUR_1' },
       { counter_name: 'SILIGURI-1', branch_name: 'SILIGURI_1' }
     ];
+
+    function getBranchNameForCounterWeb(counterName) {
+      if (!counterName) return '';
+      const cntStr = String(counterName).trim();
+      if (!cntStr) return '';
+      const records = (Array.isArray(masterBookingCounterRecords) && masterBookingCounterRecords.length > 0)
+        ? masterBookingCounterRecords
+        : [];
+      for (const rec of records) {
+        if ((rec.counter_name || rec.counter || '') === cntStr) {
+          return (rec.branch_name || rec.branch || '').trim();
+        }
+      }
+      const cntUpper = cntStr.toUpperCase();
+      for (const rec of records) {
+        if (String(rec.counter_name || rec.counter || '').trim().toUpperCase() === cntUpper) {
+          return (rec.branch_name || rec.branch || '').trim();
+        }
+      }
+      return '';
+    }
 
     function autoDetectCounterWeb(originCity, counterRaw, branchRaw) {
       const records = (Array.isArray(masterBookingCounterRecords) && masterBookingCounterRecords.length > 0)
@@ -10957,7 +10974,7 @@
 
       setVal('edit_customer', d['Customer Name *'] || d['customer'] || d['Customer'] || d['cngr *'] || d['cngr'] || '');
 
-      setVal('edit_org', d['orgrefcode'] || d['org'] || d['branchrefcode'] || d['from'] || '');
+      setVal('edit_org', d['orgrefcode'] || d['org'] || d['from'] || '');
 
       setVal('edit_dest', d['destrefcode'] || d['dest'] || d['deliveryat'] || d['to'] || '');
 
@@ -12507,7 +12524,7 @@
 
       const counterEl = document.getElementById('custom_counter');
       if (counterEl) {
-        const targetCounter = d['Counter'] || d['Counter name'] || d['counter'] || d['branchrefcode'] || '';
+        const targetCounter = d['Counter'] || d['Counter name'] || d['counter'] || d['Countername'] || '';
         if (targetCounter) {
           let found = false;
           for (let i = 0; i < counterEl.options.length; i++) {
@@ -12788,9 +12805,13 @@
 
       activeItem.data['Counter'] = counterVal;
 
+      activeItem.data['Counter name'] = counterVal;
+
       activeItem.data['counter'] = counterVal;
 
-      activeItem.data['branchrefcode'] = counterVal;
+      const resolvedBranchBack = getBranchNameForCounterWeb(counterVal);
+      activeItem.data['Branch'] = resolvedBranchBack;
+      activeItem.data['branchrefcode'] = resolvedBranchBack;
 
       activeItem.data['Vehicle Category'] = vehCatVal;
       activeItem.data['Vehicle Category *'] = vehCatVal;
@@ -13020,9 +13041,18 @@
 
       activeItem.data['Counter'] = counterVal;
 
+      activeItem.data['Counter name'] = counterVal;
+
       activeItem.data['counter'] = counterVal;
 
-      activeItem.data['branchrefcode'] = counterVal;
+      const resolvedBranchSave = getBranchNameForCounterWeb(counterVal);
+      activeItem.data['Branch'] = resolvedBranchSave;
+      activeItem.data['branchrefcode'] = resolvedBranchSave;
+      activeItem.data['custrefcode'] = '';
+      activeItem.data['CustomerRefcode'] = '';
+      activeItem.data['staxpaidby'] = '';
+      activeItem.data['dlvtype'] = '';
+      activeItem.data['DeliveryType'] = '';
 
       activeItem.data['Vehicle Category'] = vehCatVal;
       activeItem.data['Vehicle Category *'] = vehCatVal;
@@ -13153,7 +13183,7 @@
 
       const vCounter = document.getElementById('v_counter');
 
-      if (vCounter) vCounter.innerText = d['Counter'] || d['branchrefcode'] || d['counter'] || '-';
+      if (vCounter) vCounter.innerText = d['Counter'] || d['Counter name'] || d['counter'] || '-';
 
       const vDriver = document.getElementById('v_driver');
 
@@ -16438,7 +16468,7 @@
 
       // Initialize default active cell in formula bar
 
-      selectExcelPreviewCell('A1', 'branchrefcode');
+      selectExcelPreviewCell('A1', 'Branch');
 
 
 
@@ -16830,7 +16860,7 @@
 
       try {
 
-        const url = mob ? `/api/export-audit/download-all?mobile=${encodeURIComponent(mob)}` : '/api/export-audit/download-all';
+        const url = mob ? `/api/export-audit/download-all?mobile=${encodeURIComponent(mob)}&client_source=web` : '/api/export-audit/download-all?client_source=web';
 
         const safeFilename = mob ? `All_Exported_LRs_${mob}.xlsx` : 'All_Exported_LRs.xlsx';
 
@@ -17870,13 +17900,24 @@
 
       const payload = {
 
-        documents: verifiedOnly.map(b => ({
+        documents: verifiedOnly.map(b => {
+          const docData = Object.assign({}, (b.data && typeof b.data === 'object') ? b.data : {});
+          const cntVal = docData['Countername'] || docData['Counter name'] || docData['Counter'] || docData['counter'] || '';
+          const mappedBr = getBranchNameForCounterWeb(cntVal);
+          docData['Branch'] = mappedBr;
+          docData['branchrefcode'] = mappedBr;
+          docData['custrefcode'] = '';
+          docData['CustomerRefcode'] = '';
+          docData['staxpaidby'] = '';
+          docData['dlvtype'] = '';
+          docData['DeliveryType'] = '';
+          return {
 
           filename: b.filename || 'consignment_note.pdf',
 
           document_title: b.document_title || 'Consignment Note',
 
-          data: (b.data && typeof b.data === 'object') ? b.data : {},
+          data: docData,
 
           created_at: b.createdAt || exportIso,
 
@@ -17886,9 +17927,12 @@
 
           edit_history: Array.isArray(b.editHistory) ? b.editHistory : []
 
-        })),
+          };
+        }),
 
         format_type: 'gr_bnf_49',
+
+        client_source: 'web',
 
         user_name: currentUser?.name || 'Ruchita Patel',
 

@@ -1106,7 +1106,7 @@ def _calculate_transit_days(start_val, end_val) -> int | str:
     return ""
 
 
-def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
+def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = False) -> list:
     """
     Intelligently maps extracted OCR key-values into the target GR template columns.
     Converts numbers and dates to clean values.
@@ -1360,10 +1360,18 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         if sgst is None or sgst == "":
             sgst = 0
 
+    if web_mode:
+        custref = ""
+        staxpaidby = ""
+        dlvtype = ""
+        effective_branch = get_branch_name_for_counter(counter_name)
+    else:
+        effective_branch = branch
+
     val_map = {
         "stockdt": stockdt,
         "stockdt ": stockdt,
-        "branchrefcode": branch,
+        "branchrefcode": effective_branch,
         "grno": grno or lrno,
         "grno (*)": grno or lrno,
         "grdt": grdt,
@@ -1438,7 +1446,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str]) -> list:
         "valgoods": valgoods,
         "viaborder": get_val("viaborder"),
         # LR_Format.xlsx exact headers
-        "Branch": branch or counter_name or "",
+        "Branch": effective_branch if web_mode else (branch or counter_name or ""),
         "GrNo": grno or lrno,
         "GrDate": grdt,
         "GrType": grtype,
@@ -1749,6 +1757,7 @@ class ExcelExportRequest(BaseModel):
     data: dict[str, Any] | None = None
     comparison_info: ComparisonInfo | None = None
     user_name: str | None = None
+    client_source: str | None = None
 
 
 def get_local_ip() -> str:
@@ -3224,7 +3233,8 @@ def _build_workbook_for_docs(
     format_type: str = "gr_bnf_49",
     user_name: str = "Logistics User",
     export_id: str | None = None,
-    include_audit_meta: bool = True
+    include_audit_meta: bool = True,
+    web_mode: bool = False
 ) -> tuple[openpyxl.Workbook, bytes, str, str]:
     # Strict validation: verify all documents have valid exact Department and Counter values and space-free GSTIN
     for doc in docs:
@@ -3321,7 +3331,7 @@ def _build_workbook_for_docs(
                 cell.border = thin_border
 
         for r_idx, doc in enumerate(docs, start=2):
-            row_vals = map_to_gr_row(_get_doc_data(doc), headers)
+            row_vals = map_to_gr_row(_get_doc_data(doc), headers, web_mode=web_mode)
             ws1.row_dimensions[r_idx].height = 20
             for col_idx, (h, val) in enumerate(zip(headers, row_vals), start=1):
                 c = ws1.cell(row=r_idx, column=col_idx)
@@ -3388,7 +3398,7 @@ def _build_workbook_for_docs(
         # Extracted Consignment Data Rows
         for r_offset, doc in enumerate(docs):
             curr_row = data_start_row + r_offset
-            row_vals = map_to_gr_row(_get_doc_data(doc), headers)
+            row_vals = map_to_gr_row(_get_doc_data(doc), headers, web_mode=web_mode)
             for col_idx, (h, val) in enumerate(zip(headers, row_vals), start=1):
                 c = ws1.cell(row=curr_row, column=col_idx)
                 c.font = data_font
@@ -3587,7 +3597,7 @@ def _build_workbook_for_docs(
         # Rows 6+: Data Rows
         for r_idx, doc in enumerate(docs, start=6):
             doc_data = _get_doc_data(doc)
-            gr_49_vals = map_to_gr_row(doc_data, GR_BNF_49_HEADERS)
+            gr_49_vals = map_to_gr_row(doc_data, GR_BNF_49_HEADERS, web_mode=web_mode)
             row_vals = [user_name, export_date, export_time, exported_at, *gr_49_vals]
             for col_idx, (h, val) in enumerate(zip(history_full_headers, row_vals), start=1):
                 c = ws_history.cell(row=r_idx, column=col_idx)
@@ -3733,7 +3743,8 @@ async def generate_excel(req: ExcelExportRequest):
             raise HTTPException(status_code=400, detail="No document data provided for Excel export")
 
     user_name = req.user_name or "Logistics User"
-    wb, file_bytes, filename, export_id = _build_workbook_for_docs(docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=False)
+    is_web = str(getattr(req, "client_source", "") or "").strip().lower() == "web"
+    wb, file_bytes, filename, export_id = _build_workbook_for_docs(docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=False, web_mode=is_web)
     return StreamingResponse(
         io.BytesIO(file_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4031,6 +4042,23 @@ def _load_counters_data() -> list[str]:
         # BookingCounterMast.xlsx is the strict single source of truth - zero synthetic std_counters
         _CACHED_COUNTERS_DATA = counters
         return _CACHED_COUNTERS_DATA
+
+def get_branch_name_for_counter(counter_name: str | None) -> str:
+    """Returns exact Branch Name from BookingCounterMast.xlsx for the given Counter Name."""
+    if not counter_name:
+        return ""
+    cnt_str = str(counter_name).strip()
+    if not cnt_str:
+        return ""
+    records = _load_booking_counter_records()
+    for rec in records:
+        if rec.get("counter_name") == cnt_str:
+            return rec.get("branch_name", "")
+    cnt_upper = cnt_str.upper()
+    for rec in records:
+        if (rec.get("counter_name") or "").strip().upper() == cnt_upper:
+            return rec.get("branch_name", "")
+    return ""
 
 def _load_vehicle_type_records() -> list[dict[str, str]]:
     """Loads all vehicle types and categories from VehicleTypeMaster.xlsx."""
@@ -4431,6 +4459,7 @@ class ExportMetaRequest(BaseModel):
     user_mobile: str | None = None
     session_token: str | None = None
     token: str | None = None
+    client_source: str | None = None
 
 
 # In-memory ephemeral cache for clean user-facing Excel bytes (avoids saving user files to disk)
@@ -4460,16 +4489,18 @@ async def api_export_excel_meta(req: ExportMetaRequest):
     exported_at = now.strftime("%d-%b-%Y %I:%M:%S %p")
 
 
+    is_web = str(req.client_source or "").strip().lower() == "web"
+
     # 1. Build backend audit copy (retaining snapshot info: User Name, Export Date, Export Time, Exported At, History sheet)
     audit_wb, audit_bytes, raw_filename, export_id = await asyncio.to_thread(
         _build_workbook_for_docs,
-        docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=True
+        docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=True, web_mode=is_web
     )
 
     # 2. Build user download copy (containing ONLY actual business data - Row 1 Headers, Rows 2+ Data, 0 metadata rows)
     user_wb, user_bytes, _, _ = await asyncio.to_thread(
         _build_workbook_for_docs,
-        docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False
+        docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False, web_mode=is_web
     )
 
     # Generate synchronized timestamped filenames for user download and backend audit copy
@@ -4869,6 +4900,7 @@ async def api_delete_export_audit(
 @app.get("/api/export-audit/download-all")
 async def download_all_user_exports(
     mobile: str | None = Query(default=None),
+    client_source: str | None = Query(default=None),
     authorization: str | None = Header(default=None)
 ):
     """Consolidates all of a user's exported LR records into a single 49-column Excel file."""
@@ -4909,7 +4941,8 @@ async def download_all_user_exports(
         raise HTTPException(status_code=404, detail="No consignment records found in export history.")
 
     user_label = target_mobile or "Consolidated"
-    wb, file_bytes, filename, export_id = _build_workbook_for_docs(all_docs, "gr_bnf_49", user_name=user_label, include_audit_meta=False)
+    is_web = str(client_source or "").strip().lower() == "web"
+    wb, file_bytes, filename, export_id = _build_workbook_for_docs(all_docs, "gr_bnf_49", user_name=user_label, include_audit_meta=False, web_mode=is_web)
     export_filename = f"All_Exported_LRs_{user_label}_{export_id}.xlsx"
 
     return StreamingResponse(
