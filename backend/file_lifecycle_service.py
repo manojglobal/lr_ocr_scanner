@@ -26,6 +26,7 @@ os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
 os.makedirs(METADATA_DIR, exist_ok=True)
 
 _lock = threading.RLock()
+_EXIFTOOL_PATH: Optional[str] = shutil.which("exiftool")
 
 
 def get_current_timestamp() -> str:
@@ -81,8 +82,8 @@ def _save_registry(registry: dict[str, dict[str, Any]]) -> None:
 
 
 def is_exiftool_available() -> bool:
-    """Checks whether the exiftool executable is available in PATH."""
-    return shutil.which("exiftool") is not None
+    """Checks whether the exiftool executable is available in PATH (cached at startup)."""
+    return _EXIFTOOL_PATH is not None
 
 
 def apply_exiftool_metadata(file_path: str, tags: dict[str, str]) -> bool:
@@ -90,10 +91,10 @@ def apply_exiftool_metadata(file_path: str, tags: dict[str, str]) -> bool:
     Executes ExifTool to write metadata tags into images or Excel files if available.
     Returns True if successfully executed, False otherwise.
     """
-    if not is_exiftool_available() or not os.path.isfile(file_path):
+    if not _EXIFTOOL_PATH or not os.path.isfile(file_path):
         return False
     try:
-        args = ["exiftool", "-overwrite_original", "-charset", "UTF8"]
+        args = [_EXIFTOOL_PATH, "-overwrite_original", "-charset", "UTF8"]
         for k, v in tags.items():
             if v:
                 args.append(f"-{k}={v}")
@@ -105,11 +106,141 @@ def apply_exiftool_metadata(file_path: str, tags: dict[str, str]) -> bool:
         return False
 
 
+def apply_exiftool_metadata_async(file_path: str, tags: dict[str, str]) -> None:
+    """Dispatches ExifTool metadata tagging on a daemon thread without blocking requests."""
+    if not _EXIFTOOL_PATH or not os.path.isfile(file_path):
+        return
+    t = threading.Thread(target=apply_exiftool_metadata, args=(file_path, tags), daemon=True)
+    t.start()
+
+
 def _get_item_snapshot_dir(file_id: str) -> str:
     """Creates and returns the snapshot vault directory for a specific file/record."""
     vault = os.path.join(SNAPSHOTS_DIR, file_id)
     os.makedirs(vault, exist_ok=True)
     return vault
+
+
+def _prepare_file_entry(
+    file_path: str,
+    file_type: str,
+    user_name: str = "Logistics User",
+    user_mobile: str = "",
+    file_bytes: Optional[bytes] = None,
+    custom_meta: Optional[dict[str, Any]] = None,
+    file_id: Optional[str] = None,
+    initial_data: Optional[dict[str, Any]] = None,
+    user_id: Optional[str] = None
+) -> tuple[str, dict[str, Any], str]:
+    """Builds a new v1 lifecycle registry entry and returns (file_id, entry, now_ts)."""
+    rel_path = os.path.relpath(file_path, BASE_DIR) if os.path.isabs(file_path) else file_path
+    filename = os.path.basename(file_path)
+    fid = file_id or f"fl_{datetime.now().strftime('%Y%m%d%H%M%S')}_{hashlib.md5(filename.encode()).hexdigest()[:6]}"
+    now_ts = get_current_timestamp()
+
+    size_bytes = 0
+    sha = ""
+    if file_bytes is not None:
+        size_bytes = len(file_bytes)
+        sha = compute_sha256(file_bytes)
+    elif os.path.isfile(file_path):
+        size_bytes = os.path.getsize(file_path)
+        sha = compute_sha256(file_path)
+
+    data_to_store = initial_data or (custom_meta.get("data") if custom_meta else None)
+    parent_dir = os.path.abspath(os.path.dirname(os.path.abspath(file_path)))
+    if parent_dir == os.path.abspath(SNAPSHOTS_DIR):
+        snapshot_filename = f"snapshots_excel/{filename}"
+    elif parent_dir == os.path.abspath(UPLOAD_LR_DIR):
+        snapshot_filename = f"upload_LR/{filename}"
+    elif file_type == "excel":
+        # Clean user download Excel is not stored on backend disk
+        snapshot_filename = None
+    else:
+        vault_dir = _get_item_snapshot_dir(fid)
+        snapshot_filename = None
+        if file_bytes:
+            ext = os.path.splitext(filename)[1] or ".bin"
+            snap_file = f"v1_created{ext}"
+            snap_path = os.path.join(vault_dir, snap_file)
+            try:
+                with open(snap_path, "wb") as sf:
+                    sf.write(file_bytes)
+                snapshot_filename = f"snapshots/{fid}/{snap_file}"
+            except Exception:
+                pass
+        elif os.path.isfile(file_path):
+            ext = os.path.splitext(filename)[1] or ".bin"
+            snap_file = f"v1_created{ext}"
+            snap_path = os.path.join(vault_dir, snap_file)
+            try:
+                shutil.copyfile(file_path, snap_path)
+                snapshot_filename = f"snapshots/{fid}/{snap_file}"
+            except Exception:
+                pass
+
+    v1_record = {
+        "version": 1,
+        "timestamp": now_ts,
+        "action": "create",
+        "user": user_name,
+        "details": "File created / uploaded",
+        "diff": None,
+        "snapshot_file": snapshot_filename,
+        "snapshot_data": data_to_store,
+        "sha256": sha
+    }
+
+    entry = {
+        "file_id": fid,
+        "file_name": filename,
+        "file_type": file_type,
+        "file_path": rel_path.replace("\\", "/"),
+        "file_size_bytes": size_bytes,
+        "file_size_kb": round(size_bytes / 1024, 1),
+        "sha256": sha,
+        "created_at": now_ts,
+        "edited_at": None,
+        "exported_at": None,
+        "deleted_at": None,
+        "is_deleted": False,
+        "created_by": user_name,
+        "user_id": user_id or (custom_meta.get("user_id") if custom_meta else None),
+        "user_mobile": user_mobile or (custom_meta.get("user_mobile") if custom_meta else ""),
+        "last_edited_by": None,
+        "current_version": 1,
+        "versions": [v1_record],
+        "edit_history": [
+            {
+                "timestamp": now_ts,
+                "user": user_name,
+                "action": "create",
+                "details": "File registered in system"
+            }
+        ],
+        "custom_meta": custom_meta or {},
+        "current_data": data_to_store
+    }
+    return fid, entry, now_ts
+
+
+def _append_export_event(
+    entry: dict[str, Any],
+    user_name: str,
+    destination: str = "download",
+    extra_details: Optional[dict[str, Any]] = None,
+    now_ts: Optional[str] = None
+) -> None:
+    """Appends an export event to an existing lifecycle entry in memory."""
+    ts = now_ts or get_current_timestamp()
+    entry["exported_at"] = ts
+    entry.setdefault("edit_history", []).append({
+        "timestamp": ts,
+        "user": user_name,
+        "action": "export",
+        "destination": destination,
+        "details": extra_details or {}
+    })
 
 
 def record_file_creation(
@@ -129,109 +260,131 @@ def record_file_creation(
     """
     with _lock:
         registry = _load_registry()
-        
-        rel_path = os.path.relpath(file_path, BASE_DIR) if os.path.isabs(file_path) else file_path
-        filename = os.path.basename(file_path)
-        fid = file_id or f"fl_{datetime.now().strftime('%Y%m%d%H%M%S')}_{hashlib.md5(filename.encode()).hexdigest()[:6]}"
-        now_ts = get_current_timestamp()
-
-        size_bytes = 0
-        sha = ""
-        if file_bytes is not None:
-            size_bytes = len(file_bytes)
-            sha = compute_sha256(file_bytes)
-        elif os.path.isfile(file_path):
-            size_bytes = os.path.getsize(file_path)
-            sha = compute_sha256(file_path)
-
-        # Create Version 1 snapshot reference
-        data_to_store = initial_data or (custom_meta.get("data") if custom_meta else None)
-        parent_dir = os.path.abspath(os.path.dirname(os.path.abspath(file_path)))
-        if parent_dir == os.path.abspath(SNAPSHOTS_DIR):
-            snapshot_filename = f"snapshots_excel/{filename}"
-        elif parent_dir == os.path.abspath(UPLOAD_LR_DIR):
-            snapshot_filename = f"upload_LR/{filename}"
-        elif file_type == "excel":
-            # Clean user download Excel is not stored on backend disk
-            snapshot_filename = None
-        else:
-            vault_dir = _get_item_snapshot_dir(fid)
-            snapshot_filename = None
-            if file_bytes:
-                ext = os.path.splitext(filename)[1] or ".bin"
-                snap_file = f"v1_created{ext}"
-                snap_path = os.path.join(vault_dir, snap_file)
-                try:
-                    with open(snap_path, "wb") as sf:
-                        sf.write(file_bytes)
-                    snapshot_filename = f"snapshots/{fid}/{snap_file}"
-                except Exception:
-                    pass
-            elif os.path.isfile(file_path):
-                ext = os.path.splitext(filename)[1] or ".bin"
-                snap_file = f"v1_created{ext}"
-                snap_path = os.path.join(vault_dir, snap_file)
-                try:
-                    shutil.copyfile(file_path, snap_path)
-                    snapshot_filename = f"snapshots/{fid}/{snap_file}"
-                except Exception:
-                    pass
-
-        v1_record = {
-            "version": 1,
-            "timestamp": now_ts,
-            "action": "create",
-            "user": user_name,
-            "details": "File created / uploaded",
-            "diff": None,
-            "snapshot_file": snapshot_filename,
-            "snapshot_data": data_to_store,
-            "sha256": sha
-        }
-
-        entry = {
-            "file_id": fid,
-            "file_name": filename,
-            "file_type": file_type,  # 'excel', 'snapshot_screenshot', 'bilty_image', 'export'
-            "file_path": rel_path.replace("\\", "/"),
-            "file_size_bytes": size_bytes,
-            "file_size_kb": round(size_bytes / 1024, 1),
-            "sha256": sha,
-            "created_at": now_ts,
-            "edited_at": None,
-            "exported_at": None,
-            "deleted_at": None,
-            "is_deleted": False,
-            "created_by": user_name,
-            "user_id": user_id or (custom_meta.get("user_id") if custom_meta else None),
-            "user_mobile": user_mobile or (custom_meta.get("user_mobile") if custom_meta else ""),
-            "last_edited_by": None,
-            "current_version": 1,
-            "versions": [v1_record],
-            "edit_history": [
-                {
-                    "timestamp": now_ts,
-                    "user": user_name,
-                    "action": "create",
-                    "details": "File registered in system"
-                }
-            ],
-            "custom_meta": custom_meta or {},
-            "current_data": data_to_store
-        }
-
+        fid, entry, now_ts = _prepare_file_entry(
+            file_path=file_path,
+            file_type=file_type,
+            user_name=user_name,
+            user_mobile=user_mobile,
+            file_bytes=file_bytes,
+            custom_meta=custom_meta,
+            file_id=file_id,
+            initial_data=initial_data,
+            user_id=user_id,
+        )
         registry[fid] = entry
         _save_registry(registry)
 
-    # Attempt ExifTool tag stamping outside lock to avoid blocking concurrent requests
+    # Dispatch ExifTool tagging asynchronously outside lock so uploads never block
     if os.path.isfile(file_path):
-        apply_exiftool_metadata(file_path, {
+        apply_exiftool_metadata_async(file_path, {
             "CreateDate": now_ts.replace("-", ":")[:19],
             "Artist": user_name,
             "UserComment": json.dumps({"file_id": fid, "created_at": now_ts})
         })
 
     return entry
+
+
+def record_export_batch_lifecycle(
+    export_id: str,
+    user_excel_path: str,
+    user_filename: str,
+    audit_excel_path: str,
+    audit_filename: str,
+    audit_bytes: bytes,
+    user_name: str,
+    user_mobile: str,
+    format_type: str,
+    exported_at: str,
+    doc_refs: list[dict[str, str]],
+) -> dict[str, Any]:
+    """
+    Records user Excel creation, audit Excel creation, initial browser download event,
+    and source bilty export tagging in a single atomic registry write.
+    """
+    with _lock:
+        registry = _load_registry()
+        fid_user, excel_meta, now_ts = _prepare_file_entry(
+            file_path=user_excel_path,
+            file_type="excel",
+            user_name=user_name,
+            user_mobile=user_mobile,
+            file_bytes=None,
+            file_id=export_id,
+            custom_meta={
+                "total_records": len(doc_refs),
+                "format_type": format_type,
+                "export_id": export_id,
+                "user_export_filename": user_filename,
+                "audit_copy": audit_filename,
+                "generated_by": user_name,
+                "generated_at": exported_at
+            }
+        )
+        registry[fid_user] = excel_meta
+
+        fid_audit, audit_meta, _ = _prepare_file_entry(
+            file_path=audit_excel_path,
+            file_type="excel_audit",
+            user_name=user_name,
+            user_mobile=user_mobile,
+            file_bytes=audit_bytes,
+            file_id=f"{export_id}_audit",
+            custom_meta={
+                "is_audit_copy": True,
+                "total_records": len(doc_refs),
+                "original_filename": user_filename,
+                "generated_by": user_name,
+                "generated_at": exported_at
+            }
+        )
+        registry[fid_audit] = audit_meta
+
+        _append_export_event(
+            entry=excel_meta,
+            user_name=user_name,
+            destination="browser_download",
+            now_ts=now_ts
+        )
+
+        # Tag underlying bilty documents as exported in the same registry write
+        for ref in doc_refs:
+            doc_fn = ref.get("filename") or ""
+            doc_lr = ref.get("lr_no") or ""
+            if not doc_fn and not doc_lr:
+                continue
+            for entry in registry.values():
+                if entry.get("file_type") not in ("bilty_image", "bilty_pdf"):
+                    continue
+                cm = entry.get("custom_meta") or {}
+                match = False
+                if doc_fn and doc_fn in (entry.get("file_name"), cm.get("original_filename"), cm.get("saved_filename"), cm.get("upload_id")):
+                    match = True
+                elif doc_lr and (doc_lr == cm.get("lr_no") or doc_lr == str((entry.get("current_data") or {}).get("LR No *") or "").strip()):
+                    match = True
+
+                if match:
+                    entry["is_exported"] = True
+                    entry["exported_at"] = exported_at
+                    entry["export_batch_id"] = export_id
+                    entry.setdefault("edit_history", []).append({
+                        "timestamp": now_ts,
+                        "user": user_name,
+                        "action": "export",
+                        "export_id": export_id,
+                        "details": f"Included in Excel export {user_filename}"
+                    })
+
+        _save_registry(registry)
+
+    if os.path.isfile(audit_excel_path):
+        apply_exiftool_metadata_async(audit_excel_path, {
+            "CreateDate": now_ts.replace("-", ":")[:19],
+            "Artist": user_name,
+            "UserComment": json.dumps({"file_id": fid_audit, "created_at": now_ts})
+        })
+
+    return excel_meta
 
 
 def record_file_edit(
@@ -310,17 +463,17 @@ def record_file_edit(
         }
         entry["edit_history"].append(edit_event)
 
-        # ExifTool update on physical file if exists
         abs_path = os.path.join(BASE_DIR, entry.get("file_path", "").replace("/", os.sep))
-        if os.path.isfile(abs_path):
-            apply_exiftool_metadata(abs_path, {
-                "ModifyDate": now_ts.replace("-", ":")[:19],
-                "UserComment": json.dumps({"file_id": fid, "version": new_ver, "edited_at": now_ts})
-            })
-
         registry[fid] = entry
         _save_registry(registry)
-        return entry
+
+    # Run ExifTool metadata update asynchronously outside lock
+    if os.path.isfile(abs_path):
+        apply_exiftool_metadata_async(abs_path, {
+            "ModifyDate": now_ts.replace("-", ":")[:19],
+            "UserComment": json.dumps({"file_id": fid, "version": new_ver, "edited_at": now_ts})
+        })
+    return entry
 
 
 def restore_file_version(
@@ -422,17 +575,12 @@ def record_file_export(
         if not entry:
             return None
 
-        now_ts = get_current_timestamp()
-        entry["exported_at"] = now_ts
-        export_event = {
-            "timestamp": now_ts,
-            "user": user_name,
-            "action": "export",
-            "destination": destination,
-            "details": extra_details or {}
-        }
-        entry["edit_history"].append(export_event)
-
+        _append_export_event(
+            entry=entry,
+            user_name=user_name,
+            destination=destination,
+            extra_details=extra_details
+        )
         registry[entry["file_id"]] = entry
         _save_registry(registry)
         return entry

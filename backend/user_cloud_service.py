@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import uuid
 import threading
 from datetime import datetime
 from typing import Any
@@ -91,7 +92,7 @@ def _save_user_db(mobile: str, data: dict) -> bool:
     """Atomic write to prevent file corruption."""
     clean_mob = _clean_mobile(mobile) or "guest"
     db_path = _get_user_db_path(clean_mob)
-    temp_path = f"{db_path}.tmp"
+    temp_path = f"{db_path}.{uuid.uuid4().hex}.tmp"
 
     data = _strip_heavy_media(data)
     data["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")

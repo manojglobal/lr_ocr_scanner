@@ -286,18 +286,22 @@ def get_font(size: int, bold: bool = False):
         return None
 
 
-BNF_49_COLUMNS = [
-    "branchrefcode", "grno (*)", "grdt *", "grtype", "Customer Name *",
-    "Depatment Name", "Counter name", "Transit Days", "orgrefcode", "destrefcode",
-    "cngr *", "cnge *", "cngrgstno *", "cngegstno *", "productcode", "packing",
-    "pmark", "goods", "Vehicle No *", "Vehicle Type *", "Driver Name *",
-    "Mobile no   *", "Liscense No *", "Valid Up to *", "Loading Start date *",
-    "freight  *", "oamount", "cgst", "sgst", "igst", "received", "advance",
-    "collectionstncode", "ftl", "pckgs", "Order Weight", "aweight", "cweight",
-    "Contract wt", "Extra Mt", "custrefcode", "staxpaidby", "dlvtype",
-    "ewaybillno", "Valid Upto", "invoiceno", "invoiedt", "valgoods", "viaborder"
+LR_FORMAT_49_HEADERS = [
+    "Branch", "GrNo", "GrDate", "GrType", "Customer", "CustomerDepartment",
+    "Countername", "TransitDays", "Origen", "Destination", "Consignor",
+    "ConsignorGST", "Consignee", "ConsigneeGST", "ProductName", "Packing",
+    "PMark", "Goods", "VehicleNo", "VehicleTypeName", "DriverName",
+    "DriverMobileNo", "DrivingLicenseNo", "DrivingValidUpto", "LoadingStartDate",
+    "Freight", "OtherAmount", "CGST", "SGST", "IGST", "Received", "Advance",
+    "CollectionBranch", "FTL", "PCS", "OrderWeight", "ActualWeight",
+    "ChargableWeight", "ContractWeight", "ExtraMt", "CustomerRefcode",
+    "staxpaidby", "DeliveryType", "EwayBillNo", "ValidUpto", "InvoiceNo",
+    "InvoieDate", "ValueOfGoods", "viaborder"
 ]
+BNF_49_COLUMNS = LR_FORMAT_49_HEADERS
 BNF_50_COLUMNS = BNF_49_COLUMNS
+
+_XLSX_EXTRACTION_CACHE: dict[tuple[str, float], list] = {}
 
 def _clean_str(s: str) -> str:
     return "".join(c for c in str(s).lower() if c.isalnum())
@@ -333,25 +337,42 @@ def _extract_docs_from_xlsx(filename: str) -> list:
     fp = resolve_file_path(filename)
     if not fp or not os.path.isfile(fp):
         return []
+    wb = None
     try:
+        mtime = os.path.getmtime(fp)
+        cache_key = (fp, mtime)
+        cached = _XLSX_EXTRACTION_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
         import openpyxl
-        wb = openpyxl.load_workbook(fp, data_only=True)
+        wb = openpyxl.load_workbook(fp, data_only=True, read_only=True)
         sheet_name = "Sheet1" if "Sheet1" in wb.sheetnames else wb.sheetnames[0]
         ws = wb[sheet_name]
-        
-        # Detect header row: if cell A1 has "User Name", headers are at row 5; otherwise row 1
-        first_val = str(ws.cell(1, 1).value or "").strip()
-        header_row = 5 if first_val.lower().startswith("user name") else 1
-        data_start_row = header_row + 1
 
-        headers = [str(ws.cell(header_row, c).value or "").strip() for c in range(1, ws.max_column + 1)]
+        row_iter = ws.iter_rows(values_only=True)
+        row1 = next(row_iter, None)
+        if row1 is None:
+            return []
+
+        first_val = str(row1[0] or "").strip() if len(row1) > 0 else ""
+        if first_val.lower().startswith("user name"):
+            # Headers are at row 5
+            header_tuple = row1
+            for _ in range(4):
+                header_tuple = next(row_iter, None)
+                if header_tuple is None:
+                    return []
+        else:
+            header_tuple = row1
+
+        headers = [str(v or "").strip() for v in header_tuple]
         records = []
-        for r in range(data_start_row, ws.max_row + 1):
+        for row_vals in row_iter:
             row_dict = {}
             has_data = False
-            for c in range(1, len(headers) + 1):
-                h = headers[c - 1]
-                v = ws.cell(r, c).value
+            for c_idx, h in enumerate(headers):
+                v = row_vals[c_idx] if c_idx < len(row_vals) else None
                 if h:
                     row_dict[h] = str(v) if v is not None else ""
                 if v is not None and str(v).strip():
@@ -361,9 +382,19 @@ def _extract_docs_from_xlsx(filename: str) -> list:
                     "filename": filename,
                     "data": row_dict
                 })
+
+        if len(_XLSX_EXTRACTION_CACHE) > 200:
+            _XLSX_EXTRACTION_CACHE.clear()
+        _XLSX_EXTRACTION_CACHE[cache_key] = records
         return records
     except Exception:
         return []
+    finally:
+        if wb is not None:
+            try:
+                wb.close()
+            except Exception:
+                pass
 
 
 def _get_val_from_dict(d: dict, col: str) -> str:
@@ -371,19 +402,71 @@ def _get_val_from_dict(d: dict, col: str) -> str:
         return "-"
     if col in d and d[col] not in (None, ""):
         return str(d[col])
+    alias_map = {
+        "Branch": ("branchrefcode", "branch"),
+        "GrNo": ("grno (*)", "grno", "LR No *", "lrno", "biltyno"),
+        "GrDate": ("grdt *", "grdt", "stockdt", "date"),
+        "GrType": ("grtype", "grtype(Don’t know)"),
+        "Customer": ("Customer Name *", "Customer Name", "customer"),
+        "CustomerDepartment": ("Depatment Name", "Department Name", "department"),
+        "Countername": ("Counter name", "Counter", "counter"),
+        "TransitDays": ("Transit Days", "transit_days"),
+        "Origen": ("orgrefcode", "from", "origin"),
+        "Destination": ("destrefcode", "to", "destination"),
+        "Consignor": ("cngr *", "cngr", "consignor"),
+        "ConsignorGST": ("cngrgstno *", "cngrgstno"),
+        "Consignee": ("cnge *", "cnge", "consignee"),
+        "ConsigneeGST": ("cngegstno *", "cngegstno"),
+        "ProductName": ("product_type", "Product Type", "productcode"),
+        "Packing": ("packing",),
+        "PMark": ("pmark",),
+        "Goods": ("goods",),
+        "VehicleNo": ("Vehicle No *", "vehno"),
+        "VehicleTypeName": ("Vehicle Type *", "Vehicle Type", "vehtype"),
+        "DriverName": ("Driver Name *", "driver_name"),
+        "DriverMobileNo": ("Mobile no   *", "Mobile No", "mobile_no"),
+        "DrivingLicenseNo": ("Liscense No *", "License No", "license_no"),
+        "DrivingValidUpto": ("Valid Up to *", "valid_upto"),
+        "LoadingStartDate": ("Loading Start date *", "grdt *", "grdt", "date"),
+        "Freight": ("freight  *", "freight"),
+        "OtherAmount": ("oamount",),
+        "CGST": ("cgst",),
+        "SGST": ("sgst",),
+        "IGST": ("igst",),
+        "Received": ("received",),
+        "Advance": ("advance",),
+        "CollectionBranch": ("collectionstncode",),
+        "FTL": ("ftl",),
+        "PCS": ("pckgs", "bookedpckgs", "stockpckgs"),
+        "OrderWeight": ("Order Weight",),
+        "ActualWeight": ("aweight", "bookedaweight", "stockaweight"),
+        "ChargableWeight": ("cweight", "bookedcweight", "stockcweight"),
+        "ContractWeight": ("Contract wt",),
+        "ExtraMt": ("Extra Mt",),
+        "CustomerRefcode": ("custrefcode",),
+        "DeliveryType": ("dlvtype",),
+        "EwayBillNo": ("ewaybillno",),
+        "ValidUpto": ("Valid Upto", "validupto"),
+        "InvoiceNo": ("invoiceno",),
+        "InvoieDate": ("invoiedt",),
+        "ValueOfGoods": ("valgoods",),
+    }
+    for alias in alias_map.get(col, ()):
+        if alias in d and d[alias] not in (None, ""):
+            return str(d[alias])
     norm_col = _clean_str(col)
     for k, v in d.items():
         if _clean_str(k) == norm_col and v not in (None, ""):
             return str(v)
-    if col == "Customer Name *":
+    if col in ("Customer", "Customer Name *"):
         return str(d.get("cngr *") or d.get("cngr") or d.get("consignor") or "-")
-    if col == "LR No *":
+    if col in ("GrNo", "LR No *"):
         return str(d.get("grno") or d.get("biltyno") or "-")
     if col == "BNF LR No":
         return str(d.get("BNF LR No") or d.get("bnf lr no") or d.get("bnflrno") or d.get("bnflr") or "-")
-    if col == "Loading Start date *":
+    if col in ("LoadingStartDate", "Loading Start date *"):
         return str(d.get("grdt") or d.get("date") or "-")
-    if col == "Valid Upto":
+    if col in ("ValidUpto", "Valid Upto"):
         return str(d.get("validupto") or "-")
     if col in ("stockdt ", "stockdt"):
         return str(d.get("stockdt") or d.get("grdt") or "-")
@@ -539,10 +622,39 @@ def purge_exports_older_than(days: int = 30) -> list[str]:
     return purged
 
 
+_purge_state_lock = threading.Lock()
+_last_purge_ts: float = 0.0
+_purge_in_progress: bool = False
+
+
+def schedule_purge_if_due(days: int = 30, min_interval_seconds: int = 3600) -> None:
+    """Runs 30-day retention cleanup asynchronously on a daemon thread at most once per interval."""
+    global _last_purge_ts, _purge_in_progress
+    now_ts = datetime.now().timestamp()
+    with _purge_state_lock:
+        if _purge_in_progress or (now_ts - _last_purge_ts) < min_interval_seconds:
+            return
+        _purge_in_progress = True
+        _last_purge_ts = now_ts
+
+    def _run_purge():
+        global _purge_in_progress
+        try:
+            with _audit_lock:
+                purge_exports_older_than(days=days)
+        except Exception:
+            pass
+        finally:
+            with _purge_state_lock:
+                _purge_in_progress = False
+
+    threading.Thread(target=_run_purge, daemon=True).start()
+
+
 def record_export_audit(audit_entry: dict):
-    """Appends export audit record to audit log JSON with 30-day auto-purge enforcement."""
+    """Appends export audit record to audit log JSON and triggers throttled retention purge."""
+    schedule_purge_if_due(days=30)
     with _audit_lock:
-        purge_exports_older_than(days=30)
         logs = []
         if os.path.exists(AUDIT_LOG_FILE):
             try:
@@ -627,11 +739,11 @@ def delete_export_audit(target: str) -> bool:
 def get_user_audit_history(user_mobile: str | None = None, limit: int = 100) -> list:
     """
     Reads export audit history strictly isolated for the given user's mobile number,
-    enforcing 30-day auto-purge and populating exact 49-column documents for UI display.
+    enforcing throttled background retention cleanup and populating exact 49-column documents for UI display.
     Excludes any records whose Excel files were deleted from the backend.
     """
+    schedule_purge_if_due(days=30)
     with _audit_lock:
-        purge_exports_older_than(days=30)
         if not os.path.exists(AUDIT_LOG_FILE):
             return []
         try:

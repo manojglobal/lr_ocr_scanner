@@ -8,7 +8,7 @@ import re
 import socket
 import uuid
 from datetime import datetime, date
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query, Request, Response
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -245,11 +245,7 @@ RED_COLUMNS_BNF_49 = [
 TEMPLATE_BNF_49 = _resolve_project_file("GR IMport format_BNF (1) (1) (1).xlsx")
 TEMPLATE_STOCK_38 = _resolve_project_file("ImportGRStockExcelFormat.xlsx")
 
-DEFAULT_HANDWRITTEN_OCR_PROMPT = """
-You are the Master OCR and Document Information Scraping Engine for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and its enterprise logistics clients.
-Inspect ALL pages in the provided document dossier thoroughly (including Consignment Note Bilty, Commercial Tax Invoices, GST E-Way Bills, Vehicle RC Form 23A, and Commercial Driving Licences DL) and map the extracted data strictly into the 49 standardized columns:
-
-### STEP 0: MANDATORY DOCUMENT AUTHENTICITY VALIDATION (FAIL-SAFE)
+STEP_0_AUTHENTICITY_RULES = """### STEP 0: MANDATORY DOCUMENT AUTHENTICITY VALIDATION (FAIL-SAFE)
 You MUST evaluate whether the image or document dossier is a genuine Logistics Consignment / Freight Transport document (Lorry Receipt, Bilty, or Consignment Note).
 
 CRITICAL CLASSIFICATION RULES:
@@ -283,7 +279,13 @@ CRITICAL CLASSIFICATION RULES:
 4. MULTI-SIGNAL INDICATORS:
    - Set `has_parties_or_movement`: true if consignor, consignee, origin, or destination are present.
    - Set `has_cargo_or_vehicle`: true if package count, cargo description, weight, or vehicle plate are present.
-   - Set `has_freight_terms`: true if freight amount, payment terms (TBB/To Pay/Paid), or transport rate are present.
+   - Set `has_freight_terms`: true if freight amount, payment terms (TBB/To Pay/Paid), or transport rate are present."""
+
+DEFAULT_HANDWRITTEN_OCR_PROMPT = """
+You are the Master OCR and Document Information Scraping Engine for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and its enterprise logistics clients.
+Inspect ALL pages in the provided document dossier thoroughly (including Consignment Note Bilty, Commercial Tax Invoices, GST E-Way Bills, Vehicle RC Form 23A, and Commercial Driving Licences DL) and map the extracted data strictly into the 49 standardized columns:
+
+""" + STEP_0_AUTHENTICITY_RULES + """
 
 ### STEP 1: AUTOMATIC COMPANY & DOCUMENT PROFILE IDENTIFICATION
 Visually examine the document header, company logo, billing parties, and stamps to classify the customer profile:
@@ -574,7 +576,7 @@ When outputting `key_value_pairs`, every extracted field MUST use the standardiz
 3. Return valid JSON matching all 49 keys exactly.
 """
 
-DEFAULT_HIMALAYA_OCR_PROMPT = """
+DEFAULT_HIMALAYA_OCR_PROMPT = STEP_0_AUTHENTICITY_RULES + "\n\n" + """
 You are an expert OCR and document information scraping engine specialized in reading transport bilties, consignment notes, and associated multi-page vehicle/driver compliance packets for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and 'Himalaya Wellness Company'.
 
 DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
@@ -643,7 +645,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 Produce valid JSON object matching all 49 keys exactly.
 """
 
-DEFAULT_GOLD_PLUS_OCR_PROMPT = """
+DEFAULT_GOLD_PLUS_OCR_PROMPT = STEP_0_AUTHENTICITY_RULES + "\n\n" + """
 You are an expert OCR and document information scraping engine specialized in reading transport bilties, commercial tax invoices, returnable gate passes, E-Way bills, and weighbridge slips for 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.' and 'GOLD PLUS FLOAT GLASS PRIVATE LIMITED'.
 
 DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
@@ -709,7 +711,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 Produce valid JSON object matching all 49 keys exactly.
 """
 
-DEFAULT_PATANJALI_OCR_PROMPT = """
+DEFAULT_PATANJALI_OCR_PROMPT = STEP_0_AUTHENTICITY_RULES + "\n\n" + """
 You are an expert OCR and document information scraping engine specialized in reading transport bilties, consignment notes, and driver/vehicle compliance credentials for 'PATANJALI PARIVAHAN PVT. LTD.' and 'PATANJALI FOODS LIMITED' (formerly Ruchi Soya Industries Limited).
 
 DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
@@ -775,7 +777,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 Produce valid JSON object matching all 49 keys exactly.
 """
 
-DEFAULT_UNICHARM_OCR_PROMPT = """
+DEFAULT_UNICHARM_OCR_PROMPT = STEP_0_AUTHENTICITY_RULES + "\n\n" + """
 You are an expert OCR and document information scraping engine specialized in reading transport bilties, commercial tax invoices, E-Way bills, and driver/vehicle compliance credentials for 'UNICHARM INDIA PVT. LTD.' (Vuicharm / Uvicharm) transported by 'BOX N FREIGHT LOGISTICS SOLUTIONS PVT. LTD.'.
 
 DOCUMENT & MULTI-PAGE DOSSIER INSTRUCTIONS:
@@ -1028,31 +1030,42 @@ def _parse_to_datetime_obj(raw) -> datetime | None:
 def ensure_excel_date_number_formats(excel_bytes: bytes) -> bytes:
     """
     Guarantees that all cellXfs with numFmtId != 0 in xl/styles.xml explicitly have applyNumberFormat="1".
-    This ensures Microsoft Excel, ERP systems, and external spreadsheet readers properly display
-    native Excel DateTimes in DD-MM-YYYY format instead of raw numeric serial values.
+    Skips re-zipping completely when xl/styles.xml already satisfies this requirement.
     """
     if not excel_bytes or not isinstance(excel_bytes, (bytes, bytearray)):
         return excel_bytes
     try:
         in_buf = io.BytesIO(excel_bytes)
-        out_buf = io.BytesIO()
         with zipfile.ZipFile(in_buf, "r") as zin:
+            if "xl/styles.xml" not in zin.namelist():
+                return bytes(excel_bytes)
+            styles_text = zin.read("xl/styles.xml").decode("utf-8")
+
+            needs_patch = False
+            for m in re.finditer(r'<xf\b[^>]*>', styles_text):
+                xf_str = m.group(0)
+                num_fmt_match = re.search(r'numFmtId="([^"]+)"', xf_str)
+                if num_fmt_match and num_fmt_match.group(1) not in ("0", "") and 'applyNumberFormat=' not in xf_str:
+                    needs_patch = True
+                    break
+
+            if not needs_patch:
+                return bytes(excel_bytes)
+
+            def _patch_xf(match):
+                xf_str = match.group(0)
+                num_fmt_match = re.search(r'numFmtId="([^"]+)"', xf_str)
+                if num_fmt_match and num_fmt_match.group(1) not in ("0", "") and 'applyNumberFormat=' not in xf_str:
+                    return re.sub(r'(<xf\b)', r'\1 applyNumberFormat="1"', xf_str, count=1)
+                return xf_str
+
+            patched_bytes = re.sub(r'<xf\b[^>]*>', _patch_xf, styles_text).encode("utf-8")
+            out_buf = io.BytesIO()
             with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
                 for item in zin.infolist():
-                    content = zin.read(item.filename)
-                    if item.filename == "xl/styles.xml":
-                        text = content.decode("utf-8")
-                        def _patch_xf(match):
-                            xf_str = match.group(0)
-                            num_fmt_match = re.search(r'numFmtId="([^"]+)"', xf_str)
-                            if num_fmt_match and num_fmt_match.group(1) not in ("0", ""):
-                                if 'applyNumberFormat=' not in xf_str:
-                                    xf_str = re.sub(r'(<xf\b)', r'\1 applyNumberFormat="1"', xf_str, count=1)
-                            return xf_str
-                        patched_text = re.sub(r'<xf\b[^>]*>', _patch_xf, text)
-                        content = patched_text.encode("utf-8")
+                    content = patched_bytes if item.filename == "xl/styles.xml" else zin.read(item.filename)
                     zout.writestr(item, content)
-        return out_buf.getvalue()
+            return out_buf.getvalue()
     except Exception as e:
         print(f"[Excel Number Format Patch Notice] {e}")
         return bytes(excel_bytes)
@@ -1555,14 +1568,17 @@ class KeyValuePair(BaseModel):
 
 
 MULTI_DOCUMENT_CONSIGNMENT_RULE = """
-### STEP 0B: MULTI-PAGE & MULTI-DOCUMENT CONSIGNMENT VERIFICATION
-You must inspect all pages in the document dossier and detect whether they belong to ONE consignment or MULTIPLE different consignments:
-- Identify every primary Consignment Note / LR tracking number (printed in 'CONSIGNMENT NOTE: No.', 'LR No.', 'Bilty No.', 'C-Note No.', 'G.R. No.').
-- CRITICAL: Never confuse invoice numbers, vehicle plate numbers, GST numbers, e-way bill numbers, or seal numbers as LR numbers.
-- `detected_lr_numbers`: Output an array of all unique Consignment Note / LR tracking numbers identified across the pages.
-- `has_multiple_different_lrs`:
-  * If different pages contain DIFFERENT Consignment Note numbers (meaning documents from multiple separate shipments were uploaded together) -> set `has_multiple_different_lrs: true` and `rejection_reason: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.'`.
-  * If all pages belong to the SAME Consignment Note (e.g. Page 1 + Page 2 of same LR, or LR + supporting invoice/DL/E-way bill) -> set `has_multiple_different_lrs: false` and list that single LR number in `detected_lr_numbers`.
+### STEP 0B: MANDATORY PAGE-BY-PAGE CONSIGNMENT AUDIT & MULTI-LR CHECK
+Before extracting fields, inspect EVERY labeled page from Page 1 through the FINAL page (do NOT stop after reading the first LR):
+1. `page_lr_entries`: Output one entry for EACH attached page (`page_label`, `is_consignment_note`, `lr_number`, `doc_type`):
+   - Set `is_consignment_note: true` ONLY when that page itself is a Lorry Receipt / Consignment Note / Bilty / C-Note receipt, and extract its LR tracking number into `lr_number`.
+   - For Tax Invoices, E-Way Bills, Driving Licences, Vehicle RC, or photos, set `is_consignment_note: false` and `lr_number: ""`.
+   - CRITICAL: Never treat invoice numbers, vehicle numbers, GSTINs, e-way bill numbers, or seal numbers as LR numbers.
+2. `detected_lr_numbers`: Output all unique Consignment Note / LR tracking numbers seen across all Consignment Note / Bilty pages.
+3. `has_multiple_different_lrs`:
+   - If two or more Consignment Note / Bilty pages carry DIFFERENT LR tracking numbers (multiple shipments uploaded together) -> set `has_multiple_different_lrs: true` and `rejection_reason: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.'`.
+   - If all pages belong to ONE LR (even with multiple invoices, E-Way bills, RC, or DL) -> set `has_multiple_different_lrs: false` and list that single LR number in `detected_lr_numbers`.
+4. DRIVER LICENCE SCANNING: Inspect ALL attached pages through the end of the dossier (including back/trailing pages behind invoices) for any Driving Licence (DL) card. If a DL is attached, extract "Driver Name *", "Liscense No *", and "Valid Up to *" (preferring 'Validity(TR)' expiry date formatted DD/MM/YYYY); if no DL is attached, leave them strictly "".
 """
 
 
@@ -1636,6 +1652,7 @@ class GeminiOCRResponse(BaseModel):
     has_cargo_or_vehicle: bool = False
     has_freight_terms: bool = False
     rejection_reason: str = ""
+    page_lr_entries: list[PageLrEntry] = Field(default_factory=list)
     detected_lr_numbers: list[str] = Field(default_factory=list)
     has_multiple_different_lrs: bool = False
     key_value_pairs: list[KeyValuePair]
@@ -2073,11 +2090,11 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
     )
     if raw_goods and str(raw_goods).strip().lower() not in ("none", "null", "nan", ""):
         try:
-            master_goods_list = _load_goods_names()
+            goods_lookup = _load_goods_lookup()
         except Exception:
-            master_goods_list = []
+            goods_lookup = {}
         clean_raw_g = str(raw_goods).strip().lower()
-        matched_goods = next((g for g in master_goods_list if g.strip().lower() == clean_raw_g), None)
+        matched_goods = goods_lookup.get(clean_raw_g)
         if matched_goods:
             data_dict["goods"] = matched_goods
             data_dict["Goods"] = matched_goods
@@ -2145,10 +2162,25 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
     if raw_ewb:
         data_dict["ewaybillno"] = re.sub(r'[^0-9]', '', str(raw_ewb))
 
-    # 16. E-Way Bill Validity
-    raw_ewb_upto = get_val("Valid Upto", "valid upto", "valid upto (ewb)", "ewb valid upto", "e-way bill valid upto", "eway validity")
+    # 16. E-Way Bill Validity (decoupled from Driver DL Valid Up to *)
+    raw_ewb_upto = ""
+    for k, v in data_dict.items():
+        if v is None or str(v).strip() == "":
+            continue
+        k_str = str(k).strip()
+        k_low = k_str.lower()
+        k_clean = re.sub(r'[^a-zA-Z0-9]', '', k_low)
+        if k_str in ("Valid Upto", "valid_upto", "Valid Upto (EWB)", "ewb valid upto", "ewb_valid_upto", "e-way bill valid upto", "eway validity"):
+            raw_ewb_upto = str(v).strip()
+            break
+        if "*" not in k_str and not any(w in k_low for w in ("dl", "license", "licence", "driver", "driving", "up to")):
+            if k_clean in ("validupto", "validuptoewb", "ewbvalidupto", "ewaybillvalidupto", "ewayvalidity"):
+                raw_ewb_upto = str(v).strip()
+                break
     if raw_ewb_upto:
         data_dict["Valid Upto"] = _format_date_ddmmyyyy(raw_ewb_upto)
+    elif data_dict.get("Valid Upto"):
+        data_dict["Valid Upto"] = _format_date_ddmmyyyy(data_dict["Valid Upto"])
 
     # 17. Transit Days
     calc_td = _calculate_transit_days(data_dict.get("grdt", ""), data_dict.get("Valid Upto", ""))
@@ -2248,7 +2280,20 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
     data_dict["Driver Name *"] = get_val("Driver Name *", "driver name", "driver", "pilot", default="")
     data_dict["Mobile no   *"] = get_val("Mobile no   *", "mobile no *", "mobile no", "driver mobile", default="")
     data_dict["Liscense No *"] = get_val("Liscense No *", "license no *", "license no", "dl no", default="")
-    raw_dl_up = get_val("Valid Up to *", "valid up to *", "valid up to", "dl valid till", "license valid", default="")
+    # Keep Driver DL validity strictly decoupled from E-Way Bill 'Valid Upto'
+    raw_dl_up = ""
+    for k, v in data_dict.items():
+        if v is None or str(v).strip() == "":
+            continue
+        k_str = str(k).strip()
+        k_low = k_str.lower()
+        k_clean = re.sub(r'[^a-zA-Z0-9]', '', k_low)
+        if k_str in ("Valid Up to *", "Valid Up to", "valid up to *", "valid_up_to", "dl valid till", "dl_valid_till", "license valid", "driving licence valid", "DrivingValidUpto"):
+            raw_dl_up = str(v).strip()
+            break
+        if ("*" in k_str or any(w in k_low for w in ("dl", "license", "licence", "driver", "driving", "up to"))) and k_clean in ("validupto", "drivingvalidupto", "licensevalid", "dlvalidtill", "drivinglicencevalid"):
+            raw_dl_up = str(v).strip()
+            break
     data_dict["Valid Up to *"] = _format_date_ddmmyyyy(raw_dl_up) if raw_dl_up else ""
 
     # Sanitize dummy mobile numbers
@@ -2316,6 +2361,578 @@ async def api_assemble_pdf(files: list[UploadFile] = File(...)):
                 print(f"[Assemble PDF error] {e}")
     out_bytes = doc.tobytes()
     return Response(content=out_bytes, media_type="application/pdf")
+
+
+def _detect_customer_prompt_from_text(
+    txt_low: str,
+    active_prompt: str,
+    prompt_type: str,
+) -> tuple[str, str]:
+    """Selects customer-specific OCR prompt when unambiguous keywords appear in text."""
+    if not txt_low or prompt_type == "Custom":
+        return active_prompt, prompt_type
+    if "patanjali" in txt_low:
+        return DEFAULT_PATANJALI_OCR_PROMPT, "Patanjali OCR"
+    if any(w in txt_low for w in ("unicharm", "uvicharm", "vuicharm", "micharm")):
+        return DEFAULT_UNICHARM_OCR_PROMPT, "Unicharm OCR"
+    if "himalaya" in txt_low:
+        return DEFAULT_HIMALAYA_OCR_PROMPT, "Himalaya OCR"
+    if any(w in txt_low for w in ("gold plus", "gold_plus", "goldplus", "gold float glass")):
+        return DEFAULT_GOLD_PLUS_OCR_PROMPT, "Gold Plus OCR"
+    return active_prompt, prompt_type
+
+
+def _is_blank_jpeg_bytes(jpeg_bytes: bytes) -> bool:
+    """Checks rendered JPEG bytes for blank/solid pages safely."""
+    try:
+        with Image.open(io.BytesIO(jpeg_bytes)) as im:
+            return is_blank_or_solid_image(im)
+    except Exception:
+        return False
+
+
+def _select_gemini_pages_for_pdf(
+    preview_bytes_list: list[bytes],
+    page_texts: list[str],
+    target_page_idx: int,
+    page_labels: list[str] | None = None,
+    is_multi_file: bool = False,
+) -> tuple[list[bytes], list[str]]:
+    """
+    Filters blank pages and, for text-layer multi-page PDF packets, selects highest-signal
+    consignment/invoice/E-Way/DL/scanned pages along with aligned page/file labels.
+    """
+    labels = (
+        page_labels
+        if (page_labels is not None and len(page_labels) == len(preview_bytes_list))
+        else [f"Page {i + 1}" for i in range(len(preview_bytes_list))]
+    )
+    if not preview_bytes_list:
+        return [], []
+    if len(preview_bytes_list) == 1:
+        return preview_bytes_list, labels
+
+    cap = 10 if is_multi_file else 8
+    small_limit = 8 if is_multi_file else 6
+    if is_multi_file and len(preview_bytes_list) <= small_limit:
+        return preview_bytes_list, labels
+
+    non_blank: list[tuple[int, bytes, str, str]] = []
+    for idx, pb in enumerate(preview_bytes_list):
+        txt = page_texts[idx] if idx < len(page_texts) else ""
+        if len(txt.strip()) == 0 and _is_blank_jpeg_bytes(pb):
+            continue
+        non_blank.append((idx, pb, txt, labels[idx]))
+
+    if not non_blank:
+        return preview_bytes_list[:1], labels[:1]
+
+    # Always preserve scanned image pages (no embedded PDF text) so trailing DL/RC cards and second bilties are never dropped
+    scanned_count = sum(1 for _, _, txt, _ in non_blank if len(txt.strip()) < 50)
+    if len(non_blank) <= small_limit or scanned_count == len(non_blank):
+        return [item[1] for item in non_blank], [item[3] for item in non_blank]
+
+    priority_kw = (
+        "consign", "lorry", "bilty", "c note", "c-note", "cngr", "cnge",
+        "tax invoice", "invoice", "e-way", "ewb", "driving", "licen", "dl no",
+        "form 23", "vehicle", "gstin", "weight", "packages", "freight",
+    )
+    boilerplate_kw = (
+        "national permit", "goods carriage permit", "insurance policy",
+        "pollution under control", "terms and conditions",
+    )
+
+    scored: list[tuple[int, int, bytes, str, bool]] = []
+    for idx, pb, txt, lbl in non_blank:
+        t_low = txt.lower()
+        is_scanned = len(txt.strip()) < 50
+        score = 0
+        if idx == 0 or idx == target_page_idx:
+            score += 100
+        if any(k in t_low for k in priority_kw):
+            score += 10
+        elif is_scanned:
+            score += 5
+        if any(k in t_low for k in boilerplate_kw) and "consign" not in t_low and "invoice" not in t_low:
+            score -= 8
+        scored.append((score, idx, pb, lbl, is_scanned))
+
+    kept_indices = {
+        idx for _, idx, _, _, is_scanned in scored
+        if is_scanned or idx == 0 or idx == target_page_idx
+    }
+    remaining_budget = max(0, cap - len(kept_indices))
+    if remaining_budget > 0:
+        text_candidates = [
+            x for x in scored
+            if not x[4] and x[1] != 0 and x[1] != target_page_idx
+        ]
+        for _, idx, _, _, _ in sorted(text_candidates, key=lambda x: (-x[0], x[1]))[:remaining_budget]:
+            kept_indices.add(idx)
+
+    selected = [(pb, lbl) for _, idx, pb, lbl, _ in scored if idx in kept_indices]
+    return [x[0] for x in selected], [x[1] for x in selected]
+
+
+def _normalize_image_to_jpeg_bytes(
+    raw_bytes: bytes,
+    quality: int = 90,
+    reject_blank: bool = True,
+) -> tuple[bytes, int, int, bool, bool]:
+    """
+    Decodes an uploaded image, applies EXIF transpose, checks color/blankness,
+    downscales if oversize (>2600px -> 2400px), and encodes JPEG bytes.
+    """
+    with Image.open(io.BytesIO(raw_bytes)) as raw_im:
+        try:
+            pil_img = ImageOps.exif_transpose(raw_im)
+        except Exception:
+            pil_img = raw_im
+        orig_w, orig_h = pil_img.size
+        is_yellow = is_orange_yellow_image(pil_img)
+        if reject_blank and is_blank_or_solid_image(pil_img):
+            return b"", orig_w, orig_h, is_yellow, True
+        if max(orig_w, orig_h) > 2600:
+            scale = 2400.0 / max(orig_w, orig_h)
+            pil_img = pil_img.resize((int(orig_w * scale), int(orig_h * scale)), Image.Resampling.LANCZOS)
+        if pil_img.mode in ("RGBA", "P", "CMYK"):
+            pil_img = pil_img.convert("RGB")
+        buf = io.BytesIO()
+        pil_img.save(buf, format="JPEG", quality=quality)
+        return buf.getvalue(), orig_w, orig_h, is_yellow, False
+
+
+def _preprocess_uploads_sync(
+    upload_meta: list[tuple[str, str, bytes]],
+    custom_prompt: str | None,
+) -> dict[str, Any]:
+    """
+    Runs synchronous CPU-bound PDF parsing/rasterization and PIL resizing off the asyncio
+    event loop in a single fitz pass per PDF document.
+    """
+    import fitz
+
+    MAX_UPLOAD_PAGES_LIMIT = 15
+    total_files_count = len(upload_meta)
+    primary_filename = upload_meta[0][0]
+    lower_filename = primary_filename.lower()
+
+    if isinstance(custom_prompt, str) and custom_prompt.strip():
+        active_prompt = custom_prompt.strip()
+        prompt_type = "Custom"
+    elif "patanjali" in lower_filename:
+        active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
+        prompt_type = "Patanjali OCR"
+    elif any(w in lower_filename for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
+        active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
+        prompt_type = "Unicharm OCR"
+    elif "himalaya" in lower_filename or bool(re.search(r'(?:^|[^a-z])him(?:[^a-z]|$)', lower_filename)):
+        active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
+        prompt_type = "Himalaya OCR"
+    elif any(w in lower_filename for w in ["gold_plus", "gold plus", "goldplus", "gold float glass"]):
+        active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
+        prompt_type = "Gold Plus OCR"
+    else:
+        active_prompt = DEFAULT_HANDWRITTEN_OCR_PROMPT
+        prompt_type = "Default Master OCR"
+
+    opened_pdfs: list[Any] = []
+    try:
+        total_batch_pages = 0
+        pdf_docs_by_idx: dict[int, Any] = {}
+        is_pdf_flags: list[bool] = []
+
+        for idx, (fname, ctype, fbytes) in enumerate(upload_meta):
+            fn_low = (fname or "").lower()
+            is_pdf_file = fn_low.endswith(".pdf") or "pdf" in (ctype or "").lower() or (len(fbytes) >= 4 and fbytes[:4] == b"%PDF")
+            is_pdf_flags.append(is_pdf_file)
+            if is_pdf_file:
+                try:
+                    pdf_handle = fitz.open(stream=fbytes, filetype="pdf")
+                    opened_pdfs.append(pdf_handle)
+                    pdf_docs_by_idx[idx] = pdf_handle
+                    total_batch_pages += len(pdf_handle)
+                except Exception as e_pdf:
+                    print(f"[Page Count Notice] Could not count PDF pages for {fname}: {e_pdf}")
+                    total_batch_pages += 1
+            else:
+                total_batch_pages += 1
+
+        if total_batch_pages > MAX_UPLOAD_PAGES_LIMIT:
+            print(f"[Validation Rejected] Upload batch exceeds page limit: {total_batch_pages} pages > {MAX_UPLOAD_PAGES_LIMIT} max.")
+            return {
+                "rejected": JSONResponse(
+                    status_code=422,
+                    content={
+                        "success": False,
+                        "error_code": "PAGE_LIMIT_EXCEEDED",
+                        "title": "Page Limit Exceeded",
+                        "message": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
+                        "detail": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
+                        "total_pages": total_batch_pages,
+                        "max_pages": MAX_UPLOAD_PAGES_LIMIT,
+                    },
+                )
+            }
+
+        is_yellow_image = False
+        preview_image_data_url = None
+        pdf_all_preview_bytes: list[bytes] = []
+        pdf_page_texts: list[str] = []
+        pdf_page_labels: list[str] = []
+        gemini_page_bytes: list[bytes] = []
+        gemini_page_labels: list[str] = []
+        pdf_page_count = 1
+        target_page_idx = 0
+        detected_text_lrs: set[str] = set()
+        raw_upload_bytes = b""
+        image_bytes = b""
+        mime_type = "image/jpeg"
+
+        if total_files_count > 1:
+            print(f"[Multi-Upload] Combining {total_files_count} files in original sequence...")
+            combined_pdf = fitz.open()
+            try:
+                for idx, (fname, ctype, fbytes) in enumerate(upload_meta):
+                    short_fname = os.path.basename(fname or f"doc_{idx+1}")[:40]
+                    if is_pdf_flags[idx] and idx in pdf_docs_by_idx:
+                        sub_doc = pdf_docs_by_idx[idx]
+                        try:
+                            for p_idx, p in enumerate(sub_doc):
+                                txt = p.get_text()
+                                pdf_page_texts.append(txt)
+                                active_prompt, prompt_type = _detect_customer_prompt_from_text(
+                                    txt.lower(), active_prompt, prompt_type
+                                )
+                                for cand in _extract_lr_candidates_from_text(txt):
+                                    detected_text_lrs.add(cand)
+                                try:
+                                    pix = p.get_pixmap(dpi=120)
+                                    pdf_all_preview_bytes.append(pix.tobytes("jpeg", jpg_quality=85))
+                                    pdf_page_labels.append(f"File {idx+1} ({short_fname}) / Page {p_idx+1}")
+                                except Exception as p_err:
+                                    print(f"[Multi-Upload Render Error] File '{fname}' page {p_idx+1}: {p_err}")
+                            combined_pdf.insert_pdf(sub_doc)
+                        except Exception as ex_pdf:
+                            print(f"[Multi-Upload PDF Open Error] '{fname}': {ex_pdf}")
+                    else:
+                        try:
+                            jbytes, _, _, img_yellow, _ = _normalize_image_to_jpeg_bytes(
+                                fbytes, quality=88, reject_blank=False
+                            )
+                            with Image.open(io.BytesIO(jbytes)) as pim:
+                                w_px, h_px = pim.size
+                            img_page = combined_pdf.new_page(width=w_px, height=h_px)
+                            img_page.insert_image(img_page.rect, stream=jbytes)
+                            pdf_all_preview_bytes.append(jbytes)
+                            pdf_page_texts.append("")
+                            pdf_page_labels.append(f"File {idx+1} ({short_fname})")
+                            if len(pdf_all_preview_bytes) == 1:
+                                is_yellow_image = img_yellow
+                        except Exception as ex_img:
+                            print(f"[Multi-Upload Image Convert Error] '{fname}': {ex_img}")
+
+                if len(detected_text_lrs) > 1:
+                    print(f"[Validation Rejected] Multiple different LR numbers found in document text: {detected_text_lrs}")
+                    return {
+                        "rejected": JSONResponse(
+                            status_code=422,
+                            content={
+                                "success": False,
+                                "error_code": "MULTIPLE_LRS",
+                                "title": "Multiple LRs Not Allowed",
+                                "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                                "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                            },
+                        )
+                    }
+
+                raw_upload_bytes = combined_pdf.tobytes()
+            finally:
+                combined_pdf.close()
+
+            image_bytes = raw_upload_bytes
+            mime_type = "application/pdf"
+            pdf_page_count = len(pdf_all_preview_bytes)
+            print(f"[Multi-Upload Combined] Successfully combined into a single {pdf_page_count}-page PDF ({len(raw_upload_bytes)} bytes).")
+
+            if pdf_all_preview_bytes:
+                pdf_preview_bytes = pdf_all_preview_bytes[0]
+                b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
+                preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
+                try:
+                    with Image.open(io.BytesIO(pdf_preview_bytes)) as pdf_pil:
+                        is_yellow_image = is_orange_yellow_image(pdf_pil)
+                except Exception:
+                    pass
+                gemini_page_bytes, gemini_page_labels = _select_gemini_pages_for_pdf(
+                    pdf_all_preview_bytes, pdf_page_texts, target_page_idx=0,
+                    page_labels=pdf_page_labels, is_multi_file=True
+                )
+        else:
+            fname, ctype, fbytes = upload_meta[0]
+            image_bytes = fbytes
+            raw_upload_bytes = fbytes
+
+            mime_type = ctype
+            if not mime_type or mime_type == "application/octet-stream":
+                if lower_filename.endswith(".jpg") or lower_filename.endswith(".jpeg"):
+                    mime_type = "image/jpeg"
+                elif lower_filename.endswith(".webp"):
+                    mime_type = "image/webp"
+                elif lower_filename.endswith(".pdf"):
+                    mime_type = "application/pdf"
+                else:
+                    mime_type = "image/png"
+            elif lower_filename.endswith(".pdf") or "pdf" in (mime_type or "").lower():
+                mime_type = "application/pdf"
+
+            if mime_type == "application/pdf":
+                print(f"[DocType] Classified as PDF document ({len(image_bytes)} bytes). Preparing pages for Gemini.")
+                try:
+                    pdf_doc = pdf_docs_by_idx.get(0)
+                    if pdf_doc is None:
+                        pdf_doc = fitz.open(stream=image_bytes, filetype="pdf")
+                        opened_pdfs.append(pdf_doc)
+                    pdf_page_count = len(pdf_doc)
+                    print(f"[PDF Detection] Document contains {pdf_page_count} page(s).")
+
+                    found_target_page = False
+                    for p_idx, p in enumerate(pdf_doc):
+                        page_txt = p.get_text()
+                        pdf_page_texts.append(page_txt)
+                        txt_low = page_txt.lower()
+                        active_prompt, prompt_type = _detect_customer_prompt_from_text(
+                            txt_low, active_prompt, prompt_type
+                        )
+                        if not found_target_page and any(w in txt_low for w in ("consignment", "lorry receipt", "c note", "bilty", "cngr")):
+                            target_page_idx = p_idx
+                            found_target_page = True
+                        for cand in _extract_lr_candidates_from_text(page_txt):
+                            detected_text_lrs.add(cand)
+
+                    if len(detected_text_lrs) > 1:
+                        print(f"[Validation Rejected] Multiple different LR numbers found in document text: {detected_text_lrs}")
+                        return {
+                            "rejected": JSONResponse(
+                                status_code=422,
+                                content={
+                                    "success": False,
+                                    "error_code": "MULTIPLE_LRS",
+                                    "title": "Multiple LRs Not Allowed",
+                                    "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                                    "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
+                                },
+                            )
+                        }
+
+                    for p_idx, p in enumerate(pdf_doc):
+                        try:
+                            pix = p.get_pixmap(dpi=120)
+                            pdf_all_preview_bytes.append(pix.tobytes("jpeg", jpg_quality=85))
+                            pdf_page_labels.append(f"Page {p_idx+1}")
+                        except Exception as p_ex:
+                            print(f"[PDF Preview Error] Failed rendering page {p_idx+1}: {p_ex}")
+
+                    if pdf_all_preview_bytes:
+                        t_idx = target_page_idx if target_page_idx < len(pdf_all_preview_bytes) else 0
+                        pdf_preview_bytes = pdf_all_preview_bytes[t_idx]
+                        b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
+                        preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
+                        print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 120 DPI (primary page: {t_idx+1})")
+                        try:
+                            with Image.open(io.BytesIO(pdf_preview_bytes)) as pdf_pil:
+                                is_yellow_image = is_orange_yellow_image(pdf_pil)
+                            if is_yellow_image:
+                                print("[DocType] PDF Bilty classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
+                            else:
+                                print("[DocType] PDF Bilty classified as White printed consignment page")
+                        except Exception as c_err:
+                            print(f"[DocType Color Check Notice]: {c_err}")
+
+                        gemini_page_bytes, gemini_page_labels = _select_gemini_pages_for_pdf(
+                            pdf_all_preview_bytes, pdf_page_texts, target_page_idx=t_idx,
+                            page_labels=pdf_page_labels, is_multi_file=False
+                        )
+                except Exception as ex:
+                    print(f"[PDF Preview Error]: {ex}")
+            else:
+                try:
+                    jbytes, orig_w, orig_h, is_yellow_image, is_blank = _normalize_image_to_jpeg_bytes(
+                        image_bytes, quality=92, reject_blank=True
+                    )
+                    if is_yellow_image:
+                        print("[DocType] Classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
+                    else:
+                        print("[DocType] Classified as White printed consignment page")
+                    if is_blank:
+                        print(f"[Validation Rejected] File '{primary_filename}' rejected: solid monochrome/blank image.")
+                        return {
+                            "rejected": JSONResponse(
+                                status_code=422,
+                                content={
+                                    "success": False,
+                                    "error_code": "INVALID_LR",
+                                    "title": "Invalid LR",
+                                    "message": "Invalid LR – Please upload a valid LR document.",
+                                    "detail": "Invalid LR – Please upload a valid LR document.",
+                                },
+                            )
+                        }
+                    image_bytes = jbytes
+                    mime_type = "image/jpeg"
+                    b64_str = base64.b64encode(image_bytes).decode("utf-8")
+                    preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
+                    print(f"[Optimize] Ready image: {orig_w}x{orig_h} ({len(image_bytes)} bytes)")
+                except Exception as img_err:
+                    print(f"[Notice] Image resize pass-through: {img_err}")
+
+        return {
+            "rejected": None,
+            "active_prompt": active_prompt,
+            "prompt_type": prompt_type,
+            "is_yellow_image": is_yellow_image,
+            "preview_image_data_url": preview_image_data_url,
+            "pdf_all_preview_bytes": pdf_all_preview_bytes,
+            "gemini_page_bytes": gemini_page_bytes,
+            "gemini_page_labels": gemini_page_labels,
+            "pdf_page_count": pdf_page_count,
+            "raw_upload_bytes": raw_upload_bytes,
+            "image_bytes": image_bytes,
+            "mime_type": mime_type,
+        }
+    finally:
+        for h in opened_pdfs:
+            try:
+                h.close()
+            except Exception:
+                pass
+
+
+def _persist_extracted_document_sync(
+    *,
+    upload_id: str,
+    now_ts: str,
+    lr_clean: str,
+    lr_tag: str,
+    clean_name: str,
+    orig_ext: str,
+    primary_filename: str,
+    display_filename: str,
+    bytes_to_save: bytes,
+    mime_type: str,
+    pdf_all_preview_bytes: list[bytes],
+    pdf_page_count: int,
+    preview_image_data_url: str | None,
+    data_dict: dict[str, Any],
+    kv_pairs: list[dict[str, str]],
+    raw_result: dict[str, Any],
+    actor: dict[str, Any],
+    user_mobile: str | None,
+    user_id: str | None,
+    user_name: str | None,
+) -> ParsedDocument:
+    """Persists uploaded LR document, preview pages, lifecycle metadata, and cloud record off the event loop."""
+    snapshot_lr_filename, snapshot_lr_path = audit_snapshot.save_uploaded_lr_document(
+        file_bytes=bytes_to_save,
+        original_filename=f"{clean_name}{orig_ext}",
+        lr_no=lr_clean,
+    )
+    print(f"[Upload Vault] Successfully saved LR document to {snapshot_lr_path}")
+
+    preview_saved_url = None
+    preview_pages_urls: list[str] = []
+    if mime_type == "application/pdf" and pdf_all_preview_bytes:
+        for p_idx, p_bytes in enumerate(pdf_all_preview_bytes):
+            page_suffix = "_preview.jpg" if p_idx == 0 else f"_page_{p_idx + 1}.jpg"
+            p_filename = f"{upload_id}{lr_tag}_{clean_name}{page_suffix}"
+            p_file_path = os.path.join(UPLOAD_LR_DIR, p_filename)
+            try:
+                with open(p_file_path, "wb") as f_prev:
+                    f_prev.write(p_bytes)
+                preview_pages_urls.append(f"/uploads/{p_filename}")
+            except Exception as e_prev:
+                print(f"[Upload Vault Error] Failed to save page {p_idx+1} preview: {e_prev}")
+        if preview_pages_urls:
+            preview_saved_url = preview_pages_urls[0]
+            print(f"[Upload Vault] Successfully saved {len(preview_pages_urls)} preview image(s) (primary: {preview_saved_url})")
+
+    reg_entry = None
+    try:
+        reg_entry = file_lifecycle_service.record_file_creation(
+            file_path=snapshot_lr_path,
+            file_type="bilty_image" if mime_type != "application/pdf" else "bilty_pdf",
+            file_bytes=bytes_to_save,
+            file_id=upload_id,
+            user_name=actor.get("user_name") or "Logistics User",
+            user_mobile=actor.get("user_mobile") or "",
+            user_id=actor.get("user_id") or None,
+            custom_meta={
+                "extracted_fields": len(data_dict),
+                "upload_id": upload_id,
+                "lr_no": lr_clean,
+                "saved_filename": snapshot_lr_filename,
+                "original_filename": primary_filename,
+                "snapshot_path": snapshot_lr_path,
+                "user_id": actor.get("user_id") or "",
+                "user_mobile": actor.get("user_mobile") or "",
+                "created_by": actor.get("user_name") or "Logistics User",
+            },
+            initial_data=data_dict,
+        )
+    except Exception as ex:
+        print(f"[Lifecycle] Non-critical image registration error: {ex}")
+
+    v1_list = reg_entry.get("versions", []) if reg_entry else [
+        {
+            "version": 1,
+            "timestamp": now_ts,
+            "action": "create",
+            "details": "Document created from OCR",
+            "snapshot_data": data_dict,
+        }
+    ]
+
+    rel_saved_path = os.path.relpath(snapshot_lr_path, BASE_DIR).replace("\\", "/")
+
+    parsed_output = ParsedDocument(
+        filename=display_filename,
+        document_title=raw_result.get("document_title", "Handwritten Document"),
+        data=data_dict,
+        key_value_pairs=kv_pairs,
+        confidence_notes=raw_result.get("confidence_notes", ""),
+        created_at=now_ts,
+        edited_at=None,
+        exported_at=None,
+        deleted_at=None,
+        current_version=1,
+        versions=v1_list,
+        preview_image=preview_image_data_url,
+        file_id=upload_id,
+        upload_id=upload_id,
+        saved_filename=snapshot_lr_filename,
+        file_path=rel_saved_path,
+        file_url=f"/snapshots/{snapshot_lr_filename}",
+        preview_url=preview_saved_url or f"/snapshots/{snapshot_lr_filename}",
+        page_count=pdf_page_count,
+        preview_pages=preview_pages_urls,
+    )
+
+    try:
+        user_mob = actor.get("user_mobile") or user_mobile or ""
+        user_uid = actor.get("user_id") or user_id or ""
+        user_dname = actor.get("user_name") or user_name or "Logistics User"
+        if user_mob:
+            user_cloud_service.record_uploaded_lr(
+                mobile=user_mob,
+                lr_entry=parsed_output.model_dump() if hasattr(parsed_output, "model_dump") else parsed_output.dict(),
+                user_id=user_uid,
+                user_name=user_dname,
+            )
+    except Exception as cloud_err:
+        print(f"[UserCloudService] Notice recording uploaded LR: {cloud_err}")
+
+    return parsed_output
 
 
 # --- ROUTE 4: Image Extraction API (Web & Android) ---
@@ -2386,405 +3003,51 @@ async def extract_handwriting(
             )
         upload_bytes_list.append(b)
 
-    # Authoritative Pre-Validation: Maximum 15 Pages Allowed Per Upload Batch
-    MAX_UPLOAD_PAGES_LIMIT = 15
-    total_batch_pages = 0
-    import fitz
+    # Single non-blocking worker pass for page count limit, text/LR detection, and image/PDF rendering
+    upload_meta = [
+        (uf.filename or f"doc_{idx+1}", uf.content_type or "", b)
+        for idx, (uf, b) in enumerate(zip(all_uploads, upload_bytes_list))
+    ]
+    prep = await asyncio.to_thread(_preprocess_uploads_sync, upload_meta, custom_prompt)
+    if prep.get("rejected") is not None:
+        return prep["rejected"]
 
-    for uf, b in zip(all_uploads, upload_bytes_list):
-        fn_low = (uf.filename or "").lower()
-        is_pdf_file = fn_low.endswith(".pdf") or "pdf" in (uf.content_type or "").lower() or (len(b) >= 4 and b[:4] == b"%PDF")
-        if is_pdf_file:
-            try:
-                temp_pdf = fitz.open(stream=b, filetype="pdf")
-                total_batch_pages += len(temp_pdf)
-                temp_pdf.close()
-            except Exception as e_pdf:
-                print(f"[Page Count Notice] Could not count PDF pages for {uf.filename}: {e_pdf}")
-                total_batch_pages += 1
-        else:
-            total_batch_pages += 1
-
-    if total_batch_pages > MAX_UPLOAD_PAGES_LIMIT:
-        print(f"[Validation Rejected] Upload batch exceeds page limit: {total_batch_pages} pages > {MAX_UPLOAD_PAGES_LIMIT} max.")
-        return JSONResponse(
-            status_code=422,
-            content={
-                "success": False,
-                "error_code": "PAGE_LIMIT_EXCEEDED",
-                "title": "Page Limit Exceeded",
-                "message": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
-                "detail": "Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.",
-                "total_pages": total_batch_pages,
-                "max_pages": MAX_UPLOAD_PAGES_LIMIT
-            }
-        )
-
-    # 1. Prompt selection
-    lower_filename = primary_filename.lower()
-    if isinstance(custom_prompt, str) and custom_prompt.strip():
-        active_prompt = custom_prompt.strip()
-        prompt_type = "Custom"
-    elif "patanjali" in lower_filename:
-        active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
-        prompt_type = "Patanjali OCR"
-    elif any(w in lower_filename for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
-        active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
-        prompt_type = "Unicharm OCR"
-    elif "himalaya" in lower_filename or "him" in lower_filename:
-        active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
-        prompt_type = "Himalaya OCR"
-    elif any(w in lower_filename for w in ["gold_plus", "gold plus", "goldplus", "gold"]):
-        active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
-        prompt_type = "Gold Plus OCR"
-    else:
-        active_prompt = DEFAULT_HANDWRITTEN_OCR_PROMPT
-        prompt_type = "Default Master OCR"
-
-    # Multi-file combination and page rendering
-    is_yellow_image = False
-    preview_image_data_url = None
-    pdf_preview_bytes = None
-    pdf_all_preview_bytes = []
-    pdf_page_count = 1
-    target_page_idx = 0
-    detected_text_lrs = set()
-    pages_for_lr_scan: list[tuple[str, bytes]] = []
-    pdf_page_texts: list[str] = []
-
-    import fitz
-
-    if total_files_count > 1:
-        # Multi-file upload: combine PDFs, images, or mixed files into a single unified dossier in order
-        print(f"[Multi-Upload] Combining {total_files_count} files in original sequence...")
-        combined_pdf = fitz.open()
-
-        for idx, (uf, file_bytes) in enumerate(zip(all_uploads, upload_bytes_list)):
-            fn_low = (uf.filename or f"doc_{idx+1}").lower()
-            is_sub_pdf = fn_low.endswith(".pdf") or "pdf" in (uf.content_type or "").lower()
-
-            if is_sub_pdf:
-                try:
-                    sub_doc = fitz.open(stream=file_bytes, filetype="pdf")
-                    for p_idx, p in enumerate(sub_doc):
-                        txt = p.get_text()
-                        txt_low = txt.lower()
-                        if "patanjali" in txt_low:
-                            active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
-                            prompt_type = "Patanjali OCR"
-                        elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
-                            active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
-                            prompt_type = "Unicharm OCR"
-                        elif "himalaya" in txt_low:
-                            active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
-                            prompt_type = "Himalaya OCR"
-                        elif any(w in txt_low for w in ["gold plus", "gold_plus", "goldplus", "gold"]):
-                            active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
-                            prompt_type = "Gold Plus OCR"
-
-                        for cand in _extract_lr_candidates_from_text(txt):
-                            detected_text_lrs.add(cand)
-
-                        try:
-                            pix150 = p.get_pixmap(dpi=150)
-                            p_bytes = pix150.tobytes("jpeg")
-                            pdf_all_preview_bytes.append(p_bytes)
-                            if p_idx < 3:
-                                pages_for_lr_scan.append((f"{uf.filename or f'file_{idx+1}'}_p{p_idx+1}", p_bytes))
-                        except Exception as p_err:
-                            print(f"[Multi-Upload Render Error] File '{uf.filename}' page {p_idx+1}: {p_err}")
-
-                    combined_pdf.insert_pdf(sub_doc)
-                except Exception as ex_pdf:
-                    print(f"[Multi-Upload PDF Open Error] '{uf.filename}': {ex_pdf}")
-            else:
-                # Image file (JPG, PNG, WebP)
-                try:
-                    pil_img = Image.open(io.BytesIO(file_bytes))
-                    try:
-                        pil_img = ImageOps.exif_transpose(pil_img)
-                    except Exception:
-                        pass
-                    if pil_img.mode in ("RGBA", "P"):
-                        pil_img = pil_img.convert("RGB")
-                    jbuf = io.BytesIO()
-                    pil_img.save(jbuf, format="JPEG", quality=95)
-                    jbytes = jbuf.getvalue()
-
-                    img_doc = fitz.open(stream=jbytes, filetype="jpeg")
-                    sub_pdf_bytes = img_doc.convert_to_pdf()
-                    img_pdf = fitz.open("pdf", sub_pdf_bytes)
-                    for p in img_pdf:
-                        try:
-                            pix = p.get_pixmap(dpi=150)
-                            pdf_all_preview_bytes.append(pix.tobytes("jpeg"))
-                        except Exception as p_err:
-                            print(f"[Multi-Upload Image Render Error] File '{uf.filename}': {p_err}")
-                    combined_pdf.insert_pdf(img_pdf)
-                    pages_for_lr_scan.append((f"{uf.filename or f'image_{idx+1}'}", jbytes))
-                except Exception as ex_img:
-                    print(f"[Multi-Upload Image Convert Error] '{uf.filename}': {ex_img}")
-
-        # Check if multiple distinct LR numbers were already detected in native text
-        if len(detected_text_lrs) > 1:
-            print(f"[Validation Rejected] Multiple different LR numbers found in document text: {detected_text_lrs}")
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "success": False,
-                    "error_code": "MULTIPLE_LRS",
-                    "title": "Multiple LRs Not Allowed",
-                    "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
-                    "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
-                }
-            )
-
-        raw_upload_bytes = combined_pdf.tobytes()
-        image_bytes = raw_upload_bytes
-        mime_type = "application/pdf"
-        pdf_page_count = len(pdf_all_preview_bytes)
-        print(f"[Multi-Upload Combined] Successfully combined into a single {pdf_page_count}-page PDF ({len(raw_upload_bytes)} bytes).")
-
-        if pdf_all_preview_bytes:
-            pdf_preview_bytes = pdf_all_preview_bytes[0]
-            b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
-            preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
-            try:
-                pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
-                is_yellow_image = is_orange_yellow_image(pdf_pil)
-            except Exception:
-                pass
-    else:
-        # Single file upload (existing flow)
-        image_bytes = upload_bytes_list[0]
-        raw_upload_bytes = image_bytes
-        single_uf = all_uploads[0]
-
-        # Determine safe MIME type
-        mime_type = single_uf.content_type
-        if not mime_type or mime_type == "application/octet-stream":
-            if lower_filename.endswith(".jpg") or lower_filename.endswith(".jpeg"):
-                mime_type = "image/jpeg"
-            elif lower_filename.endswith(".webp"):
-                mime_type = "image/webp"
-            elif lower_filename.endswith(".pdf"):
-                mime_type = "application/pdf"
-            else:
-                mime_type = "image/png"
-        elif lower_filename.endswith(".pdf") or "pdf" in (mime_type or "").lower():
-            mime_type = "application/pdf"
-
-        if mime_type == "application/pdf":
-            print(f"[DocType] Classified as PDF document ({len(image_bytes)} bytes). Preparing high-resolution pages for Gemini.")
-            try:
-                import sys
-                for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
-                    if _m not in sys.modules:
-                        sys.modules[_m] = None
-                pdf_doc = fitz.open(stream=image_bytes, filetype="pdf")
-                pdf_page_count = len(pdf_doc)
-                print(f"[PDF Detection] Document contains {pdf_page_count} page(s).")
-                if pdf_page_count > 0:
-                    target_page_idx = 0
-                    for p_idx, p in enumerate(pdf_doc):
-                        txt = p.get_text()
-                        txt_low = txt.lower()
-                        if "patanjali" in txt_low:
-                            active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
-                            prompt_type = "Patanjali OCR"
-                        elif any(w in txt_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
-                            active_prompt = DEFAULT_UNICHARM_OCR_PROMPT
-                            prompt_type = "Unicharm OCR"
-                        elif "himalaya" in txt_low:
-                            active_prompt = DEFAULT_HIMALAYA_OCR_PROMPT
-                            prompt_type = "Himalaya OCR"
-                        elif any(w in txt_low for w in ["gold plus", "gold_plus", "goldplus", "gold"]):
-                            active_prompt = DEFAULT_GOLD_PLUS_OCR_PROMPT
-                            prompt_type = "Gold Plus OCR"
-                        if any(w in txt_low for w in ["consignment", "lorry receipt", "c note", "bilty", "cngr"]):
-                            target_page_idx = p_idx
-                            break
-
-                    pdf_page_texts = []
-                    for p_idx, p in enumerate(pdf_doc):
-                        page_txt = p.get_text()
-                        pdf_page_texts.append(page_txt)
-                        txt_cands = _extract_lr_candidates_from_text(page_txt)
-                        for cand in txt_cands:
-                            detected_text_lrs.add(cand)
-                        try:
-                            pix150 = p.get_pixmap(dpi=150)
-                            p_bytes = pix150.tobytes("jpeg")
-                            pdf_all_preview_bytes.append(p_bytes)
-
-                            # Smart Bilty Candidate Detection for Pre-Scan:
-                            # Page 1 is always included as primary consignment note.
-                            # Additional pages are included ONLY if they contain bilty keywords or LR candidates,
-                            # or if text is empty (scanned image fallback for first 3 pages).
-                            page_txt_low = page_txt.lower()
-                            is_bilty_kw = any(w in page_txt_low for w in ["consignment", "lorry receipt", "c note", "c-note", "bilty", "cngr"]) or bool(txt_cands)
-                            is_permit_or_dl = any(w in page_txt_low for w in ["national permit", "goods carriage permit", "form 23", "driving licence", "driver licence", "licence to drive"]) and not any(w in page_txt_low for w in ["consignment note", "lorry receipt", "bilty no"])
-
-                            if p_idx == 0:
-                                pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
-                            elif is_bilty_kw and not is_permit_or_dl and len(pages_for_lr_scan) < 4:
-                                pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
-                            elif not page_txt.strip() and p_idx < 3 and len(pages_for_lr_scan) < 3:
-                                pages_for_lr_scan.append((f"page_{p_idx+1}", p_bytes))
-                        except Exception as p_ex:
-                            print(f"[PDF Preview Error] Failed rendering page {p_idx+1}: {p_ex}")
-
-                    if pdf_all_preview_bytes:
-                        t_idx = target_page_idx if target_page_idx < len(pdf_all_preview_bytes) else 0
-                        pdf_preview_bytes = pdf_all_preview_bytes[t_idx]
-                        b64_str = base64.b64encode(pdf_preview_bytes).decode("utf-8")
-                        preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
-                        print(f"[PDF Preview] Rendered {len(pdf_all_preview_bytes)} page(s) at 150 DPI (primary page: {t_idx+1})")
-                        try:
-                            pdf_pil = Image.open(io.BytesIO(pdf_preview_bytes))
-                            is_yellow_image = is_orange_yellow_image(pdf_pil)
-                            if is_yellow_image:
-                                print("[DocType] PDF Bilty classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
-                            else:
-                                print("[DocType] PDF Bilty classified as White printed consignment page")
-                        except Exception as c_err:
-                            print(f"[DocType Color Check Notice]: {c_err}")
-            except Exception as ex:
-                print(f"[PDF Preview Error]: {ex}")
-        else:
-            try:
-                pil_img = Image.open(io.BytesIO(image_bytes))
-                try:
-                    pil_img = ImageOps.exif_transpose(pil_img)
-                except Exception:
-                    pass
-
-                is_yellow_image = is_orange_yellow_image(pil_img)
-                if is_yellow_image:
-                    print("[DocType] Classified as Orange/Yellow handwritten bilty (BNF LR No will be forced to blank)")
-                else:
-                    print("[DocType] Classified as White printed consignment page")
-
-                if is_blank_or_solid_image(pil_img):
-                    print(f"[Validation Rejected] File '{primary_filename}' rejected: solid monochrome/blank image.")
-                    return JSONResponse(
-                        status_code=422,
-                        content={
-                            "success": False,
-                            "error_code": "INVALID_LR",
-                            "title": "Invalid LR",
-                            "message": "Invalid LR – Please upload a valid LR document.",
-                            "detail": "Invalid LR – Please upload a valid LR document."
-                        }
-                    )
-
-                orig_w, orig_h = pil_img.size
-                if max(orig_w, orig_h) > 2600:
-                    scale = 2400.0 / max(orig_w, orig_h)
-                    new_size = (int(orig_w * scale), int(orig_h * scale))
-                    pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
-
-                buf = io.BytesIO()
-                if pil_img.mode in ("RGBA", "P"):
-                    pil_img = pil_img.convert("RGB")
-                pil_img.save(buf, format="JPEG", quality=95)
-                image_bytes = buf.getvalue()
-                mime_type = "image/jpeg"
-                b64_str = base64.b64encode(image_bytes).decode("utf-8")
-                preview_image_data_url = f"data:image/jpeg;base64,{b64_str}"
-                print(f"[Optimize] Ready image: {orig_w}x{orig_h} ({len(image_bytes)} bytes)")
-            except Exception as img_err:
-                print(f"[Notice] Image resize pass-through: {img_err}")
+    active_prompt = prep["active_prompt"]
+    prompt_type = prep["prompt_type"]
+    is_yellow_image = prep["is_yellow_image"]
+    preview_image_data_url = prep["preview_image_data_url"]
+    pdf_all_preview_bytes = prep["pdf_all_preview_bytes"]
+    gemini_page_bytes = prep["gemini_page_bytes"]
+    gemini_page_labels = prep.get("gemini_page_labels") or []
+    pdf_page_count = prep["pdf_page_count"]
+    raw_upload_bytes = prep["raw_upload_bytes"]
+    image_bytes = prep["image_bytes"]
+    mime_type = prep["mime_type"]
 
     print(f"[Step 3/5] Initializing Gemini model ('{MODEL_NAME}') with [{prompt_type}] prompt...")
     model = genai.GenerativeModel(MODEL_NAME)
-
-    # === AUTHORITATIVE PRE-VALIDATION: ONLY ONE UNIQUE LR PER UPLOAD BATCH ===
-    if len(detected_text_lrs) > 1:
-        print(f"[Validation Rejected] Multiple different LR numbers found in document text: {detected_text_lrs}")
-        return JSONResponse(
-            status_code=422,
-            content={
-                "success": False,
-                "error_code": "MULTIPLE_LRS",
-                "title": "Multiple LRs Not Allowed",
-                "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
-                "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
-            }
-        )
-
-    if len(pages_for_lr_scan) > 1:
-        print(f"[LR Pre-Scan] Performing fast single-call multi-page LR detection across {len(pages_for_lr_scan)} document pages...")
-        distinct_detected_lrs = {}
-        for cand in detected_text_lrs:
-            norm = _normalize_lr_candidate(cand)
-            if norm and norm != "0" and len(norm) >= 2:
-                distinct_detected_lrs[norm] = cand
-
-        def _sync_combined_pre_scan():
-            pre_parts = []
-            for lbl, pb in pages_for_lr_scan[:12]:
-                pre_parts.append({"mime_type": "image/jpeg", "data": pb})
-            pre_parts.append(COMBINED_LR_PRE_SCAN_PROMPT)
-            return model.generate_content(
-                pre_parts,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                    response_schema=_to_gemini_compatible_schema(CombinedLrPreScan),
-                    temperature=0.0,
-                ),
-                safety_settings=SAFETY_SETTINGS,
-            )
-
-        try:
-            r = await asyncio.to_thread(_sync_combined_pre_scan)
-            txt = r.text.strip()
-            if txt.startswith("```json"): txt = txt[7:]
-            if txt.startswith("```"): txt = txt[3:]
-            if txt.endswith("```"): txt = txt[:-3]
-            d = json.loads(txt.strip())
-            scan_obj = CombinedLrPreScan(**d)
-            for p_entry in scan_obj.pages:
-                norm = _normalize_lr_candidate(p_entry.lr_number)
-                print(f"[LR Pre-Scan] Page '{p_entry.page_label}': is_consignment={p_entry.is_consignment_note}, raw='{p_entry.lr_number}', norm='{norm}', doc_type='{p_entry.doc_type}'")
-                if p_entry.is_consignment_note and norm and norm != "0" and len(norm) >= 2:
-                    distinct_detected_lrs[norm] = p_entry.lr_number
-            if scan_obj.has_multiple_different_lrs:
-                for cand_lr in scan_obj.unique_lrs_found:
-                    norm = _normalize_lr_candidate(cand_lr)
-                    if norm and norm != "0":
-                        distinct_detected_lrs[norm] = cand_lr
-        except Exception as e_p:
-            print(f"[LR Pre-Scan Fallback/Error]: {e_p}")
-
-        if len(distinct_detected_lrs) > 1:
-            print(f"[Validation Rejected] Multiple different LR documents detected across pages/files: {list(distinct_detected_lrs.values())}")
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "success": False,
-                    "error_code": "MULTIPLE_LRS",
-                    "title": "Multiple LRs Not Allowed",
-                    "message": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time.",
-                    "detail": "Multiple LR documents detected. Please upload documents belonging to only one LR at a time."
-                }
-            )
-        elif len(distinct_detected_lrs) == 1:
-            print(f"[LR Pre-Scan] Verified single LR across all documents: {list(distinct_detected_lrs.values())[0]}")
 
     print(f"[Step 4/5] Sending request to Gemini API (MIME type: {mime_type})...")
 
     try:
         gemini_parts = []
-        if mime_type == "application/pdf" and pdf_all_preview_bytes:
-            # Scan ALL pages uploaded (up to the 15-page limit) so all driver credentials, invoices, and permits are captured
-            pages_to_send = pdf_all_preview_bytes
-            print(f"[Gemini Input] Sending ALL {len(pages_to_send)} rendered 150 DPI page image(s) to Gemini for complete full-document extraction.")
-            for p_bytes in pages_to_send:
+        is_multi_page_input = False
+        if mime_type == "application/pdf" and (gemini_page_bytes or pdf_all_preview_bytes):
+            pages_to_send = gemini_page_bytes or pdf_all_preview_bytes
+            is_multi_page_input = len(pages_to_send) > 1 or pdf_page_count > 1
+            print(f"[Gemini Input] Sending {len(pages_to_send)}/{len(pdf_all_preview_bytes)} rendered page image(s) to Gemini for single-call extraction & multi-LR validation.")
+            for idx_p, p_bytes in enumerate(pages_to_send):
+                if len(pages_to_send) > 1:
+                    lbl = gemini_page_labels[idx_p] if idx_p < len(gemini_page_labels) else f"Page {idx_p + 1}"
+                    gemini_parts.append(f"--- {lbl} ---")
                 gemini_parts.append({"mime_type": "image/jpeg", "data": p_bytes})
         else:
             gemini_parts.append({"mime_type": mime_type, "data": image_bytes})
-        gemini_parts.append(active_prompt + "\n" + MULTI_DOCUMENT_CONSIGNMENT_RULE)
+
+        if is_multi_page_input:
+            gemini_parts.append(MULTI_DOCUMENT_CONSIGNMENT_RULE + "\n\n" + active_prompt)
+        else:
+            gemini_parts.append(active_prompt + "\n" + MULTI_DOCUMENT_CONSIGNMENT_RULE)
 
         def _sync_gemini_call():
             return model.generate_content(
@@ -2817,17 +3080,35 @@ async def extract_handwriting(
         # === MULTI-LR DETECTION VALIDATION GATE ===
         has_multi_lrs = bool(raw_result.get("has_multiple_different_lrs", False))
         detected_lrs = raw_result.get("detected_lr_numbers", [])
-        if isinstance(detected_lrs, list) and len(detected_lrs) > 1:
-            cleaned_lrs = set()
+        page_entries = raw_result.get("page_lr_entries", [])
+
+        cleaned_lrs: dict[str, str] = {}
+
+        def _add_lr_candidate(raw_lr_val: Any) -> None:
+            raw_s = str(raw_lr_val or "").strip()
+            if not raw_s:
+                return
+            c = _normalize_lr_candidate(_clean_grno(raw_s))
+            if c and c != "0" and len(c) >= 2 and c not in cleaned_lrs:
+                cleaned_lrs[c] = raw_s
+
+        if isinstance(page_entries, list):
+            for p_entry in page_entries:
+                if isinstance(p_entry, dict) and p_entry.get("is_consignment_note"):
+                    _add_lr_candidate(p_entry.get("lr_number"))
+
+        if isinstance(detected_lrs, list):
             for lr_cand in detected_lrs:
-                c = _clean_grno(str(lr_cand).strip())
-                if c and c != "0":
-                    cleaned_lrs.add(c.lower())
-            if len(cleaned_lrs) > 1:
-                has_multi_lrs = True
+                _add_lr_candidate(lr_cand)
+
+        _add_lr_candidate(data_dict.get("LR No *") or data_dict.get("grno") or data_dict.get("grno (*)"))
+
+        if len(cleaned_lrs) > 1:
+            has_multi_lrs = True
 
         if has_multi_lrs:
-            print(f"[Validation Rejected] Multiple different LR documents detected across pages/files: {detected_lrs}")
+            all_found = list(cleaned_lrs.values()) or (detected_lrs if isinstance(detected_lrs, list) else [])
+            print(f"[Validation Rejected] Multiple different LR documents detected across pages/files: {all_found}")
             return JSONResponse(
                 status_code=422,
                 content={
@@ -3115,112 +3396,32 @@ async def extract_handwriting(
         clean_name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', orig_name_part)[:35]
         bytes_to_save = raw_upload_bytes if raw_upload_bytes else image_bytes
 
-        snapshot_lr_filename, snapshot_lr_path = audit_snapshot.save_uploaded_lr_document(
-            file_bytes=bytes_to_save,
-            original_filename=f"{clean_name}{orig_ext}",
-            lr_no=lr_clean
-        )
-        print(f"[Upload Vault] Successfully saved LR document to {snapshot_lr_path}")
-
-        preview_saved_url = None
-        preview_pages_urls = []
-        if mime_type == "application/pdf" and pdf_all_preview_bytes:
-            for p_idx, p_bytes in enumerate(pdf_all_preview_bytes):
-                page_suffix = "_preview.jpg" if p_idx == 0 else f"_page_{p_idx + 1}.jpg"
-                p_filename = f"{upload_id}{lr_tag}_{clean_name}{page_suffix}"
-                p_file_path = os.path.join(UPLOAD_LR_DIR, p_filename)
-                try:
-                    with open(p_file_path, "wb") as f_prev:
-                        f_prev.write(p_bytes)
-                    p_url = f"/uploads/{p_filename}"
-                    preview_pages_urls.append(p_url)
-                except Exception as e_prev:
-                    print(f"[Upload Vault Error] Failed to save page {p_idx+1} preview: {e_prev}")
-            if preview_pages_urls:
-                preview_saved_url = preview_pages_urls[0]
-                print(f"[Upload Vault] Successfully saved {len(preview_pages_urls)} preview image(s) (primary: {preview_saved_url})")
-        elif preview_saved_url:
-            preview_pages_urls = [preview_saved_url]
-
-        reg_entry = None
-        try:
-            reg_entry = file_lifecycle_service.record_file_creation(
-                file_path=snapshot_lr_path,
-                file_type="bilty_image" if mime_type != "application/pdf" else "bilty_pdf",
-                file_bytes=bytes_to_save,
-                file_id=upload_id,
-                user_name=actor.get("user_name") or "Logistics User",
-                user_mobile=actor.get("user_mobile") or "",
-                user_id=actor.get("user_id") or None,
-                custom_meta={
-                    "extracted_fields": len(data_dict),
-                    "upload_id": upload_id,
-                    "lr_no": lr_clean,
-                    "saved_filename": snapshot_lr_filename,
-                    "original_filename": primary_filename,
-                    "snapshot_path": snapshot_lr_path,
-                    "user_id": actor.get("user_id") or "",
-                    "user_mobile": actor.get("user_mobile") or "",
-                    "created_by": actor.get("user_name") or "Logistics User",
-                },
-                initial_data=data_dict
-            )
-        except Exception as ex:
-            print(f"[Lifecycle] Non-critical image registration error: {ex}")
-
-        v1_list = reg_entry.get("versions", []) if reg_entry else [
-            {
-                "version": 1,
-                "timestamp": now_ts,
-                "action": "create",
-                "details": "Document created from OCR",
-                "snapshot_data": data_dict
-            }
-        ]
-
-        rel_saved_path = os.path.relpath(snapshot_lr_path, BASE_DIR).replace("\\", "/")
-
-        parsed_output = ParsedDocument(
-            filename=display_filename,
-            document_title=raw_result.get("document_title", "Handwritten Document"),
-            data=data_dict,
-            key_value_pairs=kv_pairs,
-            confidence_notes=raw_result.get("confidence_notes", ""),
-            created_at=now_ts,
-            edited_at=None,
-            exported_at=None,
-            deleted_at=None,
-            current_version=1,
-            versions=v1_list,
-            preview_image=preview_image_data_url,
-            file_id=upload_id,
+        parsed_output = await asyncio.to_thread(
+            _persist_extracted_document_sync,
             upload_id=upload_id,
-            saved_filename=snapshot_lr_filename,
-            file_path=rel_saved_path,
-            file_url=f"/snapshots/{snapshot_lr_filename}",
-            preview_url=preview_saved_url or f"/snapshots/{snapshot_lr_filename}",
-            page_count=pdf_page_count,
-            preview_pages=preview_pages_urls
+            now_ts=now_ts,
+            lr_clean=lr_clean,
+            lr_tag=lr_tag,
+            clean_name=clean_name,
+            orig_ext=orig_ext,
+            primary_filename=primary_filename,
+            display_filename=display_filename,
+            bytes_to_save=bytes_to_save,
+            mime_type=mime_type,
+            pdf_all_preview_bytes=pdf_all_preview_bytes,
+            pdf_page_count=pdf_page_count,
+            preview_image_data_url=preview_image_data_url,
+            data_dict=data_dict,
+            kv_pairs=kv_pairs,
+            raw_result=raw_result,
+            actor=actor,
+            user_mobile=user_mobile,
+            user_id=user_id,
+            user_name=user_name,
         )
 
         print(f"[Success] Extracted {len(data_dict)} key-value pair(s)")
         print(f"[Output Title] {parsed_output.document_title}")
-
-        # Automatically record newly uploaded LR into user's temporary cloud JSON DB
-        try:
-            user_mob = actor.get("user_mobile") or user_mobile or ""
-            user_uid = actor.get("user_id") or user_id or ""
-            user_dname = actor.get("user_name") or user_name or "Logistics User"
-            if user_mob:
-                user_cloud_service.record_uploaded_lr(
-                    mobile=user_mob,
-                    lr_entry=parsed_output.model_dump() if hasattr(parsed_output, "model_dump") else parsed_output.dict(),
-                    user_id=user_uid,
-                    user_name=user_dname
-                )
-        except Exception as cloud_err:
-            print(f"[UserCloudService] Notice recording uploaded LR: {cloud_err}")
-
         return parsed_output
 
     except Exception as e:
@@ -3228,20 +3429,14 @@ async def extract_handwriting(
         raise HTTPException(status_code=500, detail=f"Inference pipeline failed: {str(e)}")
 
 
-def _build_workbook_for_docs(
-    docs: list[SingleDocumentExport],
-    format_type: str = "gr_bnf_49",
-    user_name: str = "Logistics User",
-    export_id: str | None = None,
-    include_audit_meta: bool = True,
-    web_mode: bool = False
-) -> tuple[openpyxl.Workbook, bytes, str, str]:
-    # Strict validation: verify all documents have valid exact Department and Counter values and space-free GSTIN
+def _validate_export_docs(docs: list[SingleDocumentExport]) -> None:
+    """Validates Department, Counter, GSTIN spacing, and mandatory Freight before export."""
+    manifest_map = _load_manifest_data()
     for doc in docs:
         d_dict = _get_doc_data(doc)
         dept = d_dict.get("Depatment Name") or d_dict.get("department") or ""
         cust = d_dict.get("Customer Name *") or d_dict.get("cngr *") or ""
-        if dept and not validate_department_exact(str(dept), str(cust) if cust in _load_manifest_data() else None):
+        if dept and not validate_department_exact(str(dept), str(cust) if cust in manifest_map else None):
             raise HTTPException(status_code=400, detail=f"Validation Error: Department '{dept}' is not recognized in ManiFest.xlsx. It must match the master Excel exactly.")
         cntr = d_dict.get("Counter name") or d_dict.get("Counter") or d_dict.get("counter") or ""
         if cntr and not validate_counter_exact(str(cntr)):
@@ -3255,6 +3450,33 @@ def _build_workbook_for_docs(
         frt = str(d_dict.get("freight  *") or d_dict.get("freight") or "").strip()
         if not frt:
             raise HTTPException(status_code=400, detail="Validation Error: Freight is mandatory. Please enter Freight before exporting.")
+
+
+def _resolve_export_format(format_type: str | None, docs: list[SingleDocumentExport]) -> str:
+    """Resolves normalized export format token for a batch of documents."""
+    fmt = (format_type or "").lower().strip()
+    if not fmt or fmt == "auto":
+        for d in docs:
+            k_lower = "".join(d.data.keys()).lower()
+            if any(term in k_lower for term in ("grno", "gr_no", "bilty", "lr", "cngr", "cnge", "consignor", "consignee", "eway", "freight", "vehicle", "driver")):
+                return "gr_bnf_49"
+        return "dynamic"
+    return fmt
+
+
+def _build_workbook_for_docs(
+    docs: list[SingleDocumentExport],
+    format_type: str = "gr_bnf_49",
+    user_name: str = "Logistics User",
+    export_id: str | None = None,
+    include_audit_meta: bool = True,
+    web_mode: bool = False,
+    precomputed_rows: list[list] | None = None,
+    skip_validation: bool = False,
+) -> tuple[openpyxl.Workbook, bytes, str, str]:
+    # Strict validation: verify all documents have valid exact Department and Counter values and space-free GSTIN
+    if not skip_validation:
+        _validate_export_docs(docs)
 
     wb = openpyxl.Workbook()
 
@@ -3280,22 +3502,12 @@ def _build_workbook_for_docs(
     center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-    # Check export format requested
-    fmt = (format_type or "").lower().strip()
-
-    # Auto-detect format if not explicitly set (Default to full 49-col BNF format with RED columns)
-    if not fmt or fmt == "auto":
-        is_gr = False
-        for d in docs:
-            k_lower = "".join(d.data.keys()).lower()
-            if any(term in k_lower for term in ("grno", "gr_no", "bilty", "lr", "cngr", "cnge", "consignor", "consignee", "eway", "freight", "vehicle", "driver")):
-                is_gr = True
-                break
-        fmt = "gr_bnf_49" if is_gr else "dynamic"
+    fmt = _resolve_export_format(format_type, docs)
 
     # Clean uncolored styling (no yellow, no red fills)
     no_fill = PatternFill(fill_type=None)
     header_font_clean = Font(name="Calibri", size=10, bold=True, color="000000")
+    mapped_49_rows_cache: list[list] | None = None
 
     # =========================================================================
     # OPTION 1: Exact 38-Column Import Format (ImportGRStockExcelFormat.xlsx)
@@ -3396,9 +3608,13 @@ def _build_workbook_for_docs(
         ws1.row_dimensions[header_row_idx].height = 24
 
         # Extracted Consignment Data Rows
-        for r_offset, doc in enumerate(docs):
+        mapped_49_rows_cache = (
+            precomputed_rows
+            if (precomputed_rows is not None and len(precomputed_rows) == len(docs))
+            else [map_to_gr_row(_get_doc_data(doc), headers, web_mode=web_mode) for doc in docs]
+        )
+        for r_offset, row_vals in enumerate(mapped_49_rows_cache):
             curr_row = data_start_row + r_offset
-            row_vals = map_to_gr_row(_get_doc_data(doc), headers, web_mode=web_mode)
             for col_idx, (h, val) in enumerate(zip(headers, row_vals), start=1):
                 c = ws1.cell(row=curr_row, column=col_idx)
                 c.font = data_font
@@ -3594,10 +3810,15 @@ def _build_workbook_for_docs(
             cell.border = thin_border
         ws_history.row_dimensions[5].height = 24
 
-        # Rows 6+: Data Rows
-        for r_idx, doc in enumerate(docs, start=6):
-            doc_data = _get_doc_data(doc)
-            gr_49_vals = map_to_gr_row(doc_data, GR_BNF_49_HEADERS, web_mode=web_mode)
+        # Rows 6+: Data Rows (reusing precomputed 49-col mapped rows when available)
+        for idx_doc, doc in enumerate(docs):
+            r_idx = 6 + idx_doc
+            if mapped_49_rows_cache is not None:
+                gr_49_vals = mapped_49_rows_cache[idx_doc]
+            elif precomputed_rows is not None and len(precomputed_rows) == len(docs) and len(precomputed_rows[idx_doc]) == len(GR_BNF_49_HEADERS):
+                gr_49_vals = precomputed_rows[idx_doc]
+            else:
+                gr_49_vals = map_to_gr_row(_get_doc_data(doc), GR_BNF_49_HEADERS, web_mode=web_mode)
             row_vals = [user_name, export_date, export_time, exported_at, *gr_49_vals]
             for col_idx, (h, val) in enumerate(zip(history_full_headers, row_vals), start=1):
                 c = ws_history.cell(row=r_idx, column=col_idx)
@@ -3664,64 +3885,6 @@ def _build_workbook_for_docs(
     return wb, file_bytes, filename, export_id
 
 
-# --- ROUTE 4B: Assemble Multi-Page PDF from Images (Continuous Camera / Multi-Photo Intake) ---
-@app.post("/api/assemble-pdf")
-async def assemble_pdf_endpoint(files: list[UploadFile] = File(...)):
-    """
-    Combines multiple image files in the provided order into a single multi-page PDF document.
-    Enforces maximum allowed size and creates a unified PDF dossier for single LR extraction.
-    """
-    if not files:
-        raise HTTPException(status_code=400, detail="No image files provided for PDF assembly.")
-
-    try:
-        import sys
-        for _m in ('pymupdf.layout', 'pymupdf4llm', 'onnxruntime'):
-            if _m not in sys.modules:
-                sys.modules[_m] = None
-        import fitz
-        doc = fitz.open()
-
-        for f in files:
-            img_bytes = await f.read()
-            if not img_bytes:
-                continue
-            try:
-                img_doc = fitz.open(stream=img_bytes, filetype="image")
-                pdf_bytes = img_doc.convert_to_pdf()
-                img_pdf = fitz.open("pdf", pdf_bytes)
-                doc.insert_pdf(img_pdf)
-            except Exception:
-                try:
-                    pil_img = Image.open(io.BytesIO(img_bytes))
-                    if pil_img.mode in ("RGBA", "P"):
-                        pil_img = pil_img.convert("RGB")
-                    buf = io.BytesIO()
-                    pil_img.save(buf, format="JPEG", quality=92)
-                    img_doc = fitz.open(stream=buf.getvalue(), filetype="jpeg")
-                    pdf_bytes = img_doc.convert_to_pdf()
-                    img_pdf = fitz.open("pdf", pdf_bytes)
-                    doc.insert_pdf(img_pdf)
-                except Exception as e_pil:
-                    print(f"[PDF Assembly Notice] Skipping invalid image: {e_pil}")
-
-        if len(doc) == 0:
-            raise HTTPException(status_code=400, detail="Failed to assemble valid PDF from provided images.")
-
-        out_pdf_bytes = doc.tobytes()
-        now_dt = datetime.now()
-        out_filename = f"LR_Scan_{now_dt.strftime('%Y%m%d_%H%M%S')}.pdf"
-
-        return StreamingResponse(
-            io.BytesIO(out_pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{out_filename}"'}
-        )
-    except Exception as e:
-        print(f"[PDF Assembly Error]: {e}")
-        raise HTTPException(status_code=500, detail=f"PDF assembly failed: {str(e)}")
-
-
 # --- ROUTE 5: Stylized Excel Generator (openpyxl) ---
 @app.post("/generate-excel")
 async def generate_excel(req: ExcelExportRequest):
@@ -3744,7 +3907,10 @@ async def generate_excel(req: ExcelExportRequest):
 
     user_name = req.user_name or "Logistics User"
     is_web = str(getattr(req, "client_source", "") or "").strip().lower() == "web"
-    wb, file_bytes, filename, export_id = _build_workbook_for_docs(docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=False, web_mode=is_web)
+    wb, file_bytes, filename, export_id = await asyncio.to_thread(
+        _build_workbook_for_docs,
+        docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=False, web_mode=is_web
+    )
     return StreamingResponse(
         io.BytesIO(file_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -3867,6 +4033,7 @@ _CACHED_MANIFEST_DATA = None
 _CACHED_COUNTERS_DATA = None
 _CACHED_VEHICLE_TYPE_RECORDS = None
 _CACHED_GOODS_MASTER_RECORDS = None
+_CACHED_GOODS_LOOKUP = None
 
 def _load_manifest_parties() -> tuple[list[dict[str, str]], dict[str, str]]:
     global _CACHED_MANIFEST_PARTIES
@@ -4142,6 +4309,20 @@ def _load_goods_names() -> list[str]:
     """Returns list of active Goods Names from GoodsMaster.xlsx."""
     recs = _load_goods_master_records()
     return [r["goods_name"] for r in recs]
+
+def _load_goods_lookup() -> dict[str, str]:
+    """Returns cached lowercase-to-canonical active goods name mapping for O(1) lookup."""
+    global _CACHED_GOODS_LOOKUP
+    with _MANIFEST_CACHE_LOCK:
+        if _CACHED_GOODS_LOOKUP is not None:
+            return _CACHED_GOODS_LOOKUP
+        lookup: dict[str, str] = {}
+        for g in _load_goods_names():
+            k = g.strip().lower()
+            if k and k not in lookup:
+                lookup[k] = g
+        _CACHED_GOODS_LOOKUP = lookup
+        return _CACHED_GOODS_LOOKUP
 
 def validate_department_exact(dept: str, customer: str | None = None) -> bool:
     """Validates Department value strictly against ManiFest.xlsx.
@@ -4466,57 +4647,51 @@ class ExportMetaRequest(BaseModel):
 _USER_EXCEL_BYTES_CACHE: dict[str, bytes] = {}
 _USER_EXCEL_CACHE_LOCK = threading.RLock()
 
-@app.post("/api/export-excel-meta")
-async def api_export_excel_meta(req: ExportMetaRequest):
-    docs = req.documents
-    if not docs:
-        raise HTTPException(status_code=400, detail="No document data provided for export")
+def _build_dual_workbooks_sync(
+    docs: list[SingleDocumentExport],
+    format_type: str,
+    user_name: str,
+    web_mode: bool,
+) -> tuple[bytes, bytes, str]:
+    """
+    Validates once, runs map_to_gr_row() once per LR for 49-col BNF exports,
+    and builds both the audit workbook bytes and clean user workbook bytes.
+    """
+    _validate_export_docs(docs)
+    fmt = _resolve_export_format(format_type, docs)
+    precomputed_rows = None
+    if fmt in ("gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
+        precomputed_rows = [
+            map_to_gr_row(_get_doc_data(doc), GR_BNF_49_HEADERS, web_mode=web_mode)
+            for doc in docs
+        ]
 
-    user_name = req.user_name or "Logistics User"
-    user_mobile = req.user_mobile or ""
-    active_token = req.session_token or req.token
-    if active_token:
-        session_user = auth_service.get_session_user(active_token)
-        if session_user:
-            user_name = session_user.get("name", user_name)
-            user_mobile = session_user.get("mobile", user_mobile)
-
-
-
-    now = datetime.now()
-    export_date = now.strftime("%d-%b-%Y")
-    export_time = now.strftime("%I:%M:%S %p")
-    exported_at = now.strftime("%d-%b-%Y %I:%M:%S %p")
-
-
-    is_web = str(req.client_source or "").strip().lower() == "web"
-
-    # 1. Build backend audit copy (retaining snapshot info: User Name, Export Date, Export Time, Exported At, History sheet)
-    audit_wb, audit_bytes, raw_filename, export_id = await asyncio.to_thread(
-        _build_workbook_for_docs,
-        docs, req.format_type or "gr_bnf_49", user_name=user_name, include_audit_meta=True, web_mode=is_web
+    _, audit_bytes, _, export_id = _build_workbook_for_docs(
+        docs, format_type, user_name=user_name, include_audit_meta=True,
+        web_mode=web_mode, precomputed_rows=precomputed_rows, skip_validation=True
     )
-
-    # 2. Build user download copy (containing ONLY actual business data - Row 1 Headers, Rows 2+ Data, 0 metadata rows)
-    user_wb, user_bytes, _, _ = await asyncio.to_thread(
-        _build_workbook_for_docs,
-        docs, req.format_type or "gr_bnf_49", user_name=user_name, export_id=export_id, include_audit_meta=False, web_mode=is_web
+    _, user_bytes, _, _ = _build_workbook_for_docs(
+        docs, format_type, user_name=user_name, export_id=export_id, include_audit_meta=False,
+        web_mode=web_mode, precomputed_rows=precomputed_rows, skip_validation=True
     )
+    return audit_bytes, user_bytes, export_id
 
-    # Generate synchronized timestamped filenames for user download and backend audit copy
-    user_filename, audit_filename = audit_snapshot.generate_export_filenames(now)
 
-    with _USER_EXCEL_CACHE_LOCK:
-        _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
-        _USER_EXCEL_BYTES_CACHE[audit_filename] = audit_bytes
-        _USER_EXCEL_BYTES_CACHE[export_id] = user_bytes
-        _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
-        while len(_USER_EXCEL_BYTES_CACHE) > 50:
-            first_k = next(iter(_USER_EXCEL_BYTES_CACHE))
-            _USER_EXCEL_BYTES_CACHE.pop(first_k, None)
-
-    # 3. Save backend snapshot audit copy into backend/export/snapshots_excel/
-    # (Do NOT save user-downloaded Excel file to backend disk)
+def _persist_export_outputs_sync(
+    *,
+    docs: list[SingleDocumentExport],
+    user_bytes: bytes,
+    audit_bytes: bytes,
+    export_id: str,
+    user_filename: str,
+    audit_filename: str,
+    user_name: str,
+    user_mobile: str,
+    active_token: str | None,
+    format_type: str,
+    exported_at: str,
+) -> dict[str, Any]:
+    """Saves snapshot Excel, updates lifecycle registry in one atomic write, and logs audit + cloud DB."""
     user_filename, _, audit_filename, backend_audit_path = audit_snapshot.save_dual_exports(
         user_bytes=user_bytes,
         audit_bytes=audit_bytes,
@@ -4528,93 +4703,35 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         audit_filename=audit_filename
     )
 
-    # 4. Register Excel metadata in lifecycle tracker with unified export_id
-    excel_meta = file_lifecycle_service.record_file_creation(
-        file_path=os.path.join(UPLOAD_LR_DIR, user_filename),
-        file_type="excel",
+    doc_refs = []
+    plain_docs = []
+    for doc in docs:
+        d_map = _get_doc_data(doc)
+        doc_fn = getattr(doc, "filename", None) or (doc.get("filename") if isinstance(doc, dict) else None) or ""
+        doc_lr = str(d_map.get("lrno") or d_map.get("LR No *") or d_map.get("grno") or "").strip()
+        doc_refs.append({"filename": doc_fn, "lr_no": doc_lr})
+        plain_docs.append(doc.model_dump() if hasattr(doc, "model_dump") else (doc if isinstance(doc, dict) else {}))
+
+    excel_meta = file_lifecycle_service.record_export_batch_lifecycle(
+        export_id=export_id,
+        user_excel_path=os.path.join(UPLOAD_LR_DIR, user_filename),
+        user_filename=user_filename,
+        audit_excel_path=backend_audit_path,
+        audit_filename=audit_filename,
+        audit_bytes=audit_bytes,
         user_name=user_name,
         user_mobile=user_mobile,
-        file_bytes=None,
-        file_id=export_id,
-        custom_meta={
-            "total_records": len(docs),
-            "format_type": req.format_type or "gr_bnf_49",
-            "export_id": export_id,
-            "user_export_filename": user_filename,
-            "audit_copy": audit_filename,
-            "generated_by": user_name,
-            "generated_at": exported_at
-        }
-    )
-    # Also register the backend audit copy in lifecycle tracker
-    file_lifecycle_service.record_file_creation(
-        file_path=backend_audit_path,
-        file_type="excel_audit",
-        user_name=user_name,
-        user_mobile=user_mobile,
-        file_bytes=audit_bytes,
-        file_id=f"{export_id}_audit",
-        custom_meta={
-            "is_audit_copy": True,
-            "total_records": len(docs),
-            "original_filename": user_filename,
-            "generated_by": user_name,
-            "generated_at": exported_at
-        }
+        format_type=format_type,
+        exported_at=exported_at,
+        doc_refs=doc_refs,
     )
 
-    file_lifecycle_service.record_file_export(
-        file_id_or_path=user_filename,
-        user_name=user_name,
-        destination="browser_download"
-    )
-
-    # Tag underlying bilty documents as exported in lifecycle registry
-    try:
-        with file_lifecycle_service._lock:
-            reg = file_lifecycle_service._load_registry()
-            reg_updated = False
-            for doc in docs:
-                d_map = _get_doc_data(doc)
-                doc_fn = getattr(doc, "filename", None) or (doc.get("filename") if isinstance(doc, dict) else None) or ""
-                doc_lr = str(d_map.get("lrno") or d_map.get("LR No *") or d_map.get("grno") or "").strip()
-
-                for fid, entry in reg.items():
-                    if entry.get("file_type") not in ("bilty_image", "bilty_pdf"):
-                        continue
-                    cm = entry.get("custom_meta") or {}
-                    match = False
-                    if doc_fn and doc_fn in (entry.get("file_name"), cm.get("original_filename"), cm.get("saved_filename"), cm.get("upload_id")):
-                        match = True
-                    elif doc_lr and (doc_lr == cm.get("lr_no") or doc_lr == str(entry.get("current_data", {}).get("LR No *") or "").strip()):
-                        match = True
-
-                    if match:
-                        entry["is_exported"] = True
-                        entry["exported_at"] = exported_at
-                        entry["export_batch_id"] = export_id
-                        if "edit_history" not in entry:
-                            entry["edit_history"] = []
-                        entry["edit_history"].append({
-                            "timestamp": file_lifecycle_service.get_current_timestamp(),
-                            "user": user_name,
-                            "action": "export",
-                            "export_id": export_id,
-                            "details": f"Included in Excel export {user_filename}"
-                        })
-                        reg_updated = True
-            if reg_updated:
-                file_lifecycle_service._save_registry(reg)
-    except Exception as ex_tag:
-        print(f"[Lifecycle Export Tag Notice] {ex_tag}")
-
-    # 5. Record export audit (with reference to both user download file and backend audit copy)
     audit_info = audit_snapshot.generate_lightweight_snapshot(
         export_id=export_id,
         filename=user_filename,
         user_name=user_name,
         user_mobile=user_mobile,
-        documents=[d.model_dump() if hasattr(d, "model_dump") else d for d in docs],
+        documents=plain_docs,
         file_bytes=audit_bytes,
         audit_filename=audit_filename,
         user_export_filename=user_filename
@@ -4622,8 +4739,6 @@ async def api_export_excel_meta(req: ExportMetaRequest):
     audit_snapshot.record_export_audit(audit_info)
 
     file_size_kb = round(len(user_bytes) / 1024, 1)
-
-    # Automatically record generated Excel file into user's temporary cloud JSON DB
     try:
         if user_mobile:
             user_cloud_service.record_generated_excel(
@@ -4639,13 +4754,78 @@ async def api_export_excel_meta(req: ExportMetaRequest):
                     "total_lrs": len(docs),
                     "generated_on": exported_at,
                     "generated_by": user_name,
-                    "documents": [d.model_dump() if hasattr(d, "model_dump") else (d if isinstance(d, dict) else {}) for d in docs]
+                    "documents": plain_docs,
                 },
                 user_id=active_token,
-                user_name=user_name
+                user_name=user_name,
             )
     except Exception as cloud_ex:
         print(f"[UserCloudService] Notice recording generated Excel: {cloud_ex}")
+
+    return {
+        "user_filename": user_filename,
+        "audit_filename": audit_filename,
+        "file_size_kb": file_size_kb,
+        "created_at": excel_meta.get("created_at"),
+    }
+
+
+@app.post("/api/export-excel-meta")
+async def api_export_excel_meta(req: ExportMetaRequest):
+    docs = req.documents
+    if not docs:
+        raise HTTPException(status_code=400, detail="No document data provided for export")
+
+    user_name = req.user_name or "Logistics User"
+    user_mobile = req.user_mobile or ""
+    active_token = req.session_token or req.token
+    if active_token:
+        session_user = auth_service.get_session_user(active_token)
+        if session_user:
+            user_name = session_user.get("name", user_name)
+            user_mobile = session_user.get("mobile", user_mobile)
+
+    now = datetime.now()
+    export_date = now.strftime("%d-%b-%Y")
+    export_time = now.strftime("%I:%M:%S %p")
+    exported_at = now.strftime("%d-%b-%Y %I:%M:%S %p")
+
+    fmt_type = req.format_type or "gr_bnf_49"
+    is_web = str(req.client_source or "").strip().lower() == "web"
+
+    audit_bytes, user_bytes, export_id = await asyncio.to_thread(
+        _build_dual_workbooks_sync,
+        docs, fmt_type, user_name, is_web
+    )
+
+    user_filename, audit_filename = audit_snapshot.generate_export_filenames(now)
+
+    with _USER_EXCEL_CACHE_LOCK:
+        _USER_EXCEL_BYTES_CACHE[user_filename] = user_bytes
+        _USER_EXCEL_BYTES_CACHE[audit_filename] = audit_bytes
+        _USER_EXCEL_BYTES_CACHE[export_id] = user_bytes
+        _USER_EXCEL_BYTES_CACHE[f"USER_EXPORT_GR_Import_BNF_EXP_{export_id}_{len(docs)}LRs.xlsx"] = user_bytes
+        while len(_USER_EXCEL_BYTES_CACHE) > 50:
+            first_k = next(iter(_USER_EXCEL_BYTES_CACHE))
+            _USER_EXCEL_BYTES_CACHE.pop(first_k, None)
+
+    persist_res = await asyncio.to_thread(
+        _persist_export_outputs_sync,
+        docs=docs,
+        user_bytes=user_bytes,
+        audit_bytes=audit_bytes,
+        export_id=export_id,
+        user_filename=user_filename,
+        audit_filename=audit_filename,
+        user_name=user_name,
+        user_mobile=user_mobile,
+        active_token=active_token,
+        format_type=fmt_type,
+        exported_at=exported_at,
+    )
+    user_filename = persist_res["user_filename"]
+    audit_filename = persist_res["audit_filename"]
+    file_size_kb = persist_res["file_size_kb"]
 
     return {
         "success": True,
@@ -4666,17 +4846,91 @@ async def api_export_excel_meta(req: ExportMetaRequest):
         "mobile": user_mobile,
         "generated_on": exported_at,
         "timestamp": exported_at,
-        "created_at": excel_meta.get("created_at"),
+        "created_at": persist_res["created_at"],
         "total_lrs": len(docs),
         "total_records": len(docs),
     }
+
+
+def _record_device_download_safe(file_name: str, actor_name: str) -> None:
+    try:
+        file_lifecycle_service.record_file_export(
+            file_id_or_path=file_name,
+            user_name=actor_name,
+            destination="device_download",
+        )
+    except Exception:
+        pass
+
+
+def _load_fallback_download_bytes_sync(safe_name: str) -> bytes | None:
+    """
+    Loads legacy clean workbook bytes from disk or reconstructs a clean report
+    from snapshots_excel off the asyncio event loop.
+    """
+    file_path = None
+    candidate_lr = os.path.join(UPLOAD_LR_DIR, safe_name)
+    if os.path.isfile(candidate_lr):
+        file_path = candidate_lr
+    else:
+        candidate_exp = os.path.join(audit_snapshot.EXPORTS_DIR, safe_name)
+        if os.path.isfile(candidate_exp):
+            file_path = candidate_exp
+
+    if file_path and os.path.isfile(file_path):
+        wb_test = None
+        try:
+            wb_test = openpyxl.load_workbook(file_path, read_only=True)
+            has_history = "History" in wb_test.sheetnames
+            wb_test.close()
+            wb_test = None
+            if not has_history:
+                with open(file_path, "rb") as f_disk:
+                    disk_bytes = f_disk.read()
+                return ensure_excel_date_number_formats(disk_bytes)
+        except Exception:
+            if wb_test is not None:
+                try:
+                    wb_test.close()
+                except Exception:
+                    pass
+
+    snap_path = audit_snapshot.resolve_snapshot_path(safe_name)
+    if snap_path and os.path.isfile(snap_path):
+        wb = None
+        try:
+            wb = openpyxl.load_workbook(snap_path)
+            if "History" in wb.sheetnames:
+                wb.remove(wb["History"])
+            ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
+            while ws.max_row > 1 and ws.cell(1, 1).value and str(ws.cell(1, 1).value).strip().startswith(("User Name:", "Export Date:", "Export Time:", "Exported At:")):
+                ws.delete_rows(1, 1)
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            clean_bytes = ensure_excel_date_number_formats(buf.getvalue())
+            with _USER_EXCEL_CACHE_LOCK:
+                _USER_EXCEL_BYTES_CACHE[safe_name] = clean_bytes
+            return clean_bytes
+        except Exception as e_stream:
+            print(f"[Export Download Stream Error] {e_stream}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate clean download workbook: {e_stream}")
+        finally:
+            if wb is not None:
+                try:
+                    wb.close()
+                except Exception:
+                    pass
+
+    return None
 
 
 @app.get("/api/download-export/{filename}")
 async def download_exported_file(
     filename: str,
     user_name: str | None = None,
-    authorization: str | None = Header(default=None)
+    authorization: str | None = Header(default=None),
+    background_tasks: BackgroundTasks = None,
 ):
     safe_name = os.path.basename(filename)
     actor_name = user_name or "Logistics User"
@@ -4685,7 +4939,7 @@ async def download_exported_file(
         if session_user:
             actor_name = session_user.get("name") or actor_name
 
-    # 1. Primary path: Stream clean in-memory user bytes (Row 1 Headers, Rows 2+ Data, 0 metadata rows)
+    # 1. Primary path: Stream cached clean in-memory user bytes immediately (already number-format patched)
     with _USER_EXCEL_CACHE_LOCK:
         clean_bytes = _USER_EXCEL_BYTES_CACHE.get(safe_name)
         if not clean_bytes:
@@ -4694,16 +4948,11 @@ async def download_exported_file(
                 clean_bytes = _USER_EXCEL_BYTES_CACHE[exp_match.group(0)]
 
     if clean_bytes:
-        try:
-            file_lifecycle_service.record_file_export(
-                file_id_or_path=safe_name,
-                user_name=actor_name,
-                destination="device_download"
-            )
-        except Exception:
-            pass
+        if background_tasks is not None:
+            background_tasks.add_task(_record_device_download_safe, safe_name, actor_name)
+        else:
+            await asyncio.to_thread(_record_device_download_safe, safe_name, actor_name)
 
-        clean_bytes = ensure_excel_date_number_formats(clean_bytes)
         return StreamingResponse(
             io.BytesIO(clean_bytes),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4716,92 +4965,25 @@ async def download_exported_file(
             }
         )
 
-    # 2. Check if a clean user export exists on disk in legacy directories
-    # (Never serve snapshots from snapshots_excel directly as user downloads!)
-    file_path = None
-    candidate_lr = os.path.join(UPLOAD_LR_DIR, safe_name)
-    if os.path.isfile(candidate_lr):
-        file_path = candidate_lr
-    else:
-        candidate_exp = os.path.join(audit_snapshot.EXPORTS_DIR, safe_name)
-        if os.path.isfile(candidate_exp):
-            file_path = candidate_exp
+    # 2 & 3. Fallback disk read / snapshot reconstruction executed off the event loop
+    fallback_bytes = await asyncio.to_thread(_load_fallback_download_bytes_sync, safe_name)
+    if fallback_bytes is not None:
+        if background_tasks is not None:
+            background_tasks.add_task(_record_device_download_safe, safe_name, actor_name)
+        else:
+            await asyncio.to_thread(_record_device_download_safe, safe_name, actor_name)
 
-    if file_path and os.path.isfile(file_path):
-        try:
-            wb_test = openpyxl.load_workbook(file_path, read_only=True)
-            has_history = "History" in wb_test.sheetnames
-            wb_test.close()
-            if not has_history:
-                with open(file_path, "rb") as f_disk:
-                    disk_bytes = f_disk.read()
-                fixed_disk_bytes = ensure_excel_date_number_formats(disk_bytes)
-                return StreamingResponse(
-                    io.BytesIO(fixed_disk_bytes),
-                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={
-                        "Content-Disposition": f'attachment; filename="{safe_name}"',
-                        "Access-Control-Expose-Headers": "Content-Disposition",
-                        "Cache-Control": "no-cache, no-store, must-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0"
-                    }
-                )
-        except Exception:
-            pass
-
-    # 3. Dynamic fallback: Load internal audit snapshot from snapshots_excel and generate clean user report
-    snap_path = audit_snapshot.resolve_snapshot_path(safe_name)
-    if snap_path and os.path.isfile(snap_path):
-        wb = None
-        try:
-            wb = openpyxl.load_workbook(snap_path)
-            # Remove internal audit History sheet
-            if "History" in wb.sheetnames:
-                wb.remove(wb["History"])
-            ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
-            # Remove top audit metadata rows so Row 1 is column headers and Rows 2+ are clean consignment data
-            while ws.max_row > 1 and ws.cell(1, 1).value and str(ws.cell(1, 1).value).strip().startswith(("User Name:", "Export Date:", "Export Time:", "Exported At:")):
-                ws.delete_rows(1, 1)
-
-            buf = io.BytesIO()
-            wb.save(buf)
-            buf.seek(0)
-            clean_bytes = ensure_excel_date_number_formats(buf.getvalue())
-
-            # Cache the clean bytes for future downloads
-            with _USER_EXCEL_CACHE_LOCK:
-                _USER_EXCEL_BYTES_CACHE[safe_name] = clean_bytes
-
-            try:
-                file_lifecycle_service.record_file_export(
-                    file_id_or_path=safe_name,
-                    user_name=actor_name,
-                    destination="device_download"
-                )
-            except Exception:
-                pass
-
-            return StreamingResponse(
-                io.BytesIO(clean_bytes),
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}"',
-                    "Access-Control-Expose-Headers": "Content-Disposition",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0"
-                }
-            )
-        except Exception as e_stream:
-            print(f"[Export Download Stream Error] {e_stream}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate clean download workbook: {e_stream}")
-        finally:
-            if wb is not None:
-                try:
-                    wb.close()
-                except Exception:
-                    pass
+        return StreamingResponse(
+            io.BytesIO(fallback_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_name}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
 
     raise HTTPException(status_code=404, detail="Exported Excel file not found.")
 
@@ -5011,6 +5193,10 @@ async def get_previous_uploads(
 
         # 2. Query file lifecycle service and disk files strictly isolated to this authenticated user
         all_metadata = file_lifecycle_service.get_all_metadata(include_deleted=False, limit=200)
+        try:
+            upload_lr_jpgs = [f for f in sorted(os.listdir(UPLOAD_LR_DIR)) if f.endswith(".jpg")]
+        except Exception:
+            upload_lr_jpgs = []
 
         for meta in all_metadata:
             if meta.get("is_deleted", False):
@@ -5073,9 +5259,10 @@ async def get_previous_uploads(
             if is_pdf:
                 upload_prefix = custom_meta.get("upload_id") or ""
                 base_stem = os.path.splitext(saved_name)[0]
-                for f in sorted(os.listdir(UPLOAD_LR_DIR)):
-                    if (upload_prefix and f.startswith(upload_prefix) and f.endswith(".jpg")) or \
-                       (base_stem and base_stem[:25] in f and f.endswith(".jpg")):
+                stem_prefix = base_stem[:25]
+                for f in upload_lr_jpgs:
+                    if (upload_prefix and f.startswith(upload_prefix)) or \
+                       (stem_prefix and stem_prefix in f):
                         if "preview" in f:
                             preview_url = f"/uploads/{f}"
                         if "page" in f or "preview" in f:

@@ -882,7 +882,7 @@
 
                     <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
 
-                    <input type="date" id="edit_grdt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); document.getElementById('edit_grdt').value = `${p[2]}-${p[1]}-${p[0]}`; }" />
+                    <input type="date" id="edit_grdt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); const inp = document.getElementById('edit_grdt'); if(inp){ inp.value = `${p[2]}-${p[1]}-${p[0]}`; inp.dispatchEvent(new Event('input', { bubbles: true })); } if(typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); }" />
 
                   </div>
 
@@ -892,7 +892,7 @@
 
               <div>
 
-                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">E-Way Bill Date</label>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5" title="UI reference date (excluded from 49-column Excel export)">E-Way Bill Date <span class="text-[10px] font-normal text-slate-400">(Ref Only)</span></label>
 
                 <div class="relative">
 
@@ -902,7 +902,7 @@
 
                     <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
 
-                    <input type="date" id="edit_ewaybilldt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); document.getElementById('edit_ewaybilldt').value = `${p[2]}-${p[1]}-${p[0]}`; }" />
+                    <input type="date" id="edit_ewaybilldt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); const inp = document.getElementById('edit_ewaybilldt'); if(inp){ inp.value = `${p[2]}-${p[1]}-${p[0]}`; inp.dispatchEvent(new Event('input', { bubbles: true })); } if(typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); }" />
 
                   </div>
 
@@ -3560,7 +3560,7 @@
         'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
         'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
       };
-      const mMon = s.match(/^(\d{1,2})[\s\-\/.]([a-zA-Z]{3,9})[\s\-\/.](d{2,4})$/);
+      const mMon = s.match(/^(\d{1,2})[\s\-\/.]([a-zA-Z]{3,9})[\s\-\/.](\d{2,4})$/);
       if (mMon) {
         const d = String(mMon[1]).padStart(2, '0');
         const mo = months[mMon[2].toLowerCase().slice(0, 3)];
@@ -3817,7 +3817,7 @@
 
       if (fieldKey === 'BNF LR No') return data['BNF LR No'] || data['bnf lr no'] || data['bnflrno'] || data['bnflr'] || '';
 
-      if (fieldKey === 'Counter name' || fieldKey === 'counter name') return data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || data['Booking Counter'] || data['booking counter'] || data['branchrefcode'] || 'delhi';
+      if (fieldKey === 'Counter name' || fieldKey === 'counter name') return data['Counter name'] || data['counter name'] || data['Counter'] || data['counter'] || data['Booking Counter'] || data['booking counter'] || '';
 
       if (fieldKey === 'Transit Days' || fieldKey === 'transit days') {
 
@@ -4012,9 +4012,7 @@
 
           if (upper === 'FTL' || upper === 'LTL') return upper;
 
-          if (upper.includes('FTL') || upper.includes('32 FT') || upper.includes('7 MT')) return 'FTL';
-
-          if (upper.startsWith('Y') || upper.includes('FULL')) return 'Y';
+          if (upper.includes('FTL') || upper.includes('FULL') || upper.includes('32 FT') || upper.includes('7 MT') || upper.startsWith('Y')) return 'FTL';
 
           if (upper.startsWith('N') || upper.includes('PART')) return 'N';
 
@@ -4296,6 +4294,8 @@
 
       const existing = (id && inMemoryImageStore.get(String(id))) || (filename && inMemoryImageStore.get(String(filename))) || {};
 
+      const nextPages = (Array.isArray(preview_pages) && preview_pages.length > 0) ? preview_pages : (existing.preview_pages || []);
+
       const payload = {
 
         imageSrc: imageSrc || existing.imageSrc || '',
@@ -4310,21 +4310,30 @@
 
         preview_url: preview_url || existing.preview_url || '',
 
-        preview_pages: (Array.isArray(preview_pages) && preview_pages.length > 0) ? preview_pages : (existing.preview_pages || []),
+        preview_pages: nextPages,
 
         page_count: page_count || existing.page_count || 1
 
       };
 
+      const isUnchanged =
+        existing.imageSrc === payload.imageSrc &&
+        existing.preview_image === payload.preview_image &&
+        existing.originalPdfSrc === payload.originalPdfSrc &&
+        existing.file_url === payload.file_url &&
+        existing.saved_filename === payload.saved_filename &&
+        existing.preview_url === payload.preview_url &&
+        existing.page_count === payload.page_count &&
+        Array.isArray(existing.preview_pages) &&
+        existing.preview_pages.length === payload.preview_pages.length &&
+        existing.preview_pages.every((v, idx) => v === payload.preview_pages[idx]);
+
       if (id) inMemoryImageStore.set(String(id), payload);
 
       if (filename) inMemoryImageStore.set(String(filename), payload);
 
-
-
-      // Async write to persistent IndexedDB so files survive page refreshes and browser restarts
-
-      if (payload.imageSrc || payload.preview_image || payload.originalPdfSrc || payload.file_url || payload.preview_url || (payload.preview_pages && payload.preview_pages.length > 0)) {
+      // Async write to persistent IndexedDB only when payload changed or not yet cached
+      if (!isUnchanged && (payload.imageSrc || payload.preview_image || payload.originalPdfSrc || payload.file_url || payload.preview_url || (payload.preview_pages && payload.preview_pages.length > 0))) {
 
         if (id) ImageDB.set(String(id), payload);
 
@@ -4908,7 +4917,40 @@
 
     }
 
+    function loadPersistentCompletedItems(user = currentUser) {
+      userCompletedItemsSet.clear();
+      try {
+        const key = getUserCompletedItemsStorageKey(user);
+        if (!key) return;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            arr.forEach(v => { if (v) userCompletedItemsSet.add(String(v).trim()); });
+          }
+        }
+      } catch (_) {}
+    }
 
+    function savePersistentCompletedItems(user = currentUser) {
+      try {
+        const key = getUserCompletedItemsStorageKey(user);
+        if (!key) return;
+        localStorage.setItem(key, JSON.stringify(Array.from(userCompletedItemsSet)));
+      } catch (_) {}
+    }
+
+    function clearItemExportedStatus(item) {
+      if (!item) return;
+      item.is_exported = false;
+      item.exportedAt = null;
+      item.exported_at = null;
+      const lr = (item.data && (item.data['LR No *'] || item.data['lrno'] || item.data['grno'])) || item.lrNo || '';
+      [item.id, item.saved_filename, item.filename, lr].forEach(val => {
+        if (val) userCompletedItemsSet.delete(String(val).trim());
+      });
+      savePersistentCompletedItems();
+    }
 
     function isItemExportedByUser(item, user = currentUser) {
 
@@ -4940,13 +4982,19 @@
 
     }
 
-
+    function getExportableVerifiedItems(includeAlreadyExported = false) {
+      const verifiedAll = (verifiedBatch || []).filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified);
+      const unexportedVerified = verifiedAll.filter(item => !isItemExportedByUser(item));
+      const exportTargets = includeAlreadyExported ? verifiedAll : unexportedVerified;
+      return { verifiedAll, unexportedVerified, exportTargets };
+    }
 
     function markBatchAsCompletedAndClearPending(exportedDocs, exportMeta = {}) {
 
       if (!currentUser) return;
 
       const exportId = exportMeta.export_id || ('exp_' + Date.now());
+      const exportTs = exportMeta.exported_at || new Date().toISOString();
 
       const docsToMark = (Array.isArray(exportedDocs) && exportedDocs.length > 0) ? exportedDocs : verifiedBatch;
 
@@ -4963,6 +5011,9 @@
       docsToMark.forEach(d => {
 
         if (!d) return;
+
+        d.is_exported = true;
+        d.exportedAt = exportTs;
 
         if (d.id && !ignoredValues.has(String(d.id).trim().toLowerCase())) {
 
@@ -4988,7 +5039,7 @@
 
       });
 
-
+      savePersistentCompletedItems();
 
       userExportedBatchesCache.unshift({
 
@@ -4998,7 +5049,7 @@
 
         count: docsToMark.length,
 
-        exported_at: exportMeta.exported_at || new Date().toISOString(),
+        exported_at: exportTs,
 
         doc_ids: completedIds.slice(0, 10)
 
@@ -5022,7 +5073,7 @@
 
       renderPreviousUploadsWeb();
 
-      console.log(`[Batch Lifecycle] Recorded export for ${docsToMark.length} LR records. Queue and recents preserved.`);
+      console.log(`[Batch Lifecycle] Marked ${docsToMark.length} LR records as Exported (Option A: queue and recents preserved).`);
 
     }
 
@@ -5044,6 +5095,8 @@
 
         loadPersistentTombstones();
 
+        loadPersistentCompletedItems();
+
         if (!currentUser) {
 
           verifiedBatch = [];
@@ -5053,6 +5106,8 @@
           userRecentsCache = [];
 
           userDismissedTombstones.clear();
+
+          userCompletedItemsSet.clear();
 
           updateBatchBadge();
 
@@ -5190,8 +5245,7 @@
 
 
 
-        // 1. Hydrate active batch from cloud JSON DB (supports cross-device & browser closure)
-
+        // 1. Hydrate active batch from cloud JSON DB safely without clobbering newer local edits or in-flight uploads
         if (cloudActive.length > 0) {
 
           const merged = cloudActive.filter(ca => ca && !isItemTombstonedByUser(ca));
@@ -5200,10 +5254,26 @@
 
             if (!localItem || !localItem.id || isItemTombstonedByUser(localItem)) return;
 
-            const exists = merged.some(m => m.id === localItem.id || (m.saved_filename && m.saved_filename === localItem.saved_filename));
+            const existingIdx = merged.findIndex(m => m.id === localItem.id || (m.saved_filename && m.saved_filename === localItem.saved_filename));
 
-            if (!exists) merged.push(localItem);
+            if (existingIdx === -1) {
+              merged.push(localItem);
+            } else {
+              const m = merged[existingIdx];
+              const localTs = new Date(localItem.editedAt || localItem.createdAt || 0).getTime();
+              const cloudTs = new Date(m.editedAt || m.createdAt || 0).getTime();
+              const localNewer = localTs > cloudTs || (localItem.current_version || 1) > (m.current_version || 1) || (localItem.is_verified && !m.is_verified);
+              if (localNewer) {
+                merged[existingIdx] = Object.assign({}, m, localItem);
+              }
+            }
 
+          });
+
+          merged.forEach(m => {
+            if (m && (m.is_exported || m.exportedAt) && m.id) {
+              userCompletedItemsSet.add(String(m.id).trim());
+            }
           });
 
           verifiedBatch = merged;
@@ -5344,13 +5414,17 @@
 
 
 
-        // 3. Hydrate generated Excel exports
+        // 3. Hydrate generated Excel exports (defer full history API fetch until Screen 8 is opened)
 
         if (cloudExcels.length > 0) {
 
           userExportedBatchesCache = cloudExcels;
 
-          loadAndRenderExportHistory();
+          if (currentActiveScreenId === 'screen8_excel_preview') {
+
+            loadAndRenderExportHistory();
+
+          }
 
         }
 
@@ -5434,9 +5508,11 @@
 
 
 
-    function saveUserBatches() {
+    function saveUserBatches(options = {}) {
 
       if (!currentUser) return;
+
+      const skipCloudSync = Boolean(options && options.skipCloudSync);
 
       try {
 
@@ -5450,9 +5526,12 @@
 
 
 
-        // Persist batch state authoritatively to user's dedicated cloud JSON DB
+        // Persist batch state authoritatively to user's dedicated cloud JSON DB unless hydrating from server
+        if (!skipCloudSync) {
 
-        syncUserBatchToCloud();
+          syncUserBatchToCloud();
+
+        }
 
       } catch (e) {
 
@@ -5576,7 +5655,7 @@
 
     // --- Init on Window Load ---
 
-        function applySuccessfulLogin(userData, token) {
+    function applySuccessfulLogin(userData, token) {
       currentUser = {
         id: userData.id || null,
         name: userData.name || (userData.mobile ? 'User ' + userData.mobile : 'Logistics User'),
@@ -5585,13 +5664,12 @@
       };
       localStorage.setItem('bnf_user', JSON.stringify(currentUser));
 
-      // Restore user's persisted pending LR records
+      // Restore user's persisted pending LR records (loadUserBatches sequences cloud + previous-uploads sync)
       loadUserBatches();
       updateBatchBadge();
       updateUserBadge();
       renderBatchTable();
       renderPreviousUploadsWeb();
-      syncPreviousUploadsFromServer();
 
       // Reset login button state immediately so it is never stuck on "Signing In..."
       const btn = document.getElementById('sendOtpBtn');
@@ -5789,15 +5867,7 @@
 
         if (activeItem) {
 
-          populateEditForm(activeItem);
-
-          populateCustomizationForm(activeItem);
-
-          navigateTo('screen4_edit');
-
-          switchTab('basic');
-
-          loadLrImagePreview(activeItem);
+          navigateTo(targetScreen, { tab: 'basic' });
 
         } else {
 
@@ -5839,7 +5909,7 @@
 
 
 
-    function navigateTo(screenId) {
+    function navigateTo(screenId, options = {}) {
 
       // Security Gate: Redirect to Screen 1 if trying to access screens without OTP
 
@@ -5917,9 +5987,19 @@
 
       if ((screenId === 'screen4_edit' || screenId === 'screen4b_customization') && activeItem) {
 
-        populateEditForm(activeItem);
+        if (screenId === 'screen4_edit') {
 
-        populateCustomizationForm(activeItem);
+          populateEditForm(activeItem, { skipPreview: true });
+
+          populateCustomizationForm(activeItem);
+
+          switchTab((options && options.tab) || 'basic');
+
+        } else {
+
+          populateCustomizationForm(activeItem);
+
+        }
 
         loadLrImagePreview(activeItem);
 
@@ -6129,60 +6209,6 @@
 
       if (window.lucide) lucide.createIcons();
 
-
-
-      function applySuccessfulLogin(userData, token) {
-
-        currentUser = {
-
-          id: userData.id || null,
-
-          name: userData.name || name,
-
-          mobile: userData.mobile || mobile,
-
-          token: token || ('bnf_' + Date.now())
-
-        };
-
-        localStorage.setItem('bnf_user', JSON.stringify(currentUser));
-
-
-
-        // Restore user's persisted pending LR records
-
-        loadUserBatches();
-
-        updateBatchBadge();
-
-        updateUserBadge();
-
-        renderBatchTable();
-
-        renderPreviousUploadsWeb();
-
-        syncPreviousUploadsFromServer();
-
-
-
-        // Reset login button state immediately so it is never stuck on "Signing In..."
-
-        btn.disabled = false;
-
-        btn.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i><span>Login & Continue</span>`;
-
-        if (window.lucide && lucide.createIcons) lucide.createIcons();
-
-
-
-        // Requirement: Always keep user on the Upload LR page by default on login (no auto-redirect to LR List)
-
-        navigateTo('screen2_upload');
-
-      }
-
-
-
       try {
 
         const resp = await fetch('/api/auth/login', {
@@ -6199,7 +6225,11 @@
 
         if (resp.ok && data.success) {
 
-          applySuccessfulLogin(data.user, data.token);
+          const resolvedUser = Object.assign({}, data.user || {}, {
+            name: (data.user && data.user.name) || name,
+            mobile: (data.user && data.user.mobile) || mobile
+          });
+          window.applySuccessfulLogin(resolvedUser, data.token);
 
           return;
 
@@ -6784,9 +6814,17 @@
 
       hasLoadedUserBatchesInitially = false;
 
+      _previousUploadsSyncPromise = null;
+
+      _lastPreviousUploadsSyncAt = 0;
+
       verifiedBatch = [];
 
       deletedBatch = [];
+
+      userRecentsCache = [];
+
+      userCompletedItemsSet.clear();
 
       activeItem = null;
 
@@ -7691,33 +7729,55 @@
 
         const pagesToAssemble = [...multiPagePages];
 
-        const pdfBlob = await assembleImagesToPdfBlob(pagesToAssemble);
+        let uploadFiles = null;
 
-        if (!pdfBlob) {
+        // Try client-side PDFLib PDF assembly first (single upload, zero /api/assemble-pdf round-trip)
+        if (window.PDFLib && window.PDFLib.PDFDocument) {
 
-          throw new Error('Could not generate multi-page PDF from captured photos.');
+          try {
+
+            const pdfBlob = await assembleImagesToPdfBlob(pagesToAssemble);
+
+            if (pdfBlob) {
+
+              const timestampStr = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+
+              const pdfFilename = `LR_Scan_${timestampStr}.pdf`;
+
+              uploadFiles = [new File([pdfBlob], pdfFilename, { type: 'application/pdf' })];
+
+            }
+
+          } catch (clientPdfErr) {
+
+            console.warn('[MultiPageScan] Client PDF assembly unavailable, sending raw image pages directly:', clientPdfErr);
+
+          }
 
         }
 
+        // Fallback: pass ordered image Files directly to /extract-handwriting multi-file endpoint (eliminates double upload)
+        if (!uploadFiles) {
 
+          uploadFiles = pagesToAssemble.map((p, idx) => {
 
-        const timestampStr = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+            const ext = (p.blob && p.blob.type === 'image/png') ? 'png' : 'jpg';
 
-        const pdfFilename = `LR_Scan_${timestampStr}.pdf`;
+            const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
 
-        const assembledPdfFile = new File([pdfBlob], pdfFilename, { type: 'application/pdf' });
+            return new File([p.blob], `page_${idx + 1}.${ext}`, { type: mime });
 
+          });
 
+        }
 
         // Close camera feed and modal
 
         closeWebcam();
 
-
-
         // Upload as ONE document dossier for single LR extraction
 
-        await handleSelectedFiles([assembledPdfFile]);
+        await handleSelectedFiles(uploadFiles);
 
         multiPagePages = [];
 
@@ -8017,9 +8077,9 @@
 
     function directDownloadExcel() {
 
-      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
 
-      if (verifiedOnly.length === 0) {
+      if (verifiedAll.length === 0) {
 
         showAppInfoModal({
 
@@ -8037,6 +8097,26 @@
 
       }
 
+      if (unexportedVerified.length === 0) {
+
+        showAppConfirmModal({
+
+          title: 'Re-Export Verified LRs?',
+
+          subtitle: 'All LRs Already Exported',
+
+          message: `All ${verifiedAll.length} verified LR(s) in your queue have already been exported. Do you want to re-export them?`,
+
+          confirmText: 'Re-Export All',
+
+          onConfirm: () => executeGenerateExcel({ includeExported: true })
+
+        });
+
+        return;
+
+      }
+
       executeGenerateExcel();
 
     }
@@ -8045,9 +8125,9 @@
 
     function confirmGenerateExcel() {
 
-      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
 
-      if (verifiedOnly.length === 0) {
+      if (verifiedAll.length === 0) {
 
         showAppInfoModal({
 
@@ -8058,6 +8138,26 @@
           message: 'No verified LRs available for download.',
 
           iconType: 'warning'
+
+        });
+
+        return;
+
+      }
+
+      if (unexportedVerified.length === 0) {
+
+        showAppConfirmModal({
+
+          title: 'Re-Export Verified LRs?',
+
+          subtitle: 'All LRs Already Exported',
+
+          message: `All ${verifiedAll.length} verified LR(s) in your queue have already been exported. Do you want to re-export them?`,
+
+          confirmText: 'Re-Export All',
+
+          onConfirm: () => executeGenerateExcel({ includeExported: true })
 
         });
 
@@ -8107,9 +8207,9 @@
 
       closeGenerateExcelConfirmModal();
 
-      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
 
-      if (verifiedOnly.length === 0) {
+      if (verifiedAll.length === 0) {
 
         showAppInfoModal({
 
@@ -8122,6 +8222,14 @@
           iconType: 'warning'
 
         });
+
+        return;
+
+      }
+
+      if (unexportedVerified.length === 0) {
+
+        executeGenerateExcel({ includeExported: true });
 
         return;
 
@@ -8498,23 +8606,33 @@
       });
     }
 
-    async function countFilePagesWeb(file) {
+    async function countFilePagesWeb(file, arrayBufferCache = null) {
       if (!file) return 0;
       const isPdf = (file.name && file.name.toLowerCase().endsWith('.pdf')) || (file.type && file.type.includes('pdf'));
       if (isPdf) {
+        let pdf = null;
         try {
+          let arrayBuffer = (arrayBufferCache && arrayBufferCache.get(file)) || null;
+          if (!arrayBuffer) {
+            arrayBuffer = await file.arrayBuffer();
+            if (arrayBufferCache) arrayBufferCache.set(file, arrayBuffer);
+          }
           if (window.pdfjsLib) {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            // Pass a copy/slice to PDF.js so worker transfer does not detach our cached buffer
+            const pdfBytesCopy = arrayBuffer.slice(0);
+            pdf = await pdfjsLib.getDocument({ data: pdfBytesCopy }).promise;
             return pdf.numPages || 1;
           } else if (window.PDFLib && window.PDFLib.PDFDocument) {
-            const arrayBuffer = await file.arrayBuffer();
             const pdfDoc = await window.PDFLib.PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
             return pdfDoc.getPageCount() || 1;
           }
         } catch (e) {
           console.warn('[Page Count Web] Notice counting PDF pages:', e);
           return 1;
+        } finally {
+          if (pdf && typeof pdf.destroy === 'function') {
+            try { await pdf.destroy(); } catch (_) {}
+          }
         }
       }
       return 1;
@@ -8599,11 +8717,11 @@
 
 
 
-    async function computeFileSha256(file) {
+    async function computeFileSha256(file, preloadedBuffer = null) {
 
       try {
 
-        const arrayBuffer = await file.arrayBuffer();
+        const arrayBuffer = preloadedBuffer || await file.arrayBuffer();
 
         const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
 
@@ -9279,11 +9397,10 @@
         return;
       }
 
-      // Authoritative Pre-Validation: Maximum 15 Pages Allowed Per Upload Batch
-      let totalBatchPages = 0;
-      for (const f of validFiles) {
-        totalBatchPages += await countFilePagesWeb(f);
-      }
+      // Authoritative Pre-Validation: Maximum 15 Pages Allowed Per Upload Batch (parallel page count)
+      const arrayBufferCache = new Map();
+      const pageCounts = await Promise.all(validFiles.map(f => countFilePagesWeb(f, arrayBufferCache)));
+      const totalBatchPages = pageCounts.reduce((acc, c) => acc + c, 0);
       if (totalBatchPages > 15) {
         showPageLimitExceededModal();
         isUploadingFile = false;
@@ -9453,7 +9570,7 @@
           storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
           verifiedBatch.push(item);
           saveUserBatches();
-          saveRecentUploadWeb(item, true);
+          saveRecentUploadWeb(item, true, true);
           processedCount++;
           activeItem = item;
 
@@ -9486,15 +9603,17 @@
           }
           if (window.lucide && lucide.createIcons) lucide.createIcons();
 
-          const imageHash = await computeFileSha256(file);
+          const imageHash = await computeFileSha256(file, arrayBufferCache.get(file));
           if (isDuplicateWeb({ imageHash: imageHash })) {
             showUploadLrValidationModal('This LR already exists. You cannot add the same LR multiple times.');
             navigateTo('screen2_upload');
             return;
           }
 
-          const imageSrc = await readFileAsDataURL(file);
-          const isOrangeYellow = await isOrangeYellowImageWeb(file);
+          const isPdfCandidate = (file.name && file.name.toLowerCase().endsWith('.pdf')) || (file.type && file.type.includes('pdf'));
+          // Start DataURL & color classification concurrently with the upload so they do not delay fetch
+          const imageSrcPromise = readFileAsDataURL(file);
+          const isOrangeYellowPromise = isPdfCandidate ? Promise.resolve(false) : isOrangeYellowImageWeb(file);
 
           const formData = new FormData();
           formData.append('file', file);
@@ -9547,7 +9666,11 @@
             }
           }
 
-          const result = await resp.json();
+          const [result, imageSrc, isOrangeYellow] = await Promise.all([
+            resp.json(),
+            imageSrcPromise,
+            isOrangeYellowPromise
+          ]);
           if (!result || !result.data) {
             showServerConnectionErrorModal('Unable to validate document. Please try again.');
             navigateTo('screen2_upload');
@@ -9624,7 +9747,7 @@
           storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
           verifiedBatch.push(item);
           saveUserBatches();
-          saveRecentUploadWeb(item, true);
+          saveRecentUploadWeb(item, true, true);
           processedCount++;
           activeItem = item;
         }
@@ -9643,13 +9766,11 @@
       }
 
       updateBatchBadge();
-      renderPreviousUploadsWeb();
 
       if (processedCount > 0 && activeItem) {
-        populateEditForm(activeItem);
-        populateCustomizationForm(activeItem);
-        switchTab('basic');
-        navigateTo('screen4_edit');
+        navigateTo('screen4_edit', { tab: 'basic' });
+      } else {
+        renderPreviousUploadsWeb();
       }
     }
 
@@ -9709,6 +9830,8 @@
         const reader = new FileReader();
 
         reader.onload = (e) => resolve(e.target.result);
+
+        reader.onerror = () => resolve('');
 
         reader.readAsDataURL(file);
 
@@ -10949,7 +11072,7 @@
 
     // --- SCREEN 4: Edit View Form Populator (4 Tabs) ---
 
-    function populateEditForm(item) {
+    function populateEditForm(item, options = {}) {
 
       if (!item) return;
 
@@ -11096,9 +11219,13 @@
 
 
 
-      switchTab('basic');
+      if (!options || !options.skipPreview) {
 
-      loadLrImagePreview(item);
+        switchTab('basic');
+
+        loadLrImagePreview(item);
+
+      }
 
 
 
@@ -12348,11 +12475,7 @@
 
       syncEditFormToActiveItem();
 
-      populateCustomizationForm(activeItem);
-
       navigateTo('screen4b_customization');
-
-      loadLrImagePreview(activeItem);
 
       attachStep2RealtimeValidation();
 
@@ -12842,13 +12965,7 @@
 
 
 
-      navigateTo('screen4_edit');
-
-      populateEditForm(activeItem);
-
-      switchTab('other');
-
-      loadLrImagePreview(activeItem);
+      navigateTo('screen4_edit', { tab: 'other' });
 
     }
 
@@ -13112,6 +13229,7 @@
       activeItem.is_verified = true;
       delete activeItem.pending_verification;
       delete activeItem.is_cancelled;
+      clearItemExportedStatus(activeItem);
 
       const editTimestamp = new Date().toISOString();
 
@@ -13257,7 +13375,7 @@
 
 
 
-    function saveRecentUploadWeb(item, isNewUpload = false) {
+    function saveRecentUploadWeb(item, isNewUpload = false, skipImageStore = false) {
 
       if (!item || isDummyLRItem(item)) return;
 
@@ -13269,7 +13387,11 @@
 
       if (!isNewUpload && isItemTombstonedByUser(item)) {
 
-        storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
+        if (!skipImageStore) {
+
+          storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
+
+        }
 
         return;
 
@@ -13308,8 +13430,11 @@
       try {
 
         // Ensure full high-resolution image and PDF are securely stored in IndexedDB (ImageDB) and memory (never localStorage)
+        if (!skipImageStore) {
 
-        storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
+          storeDocImage(item.id, item.filename, item.imageSrc, item.preview_image, item.originalPdfSrc, item.file_url, item.saved_filename, item.preview_url, item.preview_pages, item.page_count);
+
+        }
 
 
 
@@ -13373,12 +13498,22 @@
 
 
 
-    async function syncPreviousUploadsFromServer() {
+    let _previousUploadsSyncPromise = null;
+    let _lastPreviousUploadsSyncAt = 0;
+
+    async function syncPreviousUploadsFromServer(forceRefresh = false) {
 
       if (!currentUser) return;
 
+      const nowMs = Date.now();
+      if (_previousUploadsSyncPromise) {
+        return _previousUploadsSyncPromise;
+      }
+      if (!forceRefresh && (nowMs - _lastPreviousUploadsSyncAt) < 2000) {
+        return;
+      }
 
-
+      _previousUploadsSyncPromise = (async () => {
       try {
 
         const queryParams = new URLSearchParams();
@@ -13490,8 +13625,7 @@
               if (isItemTombstonedByUser(srv)) return;
 
               const cached = getDocImage(srv.id, srv.filename);
-
-              verifiedBatch.push({
+              const restoredItem = {
 
                 id: srv.id || ('srv_' + Date.now()),
 
@@ -13525,7 +13659,9 @@
 
                 editedAt: null,
 
-                exportedAt: null,
+                exportedAt: srv.exported_at || srv.exportedAt || null,
+
+                is_exported: Boolean(srv.is_exported || srv.exported_at || srv.exportedAt),
 
                 deletedAt: null,
 
@@ -13575,7 +13711,11 @@
 
                 ]
 
-              });
+              };
+              const restoredVerified = getLrMandatoryStatus(restoredItem).isVerified;
+              restoredItem.is_verified = restoredVerified;
+              restoredItem.pending_verification = !restoredVerified;
+              verifiedBatch.push(restoredItem);
 
               batchUpdated = true;
 
@@ -13595,7 +13735,7 @@
 
           if (batchUpdated) {
 
-            saveUserBatches();
+            saveUserBatches({ skipCloudSync: true });
 
             updateBatchBadge();
 
@@ -13605,11 +13745,19 @@
 
         }
 
+        _lastPreviousUploadsSyncAt = Date.now();
+
       } catch (err) {
 
         console.warn('Sync server uploads notice:', err);
 
+      } finally {
+
+        _previousUploadsSyncPromise = null;
+
       }
+      })();
+      return _previousUploadsSyncPromise;
 
     }
 
@@ -14494,15 +14642,7 @@
 
         activeItem = batchItem;
 
-        populateEditForm(activeItem);
-
-        populateCustomizationForm(activeItem);
-
-        navigateTo('screen4_edit');
-
-        switchTab('basic');
-
-        loadLrImagePreview(activeItem);
+        navigateTo('screen4_edit', { tab: 'basic' });
 
       } catch (e) {
 
@@ -14540,7 +14680,11 @@
 
       const badgeText = document.getElementById('queueBadgeText');
 
-      const verifiedCount = verifiedBatch.filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified).length;
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
+
+      const verifiedCount = verifiedAll.length;
+
+      const exportCount = unexportedVerified.length;
 
       if (badge && badgeText) {
 
@@ -14564,11 +14708,27 @@
 
       const pBtn = document.getElementById('previewExcelBtnText');
 
-      if (pBtn) pBtn.innerText = `Preview Excel (${verifiedCount} LRs)`;
+      if (pBtn) pBtn.innerText = `Preview Excel (${exportCount > 0 ? exportCount : verifiedCount} LRs)`;
 
       const dBtn = document.getElementById('directDownloadExcelBtnText');
 
-      if (dBtn) dBtn.innerText = `Download Excel (${verifiedCount} LRs)`;
+      if (dBtn) {
+
+        if (exportCount > 0) {
+
+          dBtn.innerText = `Download Excel (${exportCount} LRs)`;
+
+        } else if (verifiedCount > 0) {
+
+          dBtn.innerText = `Re-export Excel (${verifiedCount} LRs)`;
+
+        } else {
+
+          dBtn.innerText = 'Download Excel (0 LRs)';
+
+        }
+
+      }
 
       if (typeof updateExportButtonsVerificationState === 'function') {
 
@@ -15266,7 +15426,13 @@
 
 
 
-        const statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="All mandatory (*) fields are filled"><i data-lucide="check-circle-2" class="w-3 h-3 mr-1 text-emerald-600 inline"></i>Verified</span>`;
+        const isExported = isItemExportedByUser(item);
+
+        const statusBadge = isExported
+
+          ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200" title="Verified & already exported to Excel. Edit & save again to mark pending."><i data-lucide="check-check" class="w-3 h-3 mr-1 text-sky-600 inline"></i>Exported</span>`
+
+          : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="All mandatory (*) fields are filled"><i data-lucide="check-circle-2" class="w-3 h-3 mr-1 text-emerald-600 inline"></i>Verified</span>`;
 
 
 
@@ -15280,7 +15446,7 @@
 
           
 
-          const isLrCol = (colKey === 'grno (*)' || colKey === 'LR No *');
+          const isLrCol = (colKey === 'GrNo' || colKey === 'grno (*)' || colKey === 'LR No *');
 
           const fallbackBadge = (isLrCol && isFallback) 
 
@@ -15354,15 +15520,7 @@
 
       activeItem = verifiedBatch[idx];
 
-      populateEditForm(activeItem);
-
-      populateCustomizationForm(activeItem);
-
-      navigateTo('screen4_edit');
-
-      switchTab('basic');
-
-      loadLrImagePreview(activeItem);
+      navigateTo('screen4_edit', { tab: 'basic' });
 
     }
 
@@ -16260,7 +16418,11 @@
 
 
 
-      const verifiedOnly = verifiedBatch.filter(item => item && !isDummyLRItem(item) && getLrMandatoryStatus(item).isVerified);
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
+
+      const previewItems = unexportedVerified.length > 0 ? unexportedVerified : verifiedAll;
+
+      const verifiedOnly = previewItems;
 
       const count = verifiedOnly.length;
 
@@ -16418,7 +16580,7 @@
 
               const alignClass = getExcelCellAlignment(col);
 
-              const isLrCol = (col === 'grno (*)' || col === 'LR No *');
+              const isLrCol = (col === 'GrNo' || col === 'grno (*)' || col === 'LR No *');
 
               const fallbackBadge = (isLrCol && isFallback) ? ` <span class="text-[9px] px-1 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold" title="Fallback OCR">⚠️</span>` : '';
 
@@ -16502,7 +16664,11 @@
 
       if (!tbody) return;
 
-      if (verifiedBatch.length === 0) {
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
+
+      const previewItems = unexportedVerified.length > 0 ? unexportedVerified : verifiedAll;
+
+      if (previewItems.length === 0) {
 
         tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-slate-400">No consignment data to preview.</td></tr>`;
 
@@ -16520,7 +16686,7 @@
 
 
 
-      tbody.innerHTML = verifiedBatch.map((item, idx) => {
+      tbody.innerHTML = previewItems.map((item, idx) => {
 
         const d = item.data || {};
 
@@ -16564,11 +16730,13 @@
 
 
 
+      const previewCountLabel = unexportedVerified.length > 0 ? `Generate Excel (${unexportedVerified.length} LRs)` : `Re-export Excel (${verifiedAll.length} LRs)`;
+
       const genBtn = document.getElementById('genExcelBtnText');
 
       if (genBtn) {
 
-        genBtn.innerText = `Generate Excel (${verifiedBatch.length} LRs)`;
+        genBtn.innerText = previewCountLabel;
 
       }
 
@@ -16576,7 +16744,7 @@
 
       if (s8Btn) {
 
-        s8Btn.innerText = `Generate Excel (${verifiedBatch.length} LRs)`;
+        s8Btn.innerText = previewCountLabel;
 
       }
 
@@ -17070,7 +17238,7 @@
 
     const origNav = navigateTo;
 
-    window.navigateTo = function(screenId) {
+    window.navigateTo = function(screenId, options) {
 
       if (screenId === 'screen8_excel_preview') {
 
@@ -17078,7 +17246,7 @@
 
       }
 
-      origNav(screenId);
+      origNav(screenId, options);
 
     };
 
@@ -17772,7 +17940,15 @@
 
       const btn = document.getElementById('genExcelBtn');
 
-      const countTxt = verifiedBatch.length > 0 ? ` (${verifiedBatch.length} LRs)` : '';
+      const { verifiedAll, unexportedVerified } = getExportableVerifiedItems();
+
+      const genLabel = unexportedVerified.length > 0
+        ? `Generate Excel (${unexportedVerified.length} LRs)`
+        : (verifiedAll.length > 0 ? `Re-export Excel (${verifiedAll.length} LRs)` : 'Generate Excel');
+
+      const dlLabel = unexportedVerified.length > 0
+        ? `Download Excel (${unexportedVerified.length} LRs)`
+        : (verifiedAll.length > 0 ? `Re-export Excel (${verifiedAll.length} LRs)` : 'Download Excel (0 LRs)');
 
 
 
@@ -17780,7 +17956,7 @@
 
         s8Btn.disabled = false;
 
-        s8Btn.innerHTML = `<i data-lucide="table" class="w-4 h-4"></i><span id="s8Sheet1GenExcelBtnText">Generate Excel${countTxt}</span>`;
+        s8Btn.innerHTML = `<i data-lucide="table" class="w-4 h-4"></i><span id="s8Sheet1GenExcelBtnText">${genLabel}</span>`;
 
       }
 
@@ -17788,7 +17964,7 @@
 
         btn.disabled = false;
 
-        btn.innerHTML = `<i data-lucide="table" class="w-5 h-5"></i><span id="genExcelBtnText">Generate Excel${countTxt}</span>`;
+        btn.innerHTML = `<i data-lucide="table" class="w-5 h-5"></i><span id="genExcelBtnText">${genLabel}</span>`;
 
       }
 
@@ -17804,9 +17980,13 @@
 
           setTimeout(() => {
 
-            const currentCountTxt = verifiedBatch.length > 0 ? ` (${verifiedBatch.length} LRs)` : '';
+            const st = getExportableVerifiedItems();
 
-            dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">Download Excel${currentCountTxt}</span>`;
+            const nextDlLabel = st.unexportedVerified.length > 0
+              ? `Download Excel (${st.unexportedVerified.length} LRs)`
+              : (st.verifiedAll.length > 0 ? `Re-export Excel (${st.verifiedAll.length} LRs)` : 'Download Excel (0 LRs)');
+
+            dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">${nextDlLabel}</span>`;
 
             if (window.lucide && lucide.createIcons) lucide.createIcons();
 
@@ -17814,7 +17994,7 @@
 
         } else {
 
-          dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">Download Excel${countTxt}</span>`;
+          dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">${dlLabel}</span>`;
 
         }
 
@@ -17832,15 +18012,15 @@
 
     let isGeneratingExcel = false;
 
-    async function executeGenerateExcel() {
+    async function executeGenerateExcel(options = {}) {
 
       if (isGeneratingExcel) return;
 
       isGeneratingExcel = true;
 
-      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      const { verifiedAll, unexportedVerified, exportTargets } = getExportableVerifiedItems(Boolean(options && options.includeExported));
 
-      if (verifiedOnly.length === 0) {
+      if (verifiedAll.length === 0) {
 
         isGeneratingExcel = false;
 
@@ -17859,6 +18039,30 @@
         return;
 
       }
+
+      if (unexportedVerified.length === 0 && !(options && options.includeExported)) {
+
+        isGeneratingExcel = false;
+
+        showAppConfirmModal({
+
+          title: 'Re-Export Verified LRs?',
+
+          subtitle: 'All LRs Already Exported',
+
+          message: `All ${verifiedAll.length} verified LR(s) in your queue have already been exported. Do you want to re-export them?`,
+
+          confirmText: 'Re-Export All',
+
+          onConfirm: () => executeGenerateExcel({ includeExported: true })
+
+        });
+
+        return;
+
+      }
+
+      const verifiedOnly = exportTargets;
 
 
 
@@ -18028,7 +18232,7 @@
 
         try {
 
-          renderScreen9SnapshotPreview(res);
+          renderScreen9SnapshotPreview(Object.assign({}, res, { exported_docs: verifiedOnly }));
 
         } catch (e) {
 
@@ -18196,7 +18400,9 @@
 
 
 
-      const verifiedOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+      const { verifiedAll, unexportedVerified, exportTargets } = getExportableVerifiedItems(true);
+
+      const verifiedOnly = unexportedVerified.length > 0 ? unexportedVerified : exportTargets;
 
       if (verifiedOnly.length === 0) {
 
@@ -18310,7 +18516,9 @@
 
         user_mobile: currentUser?.mobile || '',
 
-        generated_on: new Date().toLocaleString()
+        generated_on: new Date().toLocaleString(),
+
+        exported_docs: verifiedOnly
 
       });
 
@@ -18356,11 +18564,13 @@
 
         setTimeout(() => {
 
-          const vOnly = verifiedBatch.filter(item => getLrMandatoryStatus(item).isVerified);
+          const st = getExportableVerifiedItems();
 
-          const countTxt = vOnly.length > 0 ? ` (${vOnly.length} LRs)` : ' (0 LRs)';
+          const nextDlLabel = st.unexportedVerified.length > 0
+            ? `Download Excel (${st.unexportedVerified.length} LRs)`
+            : (st.verifiedAll.length > 0 ? `Re-export Excel (${st.verifiedAll.length} LRs)` : 'Download Excel (0 LRs)');
 
-          dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">Download Excel${countTxt}</span>`;
+          dBtn.innerHTML = `<i data-lucide="download" class="w-3.5 h-3.5 pointer-events-none"></i><span id="directDownloadExcelBtnText" class="pointer-events-none">${nextDlLabel}</span>`;
 
           if (window.lucide && lucide.createIcons) lucide.createIcons();
 
@@ -18450,7 +18660,9 @@
 
       const filename = meta.filename || currentDownloadMeta.filename || formatLRReportFilename();
 
-      const totalCount = verifiedBatch.length;
+      const previewDocs = (Array.isArray(meta.exported_docs) && meta.exported_docs.length > 0) ? meta.exported_docs : verifiedBatch;
+
+      const totalCount = previewDocs.length;
 
       const hashStr = meta.export_id ? `SHA256-${meta.export_id.replace('exp_', '').toUpperCase()}8FBFD` : 'SHA256-0E006244CEF8FBFD';
 
@@ -18506,13 +18718,13 @@
 
 
 
-      // Render Table Body with all rows from verifiedBatch
+      // Render Table Body with exported rows
 
       const tbody = document.getElementById('s9SnapshotTbody');
 
       if (tbody) {
 
-        if (verifiedBatch.length === 0) {
+        if (previewDocs.length === 0) {
 
           tbody.innerHTML = `<tr><td colspan="${1 + BNF_49_COLUMNS.length}" class="py-8 text-center text-slate-400">No consignment data in snapshot.</td></tr>`;
 
@@ -18522,7 +18734,7 @@
 
 
 
-        tbody.innerHTML = verifiedBatch.map((item, idx) => {
+        tbody.innerHTML = previewDocs.map((item, idx) => {
 
           const colsHtml = BNF_49_COLUMNS.map(col => {
 
