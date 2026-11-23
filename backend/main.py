@@ -201,19 +201,22 @@ GR_STOCK_38_HEADERS = [
     "invoiedt", "valgoods", "viaborder"
 ]
 
-LR_FORMAT_49_HEADERS = [
+LR_FORMAT_52_HEADERS = [
     "Branch", "GrNo", "GrDate", "GrType", "Customer", "CustomerDepartment",
-    "Countername", "TransitDays", "Origen", "Destination", "Consignor",
-    "ConsignorGST", "Consignee", "ConsigneeGST", "ProductName", "Packing",
-    "PMark", "Goods", "VehicleNo", "VehicleTypeName", "DriverName",
-    "DriverMobileNo", "DrivingLicenseNo", "DrivingValidUpto", "LoadingStartDate",
-    "Freight", "OtherAmount", "CGST", "SGST", "IGST", "Received", "Advance",
-    "CollectionBranch", "FTL", "PCS", "OrderWeight", "ActualWeight",
-    "ChargableWeight", "ContractWeight", "ExtraMt", "CustomerRefcode",
-    "staxpaidby", "DeliveryType", "EwayBillNo", "ValidUpto", "InvoiceNo",
-    "InvoieDate", "ValueOfGoods", "viaborder"
+    "Countername", "TransitDays", "Origen", "Destination", "PickupPoint",
+    "DeliveryPoint", "Consignor", "ConsignorGST", "Consignee", "ConsigneeGST",
+    "ProductName", "Packing", "PMark", "Goods", "VehicleNo", "VehicleTypeName",
+    "DriverName", "DriverMobileNo", "DrivingLicenseNo", "DrivingValidUpto",
+    "LoadingStartDate", "Freight", "OtherAmount", "CGST", "SGST", "IGST",
+    "Received", "Advance", "CollectionBranch", "FTL", "PCS", "OrderWeight",
+    "ActualWeight", "ChargableWeight", "ContractWeight", "ExtraMt",
+    "CustomerRefcode", "staxpaidby", "DeliveryType", "EwayBillNo",
+    "EwayBillDate", "ValidUpto", "InvoiceNo", "InvoieDate",
+    "ValueOfGoods", "viaborder"
 ]
-GR_BNF_49_HEADERS = LR_FORMAT_49_HEADERS
+LR_FORMAT_49_HEADERS = LR_FORMAT_52_HEADERS
+GR_BNF_52_HEADERS = LR_FORMAT_52_HEADERS
+GR_BNF_49_HEADERS = LR_FORMAT_52_HEADERS
 _OLD_GR_BNF_49_HEADERS = [
     "branchrefcode", "grno (*)", "grdt *", "grtype", "Customer Name *",
     "Depatment Name", "Counter name", "Transit Days", "orgrefcode", "destrefcode",
@@ -225,7 +228,7 @@ _OLD_GR_BNF_49_HEADERS = [
     "Contract wt", "Extra Mt", "custrefcode", "staxpaidby", "dlvtype",
     "ewaybillno", "Valid Upto", "invoiceno", "invoiedt", "valgoods", "viaborder"
 ]
-GR_BNF_50_HEADERS = GR_BNF_49_HEADERS
+GR_BNF_50_HEADERS = GR_BNF_52_HEADERS
 
 RED_COLUMNS_BNF_49 = [
     "grtype",
@@ -972,10 +975,10 @@ def _format_date_ddmmyyyy(raw) -> str:
 
 
 DATE_COLUMN_KEYS = {
-    "grdate", "drivingvalidupto", "loadingstartdate", "validupto", "invoiedate",
-    "stockdt", "grdt", "invoiedt", "exportdate", "date", "biltydate", "lrdate",
-    "bookingdate", "deliverydate", "dispatchdate", "entrydate", "invoicedate",
-    "dlvalidupto", "dlvalidtill", "valid_up_to"
+    "grdate", "drivingvalidupto", "loadingstartdate", "ewaybilldate", "ewaybilldt",
+    "validupto", "invoiedate", "stockdt", "grdt", "invoiedt", "exportdate",
+    "date", "biltydate", "lrdate", "bookingdate", "deliverydate", "dispatchdate",
+    "entrydate", "invoicedate", "dlvalidupto", "dlvalidtill", "valid_up_to"
 }
 
 
@@ -1185,6 +1188,8 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
     branch = get_val("branchrefcode", "branch", "branch code")
     org = get_val("orgrefcode", "from", "origin", "from station", "booking station")
     dest = get_val("destrefcode", "to", "destination", "to station", "delivery station")
+    pickup_point = get_val("PickupPoint", "pickup_point", "pickuppoint", default=org)
+    delivery_point = get_val("DeliveryPoint", "delivery_point", "deliverypoint", default=dest)
     cngr = get_val("cngr", "cngr *", "consignor", "sender", "shipper", "consignor name", "from party")
     cnge = get_val("cnge", "cnge *", "consignee", "receiver", "consignee name", "to party")
     cngrgst = get_val("cngrgstno", "cngrgstno *", "consignor gst", "consignor gstin", "sender gst")
@@ -1218,6 +1223,9 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
     contract_wt = clean_num(get_val("Contract wt", "contract wt", "contract_wt", "contract weight"))
     extra_mt = clean_num(get_val("Extra Mt", "extra mt", "extra_mt"))
     eway = get_val("ewaybillno", "eway bill no", "e-way bill", "ewb no")
+    eway_dt = _format_date_ddmmyyyy(
+        get_val("EwayBillDate", "ewaybilldate", "ewaybilldt", "eway_bill_date", "E-Way Bill Date", "e-way bill date", "ewb date", default=grdt)
+    )
     invno = get_val("invoiceno", "invoice no", "bill no", "invoice number")
     invdt = _format_date_ddmmyyyy(get_val("invoiedt", "invoice date", "bill date", default=grdt))
 
@@ -1453,12 +1461,13 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
         "stockaweight": stock_awt,
         "stockcweight": stock_cwt,
         "ewaybillno": eway,
+        "ewaybilldt": eway_dt,
         "Valid Upto": valid_upto,
         "invoiceno": invno,
         "invoiedt": invdt,
         "valgoods": valgoods,
         "viaborder": get_val("viaborder"),
-        # LR_Format.xlsx exact headers
+        # Customer_Master_GTInfiniti-Consignment_Entry.xlsx exact 52 headers
         "Branch": effective_branch if web_mode else (branch or counter_name or ""),
         "GrNo": grno or lrno,
         "GrDate": grdt,
@@ -1469,6 +1478,8 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
         "TransitDays": transit_days,
         "Origen": org,
         "Destination": dest,
+        "PickupPoint": pickup_point,
+        "DeliveryPoint": delivery_point,
         "Consignor": cngr,
         "ConsignorGST": cngrgst,
         "Consignee": cnge,
@@ -1505,6 +1516,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
         "CustomerRefcode": custref,
         "DeliveryType": dlvtype,
         "EwayBillNo": eway,
+        "EwayBillDate": eway_dt,
         "InvoiceNo": invno,
         "InvoieDate": invdt,
         "ValueOfGoods": valgoods
@@ -1536,7 +1548,7 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
                 v = None
         if h in ("pmark", "PMark"):
             v = None
-        if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "Valid Upto", "Valid Up to *", "GrDate", "DrivingValidUpto", "LoadingStartDate", "InvoieDate"):
+        if h in ("grdt", "grdt *", "stockdt", "stockdt ", "Loading Start date *", "invoiedt", "ewaybilldt", "Valid Upto", "Valid Up to *", "GrDate", "DrivingValidUpto", "LoadingStartDate", "EwayBillDate", "InvoieDate"):
             v = _format_date_ddmmyyyy(v) or None
         if v is not None and isinstance(v, str):
             if h in ("Depatment Name", "Counter name", "Counter"):
@@ -1842,15 +1854,19 @@ def download_apk():
 @app.get("/download-template")
 @app.get("/api/template/download")
 def download_excel_template():
-    tpl_file = _resolve_project_file("docs", "LR_Format.xlsx")
+    tpl_file = _resolve_project_file("docs", "Customer_Master_GTInfiniti-Consignment_Entry.xlsx")
+    tpl_name = "Customer_Master_GTInfiniti-Consignment_Entry.xlsx"
+    if not (tpl_file and os.path.exists(tpl_file)):
+        tpl_file = _resolve_project_file("docs", "LR_Format.xlsx")
+        tpl_name = "LR_Format.xlsx"
     if tpl_file and os.path.exists(tpl_file):
         return FileResponse(
             tpl_file,
-            filename="LR_Format.xlsx",
+            filename=tpl_name,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": 'attachment; filename="LR_Format.xlsx"'}
+            headers={"Content-Disposition": f'attachment; filename="{tpl_name}"'}
         )
-    raise HTTPException(status_code=404, detail="Template file LR_Format.xlsx not found.")
+    raise HTTPException(status_code=404, detail="Template file Customer_Master_GTInfiniti-Consignment_Entry.xlsx not found.")
 
 
 # --- ROUTE 3B: Centralized Remote Configuration Endpoint ---
@@ -1994,6 +2010,11 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
         data_dict["stockdt "] = formatted_date
         if not data_dict.get("Loading Start date *"):
             data_dict["Loading Start date *"] = formatted_date
+    raw_ewb_dt = get_val("EwayBillDate", "ewaybilldate", "ewaybilldt", "eway_bill_date", "E-Way Bill Date", "e-way bill date", "ewb date", default=formatted_date)
+    formatted_ewb_dt = _format_date_ddmmyyyy(raw_ewb_dt) if raw_ewb_dt else formatted_date
+    if formatted_ewb_dt:
+        data_dict["ewaybilldt"] = formatted_ewb_dt
+        data_dict["EwayBillDate"] = formatted_ewb_dt
 
     # 3. Vehicle Number
     raw_veh = get_val(
@@ -2075,13 +2096,19 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
         data_dict["cngegstno *"] = raw_cnge_gst
         data_dict["cngegstno"] = raw_cnge_gst
 
-    # 9. Origin & Destination
+    # 9. Origin, Destination, PickupPoint & DeliveryPoint
     raw_org = get_val("orgrefcode", "from", "from city", "origin", "origin station", "booking station", "from station")
     if raw_org:
         data_dict["orgrefcode"] = raw_org
     raw_dest = get_val("destrefcode", "to", "to city", "destination", "destination station", "delivery station", "to station")
     if raw_dest:
         data_dict["destrefcode"] = raw_dest
+    raw_pickup = get_val("PickupPoint", "pickup_point", "pickuppoint", default=raw_org)
+    if raw_pickup:
+        data_dict["PickupPoint"] = raw_pickup
+    raw_delivery = get_val("DeliveryPoint", "delivery_point", "deliverypoint", default=raw_dest)
+    if raw_delivery:
+        data_dict["DeliveryPoint"] = raw_delivery
 
     # 10. Goods Description (Blank if extracted OCR value does not match GoodsMaster source data)
     raw_goods = get_val(
@@ -3569,10 +3596,10 @@ def _build_workbook_for_docs(
             ws1.column_dimensions[col_letter].width = max(13, min(max_len + 3, 38))
 
     # =========================================================================
-    # OPTION 2: Exact 49-Column BNF Import Format (BNF file Modify.xlsx)
-    # Includes all 49 Columns with pure clean uncolored styling (no yellow/red)
+    # OPTION 2: Exact 52-Column BNF Import Format (Customer_Master_GTInfiniti-Consignment_Entry.xlsx)
+    # Includes all 52 Columns with pure clean uncolored styling (no yellow/red)
     # =========================================================================
-    elif fmt in ("gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
+    elif fmt in ("gr_bnf_52", "gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
         ws1 = wb.active
         ws1.title = "Sheet1"
         ws1.views.sheetView[0].showGridLines = True
@@ -3856,7 +3883,7 @@ def _build_workbook_for_docs(
 
     if fmt in ("gr_stock_38", "gr_stock", "importgrstock"):
         prefix = "ImportGRStock"
-    elif fmt in ("gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
+    elif fmt in ("gr_bnf_52", "gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
         prefix = "GR_Import_BNF"
     else:
         prefix = "Consolidated_OCR"
@@ -4660,7 +4687,7 @@ def _build_dual_workbooks_sync(
     _validate_export_docs(docs)
     fmt = _resolve_export_format(format_type, docs)
     precomputed_rows = None
-    if fmt in ("gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
+    if fmt in ("gr_bnf_52", "gr_bnf_50", "gr_bnf_49", "gr_bnf", "bnf"):
         precomputed_rows = [
             map_to_gr_row(_get_doc_data(doc), GR_BNF_49_HEADERS, web_mode=web_mode)
             for doc in docs

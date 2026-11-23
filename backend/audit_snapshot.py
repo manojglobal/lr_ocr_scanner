@@ -286,20 +286,23 @@ def get_font(size: int, bold: bool = False):
         return None
 
 
-LR_FORMAT_49_HEADERS = [
+LR_FORMAT_52_HEADERS = [
     "Branch", "GrNo", "GrDate", "GrType", "Customer", "CustomerDepartment",
-    "Countername", "TransitDays", "Origen", "Destination", "Consignor",
-    "ConsignorGST", "Consignee", "ConsigneeGST", "ProductName", "Packing",
-    "PMark", "Goods", "VehicleNo", "VehicleTypeName", "DriverName",
-    "DriverMobileNo", "DrivingLicenseNo", "DrivingValidUpto", "LoadingStartDate",
-    "Freight", "OtherAmount", "CGST", "SGST", "IGST", "Received", "Advance",
-    "CollectionBranch", "FTL", "PCS", "OrderWeight", "ActualWeight",
-    "ChargableWeight", "ContractWeight", "ExtraMt", "CustomerRefcode",
-    "staxpaidby", "DeliveryType", "EwayBillNo", "ValidUpto", "InvoiceNo",
-    "InvoieDate", "ValueOfGoods", "viaborder"
+    "Countername", "TransitDays", "Origen", "Destination", "PickupPoint",
+    "DeliveryPoint", "Consignor", "ConsignorGST", "Consignee", "ConsigneeGST",
+    "ProductName", "Packing", "PMark", "Goods", "VehicleNo", "VehicleTypeName",
+    "DriverName", "DriverMobileNo", "DrivingLicenseNo", "DrivingValidUpto",
+    "LoadingStartDate", "Freight", "OtherAmount", "CGST", "SGST", "IGST",
+    "Received", "Advance", "CollectionBranch", "FTL", "PCS", "OrderWeight",
+    "ActualWeight", "ChargableWeight", "ContractWeight", "ExtraMt",
+    "CustomerRefcode", "staxpaidby", "DeliveryType", "EwayBillNo",
+    "EwayBillDate", "ValidUpto", "InvoiceNo", "InvoieDate",
+    "ValueOfGoods", "viaborder"
 ]
-BNF_49_COLUMNS = LR_FORMAT_49_HEADERS
-BNF_50_COLUMNS = BNF_49_COLUMNS
+LR_FORMAT_49_HEADERS = LR_FORMAT_52_HEADERS
+BNF_52_COLUMNS = LR_FORMAT_52_HEADERS
+BNF_49_COLUMNS = LR_FORMAT_52_HEADERS
+BNF_50_COLUMNS = LR_FORMAT_52_HEADERS
 
 _XLSX_EXTRACTION_CACHE: dict[tuple[str, float], list] = {}
 
@@ -413,6 +416,8 @@ def _get_val_from_dict(d: dict, col: str) -> str:
         "TransitDays": ("Transit Days", "transit_days"),
         "Origen": ("orgrefcode", "from", "origin"),
         "Destination": ("destrefcode", "to", "destination"),
+        "PickupPoint": ("pickup_point", "pickuppoint", "Origen", "orgrefcode", "from", "origin"),
+        "DeliveryPoint": ("delivery_point", "deliverypoint", "Destination", "destrefcode", "to", "destination"),
         "Consignor": ("cngr *", "cngr", "consignor"),
         "ConsignorGST": ("cngrgstno *", "cngrgstno"),
         "Consignee": ("cnge *", "cnge", "consignee"),
@@ -446,6 +451,7 @@ def _get_val_from_dict(d: dict, col: str) -> str:
         "CustomerRefcode": ("custrefcode",),
         "DeliveryType": ("dlvtype",),
         "EwayBillNo": ("ewaybillno",),
+        "EwayBillDate": ("ewaybilldt", "eway_bill_date", "E-Way Bill Date", "GrDate", "grdt *", "grdt", "stockdt", "date"),
         "ValidUpto": ("Valid Upto", "validupto"),
         "InvoiceNo": ("invoiceno",),
         "InvoieDate": ("invoiedt",),
@@ -466,6 +472,12 @@ def _get_val_from_dict(d: dict, col: str) -> str:
         return str(d.get("BNF LR No") or d.get("bnf lr no") or d.get("bnflrno") or d.get("bnflr") or "-")
     if col in ("LoadingStartDate", "Loading Start date *"):
         return str(d.get("grdt") or d.get("date") or "-")
+    if col == "EwayBillDate":
+        return str(d.get("ewaybilldt") or d.get("grdt") or d.get("GrDate") or d.get("date") or "-")
+    if col == "PickupPoint":
+        return str(d.get("orgrefcode") or d.get("Origen") or d.get("from") or "-")
+    if col == "DeliveryPoint":
+        return str(d.get("destrefcode") or d.get("Destination") or d.get("to") or "-")
     if col in ("ValidUpto", "Valid Upto"):
         return str(d.get("validupto") or "-")
     if col in ("stockdt ", "stockdt"):

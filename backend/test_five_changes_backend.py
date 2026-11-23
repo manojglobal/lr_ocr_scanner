@@ -163,9 +163,10 @@ class TestFiveChangesBackend(unittest.TestCase):
         self.assertIsNotNone(wb)
         self.assertGreater(len(bytes_data), 0)
 
-        # Check mapped row value in Col 25 (Freight)
+        # Check mapped row value for Freight
+        freight_idx = LR_FORMAT_49_HEADERS.index("Freight")
         row = map_to_gr_row(doc_with_freight, LR_FORMAT_49_HEADERS)
-        self.assertEqual(float(row[25]), 4200.0)
+        self.assertEqual(float(row[freight_idx]), 4200.0)
 
     # ---------------------------------------------------------
     # 4. Product Code and Product Type Separation
@@ -181,8 +182,9 @@ class TestFiveChangesBackend(unittest.TestCase):
         }
         row = map_to_gr_row(doc, LR_FORMAT_49_HEADERS)
 
-        # Col 14 (ProductName) receives Product Type
-        self.assertEqual(row[14], "Global-TT")
+        # ProductName receives Product Type
+        prod_idx = LR_FORMAT_49_HEADERS.index("ProductName")
+        self.assertEqual(row[prod_idx], "Global-TT")
 
         # Verify that actual Product Code is preserved and NOT overwritten by Product Type
         self.assertEqual(doc["productcode"], "ITEM-CODE-5544")
@@ -204,12 +206,14 @@ class TestFiveChangesBackend(unittest.TestCase):
         }
         row = map_to_gr_row(doc, LR_FORMAT_49_HEADERS)
         
-        # Col 11: ConsignorGST (must be space-free)
-        self.assertEqual(row[11], "07AAAAA0000A1Z5")
-        self.assertNotIn(" ", row[11])
-        # Col 13: ConsigneeGST (must be space-free)
-        self.assertEqual(row[13], "29BBBBB1111B2Z9")
-        self.assertNotIn(" ", row[13])
+        cngr_gst_idx = LR_FORMAT_49_HEADERS.index("ConsignorGST")
+        cnge_gst_idx = LR_FORMAT_49_HEADERS.index("ConsigneeGST")
+        # ConsignorGST (must be space-free)
+        self.assertEqual(row[cngr_gst_idx], "07AAAAA0000A1Z5")
+        self.assertNotIn(" ", row[cngr_gst_idx])
+        # ConsigneeGST (must be space-free)
+        self.assertEqual(row[cnge_gst_idx], "29BBBBB1111B2Z9")
+        self.assertNotIn(" ", row[cnge_gst_idx])
 
     def test_api_endpoints_manifest_and_counters(self):
         data_m = asyncio.run(api_get_master_manifest())

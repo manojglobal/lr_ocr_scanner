@@ -666,7 +666,7 @@
 
             <i data-lucide="circle" class="w-4 h-4 text-slate-300"></i>
 
-            <span>Mapping with BNF 49-Column Format</span>
+            <span>Mapping with BNF 52-Column Format</span>
 
           </div>
 
@@ -892,7 +892,7 @@
 
               <div>
 
-                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5" title="UI reference date (excluded from 49-column Excel export)">E-Way Bill Date <span class="text-[10px] font-normal text-slate-400">(Ref Only)</span></label>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5" title="Defaults to LR Date (editable, exported to EwayBillDate column)">E-Way Bill Date <span class="text-[10px] font-normal text-slate-400">(Default: LR Date)</span></label>
 
                 <div class="relative">
 
@@ -931,6 +931,22 @@
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Destination Station</label>
 
                 <input type="text" id="edit_dest" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+
+              </div>
+
+              <div>
+
+                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5" title="Defaults to Origin Station (editable independently)">Pickup Point</label>
+
+                <input type="text" id="edit_pickup_point" placeholder="Same as Origin Station" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+
+              </div>
+
+              <div>
+
+                <label class="block text-[11px] font-semibold text-slate-600 mb-0.5" title="Defaults to Destination Station (editable independently)">Delivery Point</label>
+
+                <input type="text" id="edit_delivery_point" placeholder="Same as Destination Station" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
 
               </div>
 
@@ -1836,9 +1852,9 @@
 
               <div class="flex items-center space-x-2">
 
-                <h3 class="text-sm font-bold text-slate-800">Sheet 1: BNF Import Format (49 Columns)</h3>
+                <h3 class="text-sm font-bold text-slate-800">Sheet 1: BNF Import Format (52 Columns)</h3>
 
-                <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-100 text-sky-800">49 Columns</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-100 text-sky-800">52 Columns</span>
 
               </div>
 
@@ -2134,7 +2150,7 @@
 
                 <span>Total Consignments: <b id="s9_cert_total">1 Bilty Records</b></span>
 
-                <span>Format: <b class="text-slate-800">BNF Standard 49-Column Format</b></span>
+                <span>Format: <b class="text-slate-800">BNF Standard 52-Column Format</b></span>
 
                 <span class="font-mono text-slate-500">Audit Hash: <b id="s9_cert_hash" class="text-slate-700">SHA256-0E006244CEF8FBFD</b></span>
 
@@ -2146,7 +2162,7 @@
 
 
 
-          <!-- Snapshot Preview Section (All 49 Excel Columns with Horizontal Scrolling) -->
+          <!-- Snapshot Preview Section (All 52 Excel Columns with Horizontal Scrolling) -->
 
           <div class="p-3.5 sm:p-4 space-y-2">
 
@@ -2154,7 +2170,7 @@
 
               <h4 class="text-xs font-bold text-slate-800" id="s9_snapshot_table_title">
 
-                Snapshot Preview (Top 1 of 1 Consignments • All 49 Excel Columns):
+                Snapshot Preview (Top 1 of 1 Consignments • All 52 Excel Columns):
 
               </h4>
 
@@ -2162,7 +2178,7 @@
 
                 <i data-lucide="move-horizontal" class="w-3.5 h-3.5"></i>
 
-                <span>Scroll horizontally to view all 49 columns &rarr;</span>
+                <span>Scroll horizontally to view all 52 columns &rarr;</span>
 
               </span>
 
@@ -3166,7 +3182,7 @@
 
         <div class="flex items-center space-x-2.5">
 
-          <span class="text-xs font-bold text-slate-800">Excel Export Preview - BNF 49 Columns</span>
+          <span class="text-xs font-bold text-slate-800">Excel Export Preview - BNF 52 Columns</span>
 
           <span class="text-slate-300">|</span>
 
@@ -3458,7 +3474,7 @@
 
 
 
-    // --- BNF 49 Logistics Columns (matching docs/LR_Format.xlsx exactly, 0 asterisks in Excel) ---
+    // --- BNF 52 Logistics Columns (matching docs/Customer_Master_GTInfiniti-Consignment_Entry.xlsx exact headers, 0 asterisks) ---
 
     const BNF_49_COLUMNS = [
       'Branch',
@@ -3471,6 +3487,8 @@
       'TransitDays',
       'Origen',
       'Destination',
+      'PickupPoint',
+      'DeliveryPoint',
       'Consignor',
       'ConsignorGST',
       'Consignee',
@@ -3505,12 +3523,14 @@
       'staxpaidby',
       'DeliveryType',
       'EwayBillNo',
+      'EwayBillDate',
       'ValidUpto',
       'InvoiceNo',
       'InvoieDate',
       'ValueOfGoods',
       'viaborder'
     ];
+    const BNF_52_COLUMNS = BNF_49_COLUMNS;
 
     const BNF_MANDATORY_FIELDS = [
       'GrNo',
@@ -3612,6 +3632,10 @@
           return data['Origen'] || data['orgrefcode'] || data['from'] || data['origin'] || '';
         case 'Destination':
           return data['Destination'] || data['destrefcode'] || data['to'] || data['destination'] || '';
+        case 'PickupPoint':
+          return data['PickupPoint'] || data['pickup_point'] || data['pickuppoint'] || data['Origen'] || data['orgrefcode'] || data['from'] || data['origin'] || '';
+        case 'DeliveryPoint':
+          return data['DeliveryPoint'] || data['delivery_point'] || data['deliverypoint'] || data['Destination'] || data['destrefcode'] || data['to'] || data['destination'] || '';
         case 'Consignor':
           fieldKey = 'cngr *';
           break;
@@ -3701,6 +3725,10 @@
         case 'EwayBillNo':
           fieldKey = 'ewaybillno';
           break;
+        case 'EwayBillDate': {
+          const ewd = data['EwayBillDate'] || data['ewaybilldate'] || data['ewaybilldt'] || data['eway_bill_date'] || data['E-Way Bill Date'] || data['GrDate'] || data['grdt *'] || data['grdt'] || data['date'] || '';
+          return ewd ? formatDdMmYyyyWeb(ewd) : '';
+        }
         case 'ValidUpto':
           fieldKey = 'Valid Upto';
           break;
@@ -9438,7 +9466,7 @@
           const s4 = document.getElementById('step4');
           if (s4) {
             s4.className = "flex items-center space-x-3 text-xs font-semibold text-slate-400";
-            s4.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Mapping with BNF 49-Column Format</span>`;
+            s4.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Mapping with BNF 52-Column Format</span>`;
           }
           const s5 = document.getElementById('step5');
           if (s5) {
@@ -9526,7 +9554,7 @@
           const s4Done = document.getElementById('step4');
           if (s4Done) {
             s4Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-            s4Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Mapped with BNF 49-Column Format</span>`;
+            s4Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Mapped with BNF 52-Column Format</span>`;
           }
           const s5Done = document.getElementById('step5');
           if (s5Done) {
@@ -9594,7 +9622,7 @@
           const s4 = document.getElementById('step4');
           if (s4) {
             s4.className = "flex items-center space-x-3 text-xs font-semibold text-slate-400";
-            s4.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Mapping with BNF 49-Column Format</span>`;
+            s4.innerHTML = `<i data-lucide="circle" class="w-4 h-4 text-slate-300"></i><span>Mapping with BNF 52-Column Format</span>`;
           }
           const s5 = document.getElementById('step5');
           if (s5) {
@@ -9698,7 +9726,7 @@
           const s4Done = document.getElementById('step4');
           if (s4Done) {
             s4Done.className = "flex items-center space-x-3 text-xs font-semibold text-emerald-600";
-            s4Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Mapped with BNF 49-Column Format</span>`;
+            s4Done.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i><span>Mapped with BNF 52-Column Format</span>`;
           }
           const s5Done = document.getElementById('step5');
           if (s5Done) {
@@ -9815,10 +9843,23 @@
       result.data['dlvtype'] = '';
       result.data['DeliveryType'] = '';
 
-      for (const dk of ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
+      const destCity = (result.data['destrefcode'] || result.data['to'] || result.data['destination'] || '').trim();
+      if (!result.data['PickupPoint'] && !result.data['pickup_point']) {
+        result.data['PickupPoint'] = orgCity;
+      }
+      if (!result.data['DeliveryPoint'] && !result.data['delivery_point']) {
+        result.data['DeliveryPoint'] = destCity;
+      }
+
+      for (const dk of ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'ewaybilldt', 'EwayBillDate', 'Valid Upto', 'Valid Up to *']) {
         if (result.data[dk]) {
           result.data[dk] = formatDdMmYyyyWeb(result.data[dk]);
         }
+      }
+      const grdtDefault = result.data['grdt'] || result.data['grdt *'] || result.data['stockdt'] || '';
+      if (!result.data['ewaybilldt'] && !result.data['EwayBillDate'] && grdtDefault) {
+        result.data['ewaybilldt'] = grdtDefault;
+        result.data['EwayBillDate'] = grdtDefault;
       }
     }
 
@@ -10578,11 +10619,17 @@
 
       { id: 'edit_grdt', tab: 'basic', tabLabel: 'Basic Details', label: 'LR Date *', required: true },
 
+      { id: 'edit_ewaybilldt', tab: 'basic', tabLabel: 'Basic Details', label: 'E-Way Bill Date', required: false },
+
       { id: 'edit_customer', tab: 'basic', tabLabel: 'Basic Details', label: 'Customer Name *', required: true },
 
       { id: 'edit_org', tab: 'basic', tabLabel: 'Basic Details', label: 'Origin Station', required: false },
 
       { id: 'edit_dest', tab: 'basic', tabLabel: 'Basic Details', label: 'Destination Station', required: false },
+
+      { id: 'edit_pickup_point', tab: 'basic', tabLabel: 'Basic Details', label: 'Pickup Point', required: false },
+
+      { id: 'edit_delivery_point', tab: 'basic', tabLabel: 'Basic Details', label: 'Delivery Point', required: false },
 
       { id: 'edit_vehno', tab: 'basic', tabLabel: 'Basic Details', label: 'Vehicle No. *', required: true },
 
@@ -10764,7 +10811,28 @@
 
 
 
+    function bindMirrorDefaultWeb(sourceId, targetId) {
+      const srcEl = document.getElementById(sourceId);
+      const tgtEl = document.getElementById(targetId);
+      if (!srcEl || !tgtEl || srcEl.dataset[`mirror_${targetId}`]) return;
+      srcEl.dataset[`mirror_${targetId}`] = 'true';
+      const syncDefault = () => {
+        const prevSrc = srcEl.dataset.prevMirrorVal ?? '';
+        const curTgt = tgtEl.value.trim();
+        if (!curTgt || curTgt === prevSrc) {
+          tgtEl.value = srcEl.value;
+        }
+        srcEl.dataset.prevMirrorVal = srcEl.value.trim();
+      };
+      srcEl.addEventListener('input', syncDefault);
+      srcEl.addEventListener('change', syncDefault);
+    }
+
     function attachStep2RealtimeValidation() {
+
+      bindMirrorDefaultWeb('edit_grdt', 'edit_ewaybilldt');
+      bindMirrorDefaultWeb('edit_org', 'edit_pickup_point');
+      bindMirrorDefaultWeb('edit_dest', 'edit_delivery_point');
 
       STEP2_INPUT_CONFIG.forEach(cfg => {
 
@@ -11092,14 +11160,27 @@
 
       setVal('edit_grno', d['grno'] || d['LR No *'] || d['lrno'] || d['BNF LR No'] || d['grno (*)'] || '');
 
-      setVal('edit_grdt', formatDdMmYyyyWeb(d['grdt'] || d['grdt *'] || d['stockdt'] || d['stockdt '] || ''));
-      setVal('edit_ewaybilldt', formatDdMmYyyyWeb(d['ewaybilldt'] || d['eway_bill_date'] || d['E-Way Bill Date'] || ''));
+      const grdtFmtVal = formatDdMmYyyyWeb(d['grdt'] || d['grdt *'] || d['stockdt'] || d['stockdt '] || '');
+      setVal('edit_grdt', grdtFmtVal);
+      const ewbDtFmtVal = formatDdMmYyyyWeb(d['EwayBillDate'] || d['ewaybilldt'] || d['eway_bill_date'] || d['E-Way Bill Date'] || grdtFmtVal || '');
+      setVal('edit_ewaybilldt', ewbDtFmtVal);
+      const grdtInputEl = document.getElementById('edit_grdt');
+      if (grdtInputEl) grdtInputEl.dataset.prevMirrorVal = grdtFmtVal;
 
       setVal('edit_customer', d['Customer Name *'] || d['customer'] || d['Customer'] || d['cngr *'] || d['cngr'] || '');
 
-      setVal('edit_org', d['orgrefcode'] || d['org'] || d['from'] || '');
+      const orgFmtVal = d['Origen'] || d['orgrefcode'] || d['org'] || d['from'] || '';
+      setVal('edit_org', orgFmtVal);
+      const orgInputEl = document.getElementById('edit_org');
+      if (orgInputEl) orgInputEl.dataset.prevMirrorVal = String(orgFmtVal).trim();
 
-      setVal('edit_dest', d['destrefcode'] || d['dest'] || d['deliveryat'] || d['to'] || '');
+      const destFmtVal = d['Destination'] || d['destrefcode'] || d['dest'] || d['deliveryat'] || d['to'] || '';
+      setVal('edit_dest', destFmtVal);
+      const destInputEl = document.getElementById('edit_dest');
+      if (destInputEl) destInputEl.dataset.prevMirrorVal = String(destFmtVal).trim();
+
+      setVal('edit_pickup_point', d['PickupPoint'] || d['pickup_point'] || d['pickuppoint'] || orgFmtVal);
+      setVal('edit_delivery_point', d['DeliveryPoint'] || d['delivery_point'] || d['deliverypoint'] || destFmtVal);
 
       setVal('edit_vehno', d['Vehicle No *'] || d['vehno'] || d['Vehicle No'] || '');
 
@@ -12363,11 +12444,17 @@
 
       d['LR No *'] = grno;
 
-      d['grdt'] = document.getElementById('edit_grdt').value.trim();
+      const grdtVal = document.getElementById('edit_grdt').value.trim();
 
-      d['stockdt'] = document.getElementById('edit_grdt').value.trim();
+      d['grdt'] = grdtVal;
+
+      d['stockdt'] = grdtVal;
       const ewayDtEl = document.getElementById('edit_ewaybilldt');
-      if (ewayDtEl) d['ewaybilldt'] = ewayDtEl.value.trim();
+      if (ewayDtEl) {
+        const effectiveEwayDt = ewayDtEl.value.trim() || grdtVal;
+        d['ewaybilldt'] = effectiveEwayDt;
+        d['EwayBillDate'] = effectiveEwayDt;
+      }
 
       const custInput = document.getElementById('edit_customer');
       const custVal = custInput ? custInput.value.trim() : '';
@@ -12378,9 +12465,19 @@
       const customCustEl = document.getElementById('custom_customer');
       if (customCustEl) customCustEl.value = custVal;
 
-      d['orgrefcode'] = document.getElementById('edit_org').value.trim();
+      const orgVal = document.getElementById('edit_org').value.trim();
+      d['orgrefcode'] = orgVal;
+      d['Origen'] = orgVal;
 
-      d['destrefcode'] = document.getElementById('edit_dest').value.trim();
+      const destVal = document.getElementById('edit_dest').value.trim();
+      d['destrefcode'] = destVal;
+      d['Destination'] = destVal;
+
+      const pickupEl = document.getElementById('edit_pickup_point');
+      if (pickupEl) d['PickupPoint'] = pickupEl.value.trim() || orgVal;
+
+      const deliveryEl = document.getElementById('edit_delivery_point');
+      if (deliveryEl) d['DeliveryPoint'] = deliveryEl.value.trim() || destVal;
 
       d['Vehicle No *'] = document.getElementById('edit_vehno').value.trim();
 
@@ -18692,11 +18789,11 @@
 
       const elTitle = document.getElementById('s9_snapshot_table_title');
 
-      if (elTitle) elTitle.innerText = `Snapshot Preview (All ${totalCount} Consignments • All 49 Excel Columns):`;
+      if (elTitle) elTitle.innerText = `Snapshot Preview (All ${totalCount} Consignments • All 52 Excel Columns):`;
 
 
 
-      // Render Table Header with # and all 49 BNF columns in exact Excel order (Plain Headers)
+      // Render Table Header with # and all 52 BNF columns in exact Excel order (Plain Headers)
 
       const theadRow = document.getElementById('s9SnapshotTheadRow');
 
