@@ -9016,6 +9016,36 @@
 
 
 
+    const UNICHARM_WEB_REGEX = /(?:unicharm|uvicharm|vuicharm|micharm)/i;
+    const WEB_UNICHARM_DEFAULT_CUSTOMER = 'Global Marketing';
+
+    function normalizeUnicharmCustomerWeb(data, rawText = '') {
+      if (!data || typeof data !== 'object') return false;
+      const isUnicharm = UNICHARM_WEB_REGEX.test(String(rawText || '')) || [
+        data['Customer Name *'],
+        data['Customer Name'],
+        data['Customer'],
+        data['customer'],
+        data['cngr *'],
+        data['cngr'],
+        data['cnge *'],
+        data['cnge'],
+      ].some(v => UNICHARM_WEB_REGEX.test(String(v || '')));
+      if (!isUnicharm) return false;
+
+      const currentCust = String(
+        data['Customer Name *'] || data['Customer Name'] || data['Customer'] || data['customer'] || ''
+      ).trim();
+      if (!currentCust || UNICHARM_WEB_REGEX.test(currentCust)) {
+        data['Customer Name *'] = WEB_UNICHARM_DEFAULT_CUSTOMER;
+        data['Customer Name'] = WEB_UNICHARM_DEFAULT_CUSTOMER;
+        data['Customer'] = WEB_UNICHARM_DEFAULT_CUSTOMER;
+        data['customer'] = WEB_UNICHARM_DEFAULT_CUSTOMER;
+        return true;
+      }
+      return false;
+    }
+
     // Client-side regex extractor for BNF 49 fields from ML recognized text
 
     function parseClientBnfText(text, filename, isOrangeYellow = false) {
@@ -9189,6 +9219,8 @@
         data['cnge *'] = cngeMatch[1].trim();
 
       }
+
+      normalizeUnicharmCustomerWeb(data, text);
 
 
 
@@ -9479,6 +9511,7 @@
           for (const f of validFiles) {
             formData.append('files', f);
           }
+          formData.append('client_source', 'web');
           if (currentUser) {
             if (currentUser.id) formData.append('user_id', currentUser.id);
             if (currentUser.mobile) formData.append('user_mobile', currentUser.mobile);
@@ -9645,6 +9678,7 @@
 
           const formData = new FormData();
           formData.append('file', file);
+          formData.append('client_source', 'web');
           if (currentUser) {
             if (currentUser.id) formData.append('user_id', currentUser.id);
             if (currentUser.mobile) formData.append('user_mobile', currentUser.mobile);
@@ -9809,6 +9843,8 @@
       }
       result.data['freight  *'] = '';
       result.data['freight'] = '';
+
+      normalizeUnicharmCustomerWeb(result.data);
 
       const prodTypeOptions = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
       const rawPCode = (result.data['productcode'] || result.data['Product Code'] || '').trim();
@@ -13195,8 +13231,11 @@
       // Strict validation for Department against ManiFest.xlsx
       if (deptVal && typeof masterCustomersMapping !== 'undefined' && masterCustomersMapping) {
         let allowedDepts = [];
-        if (editCustomer && masterCustomersMapping[editCustomer]) {
-          allowedDepts = masterCustomersMapping[editCustomer];
+        const matchedCustKey = editCustomer
+          ? Object.keys(masterCustomersMapping).find(k => k.trim().toUpperCase() === editCustomer.trim().toUpperCase())
+          : null;
+        if (matchedCustKey && Array.isArray(masterCustomersMapping[matchedCustKey])) {
+          allowedDepts = masterCustomersMapping[matchedCustKey];
         } else {
           for (const k in masterCustomersMapping) {
             allowedDepts = allowedDepts.concat(masterCustomersMapping[k]);
@@ -18203,6 +18242,7 @@
 
         documents: verifiedOnly.map(b => {
           const docData = Object.assign({}, (b.data && typeof b.data === 'object') ? b.data : {});
+          normalizeUnicharmCustomerWeb(docData);
           const cntVal = docData['Countername'] || docData['Counter name'] || docData['Counter'] || docData['counter'] || '';
           const mappedBr = getBranchNameForCounterWeb(cntVal);
           docData['Branch'] = mappedBr;

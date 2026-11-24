@@ -1259,6 +1259,8 @@ def map_to_gr_row(data: dict[str, str], headers: list[str], web_mode: bool = Fal
         customer = str(raw_cust_direct).strip()
     else:
         customer = get_val("Customer Name *", "Customer Name", "customer name", "customer", "party name", "billed to", "account name", default=cngr)
+    if web_mode and (not customer or _contains_unicharm_marker(customer)) and _is_unicharm_document(data):
+        customer = WEB_UNICHARM_DEFAULT_CUSTOMER
     lrno = _clean_grno(get_val("grno (*)", "grno", "LR No *", "LR No", "lr no", "lr number", "lorry receipt no", "lr #", default=grno)) or grno
     bnflr = get_val("BNF LR No", "bnf lr no", "bnf lr", "bnf no")
     # Auto-detect Department from Origin City matched against ManiFest.xlsx
@@ -1953,7 +1955,41 @@ def _resolve_user_from_request(
 
 
 
-def canonicalize_extracted_data(data_dict: dict) -> dict:
+UNICHARM_MARKERS = ("unicharm", "uvicharm", "vuicharm", "micharm")
+WEB_UNICHARM_DEFAULT_CUSTOMER = "Global Marketing"
+
+
+def _contains_unicharm_marker(val: Any) -> bool:
+    low = str(val or "").lower()
+    return any(w in low for w in UNICHARM_MARKERS)
+
+
+def _is_unicharm_document(data: dict[str, Any], prompt_type: str | None = None) -> bool:
+    if prompt_type == "Unicharm OCR":
+        return True
+    if not isinstance(data, dict):
+        return False
+    return any(
+        _contains_unicharm_marker(data.get(k))
+        for k in ("Customer Name *", "Customer Name", "Customer", "customer", "cngr *", "cngr", "cnge *", "cnge")
+    )
+
+
+def _apply_web_unicharm_customer_default(data: dict[str, Any], prompt_type: str | None = None) -> bool:
+    """Defaults Customer to 'Global Marketing' for Unicharm LRs in Web flows without modifying Consignor."""
+    if not isinstance(data, dict) or not _is_unicharm_document(data, prompt_type=prompt_type):
+        return False
+    current_cust = str(
+        data.get("Customer Name *") or data.get("Customer Name") or data.get("Customer") or data.get("customer") or ""
+    ).strip()
+    if not current_cust or _contains_unicharm_marker(current_cust):
+        for cust_key in ("Customer Name *", "Customer Name", "Customer", "customer"):
+            data[cust_key] = WEB_UNICHARM_DEFAULT_CUSTOMER
+        return True
+    return False
+
+
+def canonicalize_extracted_data(data_dict: dict, web_mode: bool = False) -> dict:
     """
     Normalizes extracted OCR fields from any prompt or document format into
     canonical keys compatible with:
@@ -2073,8 +2109,8 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
         cnge_low = str(raw_cnge or "").lower()
         if "himalaya" in cngr_low or "himalaya" in cnge_low:
             raw_cust = "Himalaya Wellness Company"
-        elif any(w in cngr_low or w in cnge_low for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
-            raw_cust = "UNICHARM INDIA PVT. LTD."
+        elif any(w in cngr_low or w in cnge_low for w in UNICHARM_MARKERS):
+            raw_cust = WEB_UNICHARM_DEFAULT_CUSTOMER if web_mode else "UNICHARM INDIA PVT. LTD."
         elif "patanjali" in cngr_low or "patanjali" in cnge_low:
             raw_cust = "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)"
         elif any(w in cngr_low or w in cnge_low for w in ["gold plus", "gold_plus", "goldplus"]):
@@ -2085,6 +2121,8 @@ def canonicalize_extracted_data(data_dict: dict) -> dict:
         data_dict["Customer Name *"] = raw_cust
         data_dict["Customer Name"] = raw_cust
         data_dict["customer"] = raw_cust
+    if web_mode:
+        _apply_web_unicharm_customer_default(data_dict)
 
     # 8. Consignor GSTIN & Consignee GSTIN
     raw_cngr_gst = get_val("cngrgstno *", "cngrgstno", "consignor gst", "consignor gstin", "cngr gst", "sender gst")
@@ -2972,6 +3010,7 @@ async def extract_handwriting(
     user_id: str | None = Form(default=None),
     user_mobile: str | None = Form(default=None),
     user_name: str | None = Form(default=None),
+    client_source: str | None = Form(default=None),
     authorization: str | None = Header(default=None),
 ):
     actor = _resolve_user_from_request(
@@ -2981,10 +3020,13 @@ async def extract_handwriting(
         user_name=user_name
     )
 
+    is_web = str(client_source or "").strip().lower() == "web"
     # Collect all uploaded files from multipart form
     all_uploads: list[UploadFile] = []
     try:
         form = await request.form()
+        if not is_web:
+            is_web = str(form.get("client_source") or "").strip().lower() == "web"
         for f in form.getlist("files"):
             if isinstance(f, UploadFile):
                 all_uploads.append(f)
@@ -3102,7 +3144,7 @@ async def extract_handwriting(
         data_dict = {item["key"]: item["value"] for item in kv_pairs}
 
         # Canonicalize all fields to 49 BNF schema & standard aliases
-        data_dict = canonicalize_extracted_data(data_dict)
+        data_dict = canonicalize_extracted_data(data_dict, web_mode=is_web)
 
         # === MULTI-LR DETECTION VALIDATION GATE ===
         has_multi_lrs = bool(raw_result.get("has_multiple_different_lrs", False))
@@ -3351,14 +3393,11 @@ async def extract_handwriting(
             data_dict["received"] = "0.00"
             data_dict["advance"] = "0.00"
 
-        is_unicharm = (
-            prompt_type == "Unicharm OCR"
-            or any(w in str(data_dict.get("Customer Name *") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
-            or any(w in str(data_dict.get("cngr *") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
-            or any(w in str(data_dict.get("cngr") or "").lower() for w in ["unicharm", "uvicharm", "vuicharm", "micharm"])
-        )
+        is_unicharm = _is_unicharm_document(data_dict, prompt_type=prompt_type)
         if is_unicharm:
-            if not data_dict.get("Customer Name *"):
+            if is_web:
+                _apply_web_unicharm_customer_default(data_dict, prompt_type=prompt_type)
+            elif not data_dict.get("Customer Name *"):
                 data_dict["Customer Name *"] = "UNICHARM INDIA PVT. LTD."
             data_dict["freight  *"] = ""
             data_dict["freight"] = ""
@@ -3390,7 +3429,7 @@ async def extract_handwriting(
             if data_dict.get(date_key):
                 data_dict[date_key] = _format_date_ddmmyyyy(data_dict[date_key])
 
-        data_dict = canonicalize_extracted_data(data_dict)
+        data_dict = canonicalize_extracted_data(data_dict, web_mode=is_web)
         kv_pairs = [{"key": k, "value": v} for k, v in data_dict.items()]
 
         now_ts = file_lifecycle_service.get_current_timestamp()
