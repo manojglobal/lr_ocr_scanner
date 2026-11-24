@@ -59,6 +59,8 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   final FocusNode _freightFocusNode = FocusNode();
   final GlobalKey _freightKey = GlobalKey();
   final GlobalKey _productTypeKey = GlobalKey();
+  String _lastCustomerText = '';
+  String? _autoFilledConsignorGst;
 
   List<String> _customerOptions = [];
   List<String> _departmentOptions = [];
@@ -145,8 +147,11 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     _licenseNoController = TextEditingController(text: dLic);
     _licenseValidController = TextEditingController(text: dVal);
 
+    _lastCustomerText = cust;
+
     _customerController.addListener(_onCustomerChanged);
     _customerController.addListener(_onFieldChanged);
+    _freightController.addListener(_onFreightChanged);
     _driverNameController.addListener(_onFieldChanged);
     _driverMobileController.addListener(_onFieldChanged);
     _licenseNoController.addListener(_onFieldChanged);
@@ -159,9 +164,23 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     }
   }
 
+  void _onFreightChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   void _onCustomerChanged() {
     final newCust = _customerController.text.trim();
     final newDepts = MasterDataService.instance.getDepartmentsForCustomer(newCust);
+    if (newCust != _lastCustomerText) {
+      _lastCustomerText = newCust;
+      if (newCust.isNotEmpty) {
+        _autoFilledConsignorGst = MasterDataService.instance.matchPartyGst(newCust);
+      } else {
+        _autoFilledConsignorGst = null;
+      }
+    }
     setState(() {
       _departmentOptions = newDepts;
       if (!_departmentOptions.contains(_selectedDepartment)) {
@@ -175,6 +194,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     _customerController.removeListener(_onCustomerChanged);
     _customerController.removeListener(_onFieldChanged);
     _customerController.dispose();
+    _freightController.removeListener(_onFreightChanged);
     _driverNameController.removeListener(_onFieldChanged);
     _driverNameController.dispose();
     _driverMobileController.removeListener(_onFieldChanged);
@@ -345,6 +365,14 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     updated['Customer'] = custVal;
     updated['customer'] = custVal;
     updated['customer_name'] = custVal;
+    if (_autoFilledConsignorGst != null && _autoFilledConsignorGst!.trim().isNotEmpty) {
+      final gst = _autoFilledConsignorGst!.trim();
+      updated['cngrgstno *'] = gst;
+      updated['cngrgstno'] = gst;
+      updated['Consignor GSTIN'] = gst;
+      updated['consignor_gstin'] = gst;
+      updated['cngr_gstno'] = gst;
+    }
     updated['Depatment Name'] = _selectedDepartment;
     updated['department'] = _selectedDepartment;
     updated['Counter'] = _selectedCounter;
@@ -475,6 +503,48 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     final candidate = _collectUpdatedItem();
     final updated = candidate.record;
 
+    // Duplicate LR number check (excluding the currently edited item)
+    final grnoField = candidate.resolveField('grno (*)').trim();
+    final candidateLr = grnoField.isNotEmpty
+        ? grnoField
+        : BatchProcessingController.extractLrNoFromRecord(updated).trim();
+    if (candidateLr.isNotEmpty &&
+        widget.controller.isDuplicate(
+          lrNo: candidateLr,
+          excludeItemId: widget.item.id,
+        )) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Duplicate LR',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'LR Number "$candidateLr" already exists in your batch or previous uploads. Duplicate LR numbers are not allowed.',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     // Collect all missing mandatory fields matching Web
     final emptyMandatory = <Map<String, String>>[];
 
@@ -533,14 +603,18 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
       return;
     }
 
-    // Mark record as verified and clear any pending or cancelled flags
+    // Mark record as verified and clear any pending, cancelled, or stale export flags
     updated['is_verified'] = 'true';
     updated.remove('pending_verification');
     updated.remove('is_cancelled');
+    updated['is_exported'] = 'false';
+    updated.remove('exported_at');
 
     final newItem = widget.item.copyWith(
       record: updated,
       status: BatchItemStatus.completed,
+      editedAt: DateTime.now(),
+      clearExportedAt: true,
     );
     widget.controller.updateItem(newItem);
 
@@ -843,32 +917,49 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildLabel('Freight *'),
+                                  _buildLabel(
+                                    'Freight *',
+                                    showError: _freightController.text.trim().isEmpty,
+                                  ),
                                   KeyedSubtree(
                                     key: _freightKey,
-                                    child: TextField(
-                                      controller: _freightController,
-                                      focusNode: _freightFocusNode,
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-                                      decoration: InputDecoration(
-                                        hintText: '0.00',
-                                        filled: true,
-                                        fillColor: Colors.white,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                          borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                          borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                          borderSide: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
-                                        ),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                      ),
+                                    child: Builder(
+                                      builder: (context) {
+                                        final isFrtErr = _freightController.text.trim().isEmpty;
+                                        return TextField(
+                                          controller: _freightController,
+                                          focusNode: _freightFocusNode,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                                          decoration: InputDecoration(
+                                            hintText: '0.00',
+                                            filled: true,
+                                            fillColor: isFrtErr ? const Color(0xFFFEF2F2) : Colors.white,
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: BorderSide(
+                                                color: isFrtErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                                width: isFrtErr ? 1.2 : 1.0,
+                                              ),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: BorderSide(
+                                                color: isFrtErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+                                                width: isFrtErr ? 1.2 : 1.0,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: BorderSide(
+                                                color: isFrtErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
                                 ],

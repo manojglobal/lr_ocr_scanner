@@ -369,7 +369,9 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         });
         SharedPreferences.getInstance().then((p) {
-          p.setString('bnf_recent_uploaded_lrs', jsonEncode(_persistedRecentLrs));
+          final mob = widget.controller.activeUserMobile ?? p.getString('bnf_user_mobile') ?? _userMobile;
+          final key = BatchProcessingController.scopedStorageKey('bnf_recent_uploaded_lrs', mob);
+          p.setString(key, jsonEncode(_persistedRecentLrs));
         }).catchError((_) {});
       }
 
@@ -981,7 +983,11 @@ void _checkDuplicateNotice() {
 
     );
 
-    await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(_persistedRecentLrs));
+    final mob = widget.controller.activeUserMobile ??
+        prefs.getString('bnf_user_mobile') ??
+        _userMobile;
+    final recentKey = BatchProcessingController.scopedStorageKey('bnf_recent_uploaded_lrs', mob);
+    await prefs.setString(recentKey, jsonEncode(_persistedRecentLrs));
 
     widget.controller.setPreviousUploadsCache(_persistedRecentLrs);
 
@@ -997,7 +1003,8 @@ void _checkDuplicateNotice() {
 
     if (savedFilename.isNotEmpty && !generic.contains(savedFilename.toLowerCase())) _dismissedRecentLrs.add(savedFilename);
 
-    await prefs.setStringList('bnf_dismissed_recent_lrs', _dismissedRecentLrs.toList());
+    final dismissedKey = BatchProcessingController.scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+    await prefs.setStringList(dismissedKey, _dismissedRecentLrs.toList());
 
 
 
@@ -1027,6 +1034,17 @@ void _checkDuplicateNotice() {
           baseUrl: widget.controller.geminiService.serverUrl,
         ).catchError((_) => false);
       }
+      final prevTarget = savedFilename.isNotEmpty
+          ? savedFilename
+          : (fileName.isNotEmpty ? fileName : targetId);
+      widget.controller.geminiService
+          .deletePreviousUpload(
+            prevTarget,
+            userMobile: mobile,
+            userName: widget.controller.activeUserName,
+            sessionToken: widget.controller.sessionToken,
+          )
+          .catchError((_) => false);
     }
 
 
@@ -1379,17 +1397,22 @@ void _checkDuplicateNotice() {
 
       final prefs = await SharedPreferences.getInstance();
 
-      final dismissedList = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+      final mob = widget.controller.activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? _userMobile;
+      final owner = prefs.getString('bnf_cache_owner_mobile') ?? '';
+      final userKey = BatchProcessingController.resolveUserKey(mob);
+      final canReadLegacy = userKey.isEmpty || owner.isEmpty || owner == userKey;
+
+      final dismissedKey = BatchProcessingController.scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+      final dismissedList = prefs.getStringList(dismissedKey) ??
+          (canReadLegacy ? (prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[]) : <String>[]);
 
       const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
 
       _dismissedRecentLrs = Set<String>.from(dismissedList.where((s) => !generic.contains(s.trim().toLowerCase())));
 
-
-
-      final mob = widget.controller.activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? _userMobile;
-
-      final raw = prefs.getString('bnf_recent_uploaded_lrs');
+      final recentKey = BatchProcessingController.scopedStorageKey('bnf_recent_uploaded_lrs', mob);
+      final raw = prefs.getString(recentKey) ??
+          (canReadLegacy ? prefs.getString('bnf_recent_uploaded_lrs') : null);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw) as List<dynamic>;
         final rawMaps = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -1488,9 +1511,9 @@ void _checkDuplicateNotice() {
       widget.controller.setPreviousUploadsCache(deduped);
 
       SharedPreferences.getInstance().then((p) {
-
-        p.setString('bnf_recent_uploaded_lrs', jsonEncode(deduped));
-
+        final mob = widget.controller.activeUserMobile ?? p.getString('bnf_user_mobile') ?? _userMobile;
+        final recentKey = BatchProcessingController.scopedStorageKey('bnf_recent_uploaded_lrs', mob);
+        p.setString(recentKey, jsonEncode(deduped));
       });
 
       if (mounted) {
@@ -1639,9 +1662,9 @@ void _checkDuplicateNotice() {
 
 
 
-      await prefs.setStringList('bnf_dismissed_recent_lrs', _dismissedRecentLrs.toList());
-
       final mob = widget.controller.activeUserMobile ?? _userMobile;
+      final dismissedKey = BatchProcessingController.scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+      await prefs.setStringList(dismissedKey, _dismissedRecentLrs.toList());
 
       if (mob.isNotEmpty && toUndismiss.isNotEmpty) {
 
@@ -1663,7 +1686,8 @@ void _checkDuplicateNotice() {
 
       final toSave = _deduplicateUploadList(combined).map(_cleanItemForStorage).take(25).toList();
 
-      await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(toSave));
+      final recentKey = BatchProcessingController.scopedStorageKey('bnf_recent_uploaded_lrs', mob);
+      await prefs.setString(recentKey, jsonEncode(toSave));
 
       widget.controller.setPreviousUploadsCache(toSave);
 
@@ -1719,11 +1743,14 @@ void _checkDuplicateNotice() {
 
     if (confirmed == true && mounted) {
 
+      final prefs = await SharedPreferences.getInstance();
       final token = widget.controller.activeSessionToken;
+      final mobToClear = widget.controller.activeUserMobile ??
+          prefs.getString('bnf_user_mobile') ??
+          _userMobile;
 
       widget.controller.clearForLogout();
-
-      final prefs = await SharedPreferences.getInstance();
+      await widget.controller.clearUserCachesOnLogout(mobile: mobToClear);
 
       await prefs.remove('bnf_user_name');
 
@@ -4160,12 +4187,7 @@ void _checkDuplicateNotice() {
 
                               });
 
-                              await AppConfigService.instance.clearManualOverride();
-
-                              final found = await AppConfigService.instance.discoverLocalBackend(
-                                forceScan: true,
-                                applyResult: true,
-                              );
+                              final found = await AppConfigService.instance.enableAutoModeAndDiscover();
 
                               if (found != null) {
                                 textController.text = found;

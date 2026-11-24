@@ -7,6 +7,7 @@ import '../../models/batch_item.dart';
 import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/step_indicator_bar.dart';
+import 'excel_generated_screen.dart';
 
 /// Screen 8: Excel Preview (BNF GR Import Format - 52 Columns).
 class ExcelPreviewScreen extends StatefulWidget {
@@ -56,7 +57,14 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     final prefs = await SharedPreferences.getInstance();
     final name = widget.controller.activeUserName ?? prefs.getString('bnf_user_name') ?? 'Logistics User';
     final mobile = widget.controller.activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? '';
-    final cached = prefs.getString('bnf_exported_batches');
+    final userKey = BatchProcessingController.resolveUserKey(mobile);
+    final owner = prefs.getString('bnf_cache_owner_mobile') ?? '';
+    final canReadLegacy = userKey.isEmpty || owner.isEmpty || owner == userKey;
+    final exportedKey = BatchProcessingController.scopedStorageKey('bnf_exported_batches', mobile);
+    final cached = prefs.getString(exportedKey) ??
+        (canReadLegacy && owner == userKey && userKey.isNotEmpty
+            ? prefs.getString('bnf_exported_batches')
+            : (userKey.isEmpty ? prefs.getString('bnf_exported_batches') : null));
     List<Map<String, dynamic>> cachedList = [];
     if (cached != null && cached.isNotEmpty) {
       try {
@@ -98,7 +106,8 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
           _isLoadingHistory = false;
           _hasHistoryError = false;
         });
-        await prefs.setString('bnf_exported_batches', jsonEncode(history));
+        final exportedKey = BatchProcessingController.scopedStorageKey('bnf_exported_batches', mobile);
+        await prefs.setString(exportedKey, jsonEncode(history));
       }
     } catch (e) {
       if (mounted) {
@@ -308,10 +317,13 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
 
   void _confirmAndGenerateExcel() {
     final allItems = widget.controller.items;
-    final verifiedItems = allItems.where((i) => i.isVerified).toList();
-    final verifiedCount = verifiedItems.length;
+    final allVerifiedItems = allItems.where((i) => i.isVerified).toList();
+    final unexportedVerified = widget.controller.getExportableVerifiedItems(
+      includeAlreadyExported: false,
+    );
+    final unverifiedCount = allItems.where((i) => !i.isVerified).length;
 
-    if (verifiedCount == 0) {
+    if (allVerifiedItems.isEmpty) {
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -339,16 +351,32 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
       return;
     }
 
-    final unverifiedCount = allItems.length - verifiedCount;
-    final message = unverifiedCount > 0
-        ? 'Generate Excel with $verifiedCount Verified consignment note(s)?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
-        : 'Are you sure you want to generate the Excel sheet with $verifiedCount verified consignment note(s)?';
+    final isReExport = unexportedVerified.isEmpty;
+    final exportTargets = isReExport ? allVerifiedItems : unexportedVerified;
+    final verifiedCount = exportTargets.length;
+
+    final String dialogTitle;
+    final String confirmLabel;
+    final String message;
+    if (isReExport) {
+      dialogTitle = 'Re-Export Verified LRs?';
+      confirmLabel = 'Re-Export ($verifiedCount LRs)';
+      message = unverifiedCount > 0
+          ? 'All $verifiedCount verified LR(s) have already been exported to Excel.\n\nDo you want to re-export them again?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
+          : 'All $verifiedCount verified LR(s) have already been exported to Excel.\n\nDo you want to re-export them again?';
+    } else {
+      dialogTitle = 'Generate Excel';
+      confirmLabel = 'Generate ($verifiedCount LRs)';
+      message = unverifiedCount > 0
+          ? 'Generate Excel with $verifiedCount Verified consignment note(s)?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
+          : 'Are you sure you want to generate the Excel sheet with $verifiedCount verified consignment note(s)?';
+    }
 
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Generate Excel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(dialogTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         content: Text(message, style: const TextStyle(fontSize: 14)),
         actions: [
           TextButton(
@@ -359,28 +387,35 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
             onPressed: () {
               Navigator.of(ctx).pop();
-              _handleGenerateExcel();
+              _handleGenerateExcel(exportTargets, unverifiedCount: unverifiedCount);
             },
-            child: Text('Generate ($verifiedCount LRs)'),
+            child: Text(confirmLabel),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _handleGenerateExcel() async {
+  Future<void> _handleGenerateExcel(
+    List<BatchItem> items, {
+    int unverifiedCount = 0,
+  }) async {
     setState(() => _isGenerating = true);
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final userName = prefs.getString('bnf_user_name') ?? 'Logistics User';
-      final userMobile = prefs.getString('bnf_user_mobile') ?? '';
-      final userToken = prefs.getString('bnf_user_token');
+      final userName = widget.controller.activeUserName ??
+          prefs.getString('bnf_user_name') ??
+          'Logistics User';
+      final userMobile = widget.controller.activeUserMobile ??
+          prefs.getString('bnf_user_mobile') ??
+          '';
+      final userToken = widget.controller.sessionToken ??
+          prefs.getString('bnf_user_token');
 
-      final allItems = widget.controller.items;
-      final items = allItems.where((i) => i.isVerified).toList();
       if (items.isEmpty) return;
-      final exportIso = DateTime.now().toIso8601String();
+      final exportTime = DateTime.now();
+      final exportIso = exportTime.toIso8601String();
       final docs = items.map((i) {
         return {
           'filename': i.fileName,
@@ -459,7 +494,8 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
           'total_lrs': items.length,
           'exported_by': userName,
           'user_mobile': userMobile,
-          'generated_on': DateTime.now().toString(),
+          'generated_on': exportIso,
+          'exported_at': exportIso,
           'file_size_kb': 28.5,
           'local_path': filePath,
         };
@@ -468,55 +504,29 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
       if (!mounted) return;
 
       if (result['success'] == true) {
-        showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Color(0xFF059669), size: 24),
-                SizedBox(width: 8),
-                Text('Excel Generated!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
+        await widget.controller.markItemsAsExported(
+          items.map((i) => i.id).toList(),
+          exportedAt: exportTime,
+        );
+
+        final enrichedResult = Map<String, dynamic>.from(result);
+        enrichedResult['total_lrs'] ??= items.length;
+        enrichedResult['unverified_excluded'] = unverifiedCount;
+        enrichedResult['exported_by'] ??= userName;
+        enrichedResult['user_name'] ??= userName;
+        enrichedResult['user_mobile'] ??= userMobile;
+        enrichedResult['generated_on'] ??= exportIso;
+        enrichedResult['exported_at'] ??= exportIso;
+        enrichedResult['sha256'] = ExcelGeneratedScreen.deriveAuditSha256(enrichedResult);
+
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ExcelGeneratedScreen(
+              exportResult: enrichedResult,
+              controller: widget.controller,
+              exportedItems: items,
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('File: ${result['filename']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 6),
-                Text('Total LRs: ${result['total_lrs']}', style: const TextStyle(fontSize: 13)),
-                if (result['local_path'] != null) ...[
-                  const SizedBox(height: 6),
-                  Text('Saved to: ${result['local_path']}', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('OK'),
-              ),
-              if (widget.controller.lastExportedPath != null) ...[
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-                    await widget.controller.shareLastExport();
-                  },
-                  icon: const Icon(Icons.share, size: 16),
-                  label: const Text('Share'),
-                ),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-                    await widget.controller.openLastExport();
-                  },
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Open'),
-                ),
-              ],
-            ],
           ),
         );
       } else {

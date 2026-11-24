@@ -15,11 +15,12 @@ class AppConfigService extends ChangeNotifier {
   static const String prefKeyRemoteConfigUrl = 'app_remote_config_url';
   static const String prefKeyIsLocalLan = 'bnf_is_local_lan_url';
   static const String prefKeyManualOverride = 'bnf_manual_server_override';
+  static const String prefKeyServerMode = 'bnf_server_selection_mode';
 
   /// Build-time environment mode:
-  /// - 'auto' (default): Auto-discovers same-Wi-Fi backend first, falls back to production if none responds.
-  /// - 'local': Auto-discovers same-Wi-Fi backend without silently falling back to production.
-  /// - 'prod' : Uses production server URL + remote config directly (zero LAN discovery).
+  /// - 'auto' (default): Allows explicit Auto LAN discovery when user enables Auto mode.
+  /// - 'local': Auto-discovers same-Wi-Fi backend when Auto mode is enabled.
+  /// - 'prod' : Uses production server URL directly (zero LAN discovery).
   static const String envMode = String.fromEnvironment('ENV_MODE', defaultValue: 'auto');
 
   /// Production fallback/default server URL (no local LAN IP is hardcoded).
@@ -40,6 +41,7 @@ class AppConfigService extends ChangeNotifier {
   bool _isFetchingRemote = false;
   bool _isLocalLanActive = false;
   bool _manualOverride = false;
+  bool _autoModeEnabled = false;
   int _configEpoch = 0;
   Future<void>? _inFlightInitialize;
   Future<String?>? _inFlightDiscovery;
@@ -62,16 +64,17 @@ class AppConfigService extends ChangeNotifier {
   bool get isFetchingRemote => _isFetchingRemote;
   bool get isLocalLanActive => _isLocalLanActive;
   bool get isManualOverride => _manualOverride;
+  bool get isAutoMode => _autoModeEnabled && !_manualOverride;
 
   bool get _canAutoDiscover {
     if (envMode == 'prod') return false;
     final inFlutterTest = Platform.environment.containsKey('FLUTTER_TEST');
     if (inFlutterTest && allowDiscoveryInTests != true) return false;
-    return true;
+    return _autoModeEnabled && !_manualOverride;
   }
 
-  /// Hydrates cached server URL immediately, runs same-Wi-Fi LAN discovery in
-  /// 'auto'/'local' mode, and triggers remote config only when appropriate.
+  /// Hydrates cached server URL immediately without overriding manual or saved selections.
+  /// Auto LAN discovery only runs if the user has explicitly selected Auto mode.
   Future<void> initialize() {
     if (_isInitialized) return Future.value();
     if (_inFlightInitialize != null) return _inFlightInitialize!;
@@ -84,11 +87,13 @@ class AppConfigService extends ChangeNotifier {
 
   Future<void> _doInitialize() async {
     final startEpoch = _configEpoch;
+    bool hasPersistedCustomUrl = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       if (_configEpoch == startEpoch) {
         final saved = prefs.getString(prefKeyServerUrl);
-        _manualOverride = prefs.getBool(prefKeyManualOverride) ?? false;
+        final savedMode = prefs.getString(prefKeyServerMode);
+        final savedManual = prefs.getBool(prefKeyManualOverride);
 
         if (saved != null && saved.trim().isNotEmpty) {
           final cleaned = _sanitizeUrl(saved);
@@ -96,11 +101,32 @@ class AppConfigService extends ChangeNotifier {
             _baseUrl = cleaned;
             _wsUrl = _deriveWsUrl(cleaned);
             _isLocalLanActive = isPrivateLanUrl(cleaned);
+            hasPersistedCustomUrl = cleaned != defaultServerUrl;
+
+            if (savedManual == true || savedMode == 'manual') {
+              _manualOverride = true;
+              _autoModeEnabled = false;
+            } else if (savedMode == 'auto' && savedManual != true) {
+              _manualOverride = false;
+              _autoModeEnabled = true;
+            } else if (hasPersistedCustomUrl) {
+              // Legacy saved non-default URL (pre-override flag): lock as manual so
+              // startup/resume/network hiccups never overwrite the user's server.
+              _manualOverride = true;
+              _autoModeEnabled = false;
+              await prefs.setBool(prefKeyManualOverride, true);
+              await prefs.setString(prefKeyServerMode, 'manual');
+            } else {
+              _manualOverride = false;
+              _autoModeEnabled = false;
+            }
           }
         } else {
           _baseUrl = defaultServerUrl;
           _wsUrl = _deriveWsUrl(defaultServerUrl);
           _isLocalLanActive = false;
+          _manualOverride = savedManual ?? false;
+          _autoModeEnabled = !_manualOverride && savedMode == 'auto';
         }
       }
     } catch (e) {
@@ -109,30 +135,29 @@ class AppConfigService extends ChangeNotifier {
         _baseUrl = defaultServerUrl;
         _wsUrl = _deriveWsUrl(defaultServerUrl);
         _isLocalLanActive = false;
+        _manualOverride = false;
+        _autoModeEnabled = false;
       }
     }
 
-    if (_canAutoDiscover && !_manualOverride && _configEpoch == startEpoch) {
+    if (_canAutoDiscover && _configEpoch == startEpoch) {
       final discovered = await discoverLocalBackend(
         cachedLanUrl: isPrivateLanUrl(_baseUrl) ? _baseUrl : null,
       );
-      if (_configEpoch == startEpoch) {
-        if (discovered != null) {
-          await _applyDiscoveredLocalUrl(discovered);
-        } else {
-          _isLocalLanActive = false;
-          if (envMode == 'auto' && isPrivateLanUrl(_baseUrl)) {
-            _baseUrl = defaultServerUrl;
-            _wsUrl = _deriveWsUrl(defaultServerUrl);
-          }
-        }
+      if (_configEpoch == startEpoch && _canAutoDiscover && discovered != null) {
+        await _applyDiscoveredLocalUrl(discovered);
       }
     }
+
+    if (_configEpoch != startEpoch) return;
 
     _isInitialized = true;
     notifyListeners();
 
-    final shouldFetchRemote = envMode == 'prod' || (envMode == 'auto' && !_isLocalLanActive);
+    final shouldFetchRemote = envMode == 'prod' &&
+        !_manualOverride &&
+        !_autoModeEnabled &&
+        !hasPersistedCustomUrl;
     if (shouldFetchRemote && !_canSkipBackgroundRemoteInTest) {
       unawaited(fetchRemoteConfig());
     }
@@ -141,21 +166,81 @@ class AppConfigService extends ChangeNotifier {
   bool get _canSkipBackgroundRemoteInTest =>
       Platform.environment.containsKey('FLUTTER_TEST') && allowDiscoveryInTests != true;
 
+  /// Explicitly enables Auto LAN discovery mode and scans the local Wi-Fi network.
+  /// Returns the discovered local backend URL, or null if none was found.
+  /// If a manually saved URL already exists and discovery finds nothing, keeps it intact.
+  Future<String?> enableAutoModeAndDiscover() async {
+    if (envMode == 'prod') return null;
+
+    final startEpoch = _configEpoch;
+    final found = await _discoverLocalBackendInternal(
+      cachedLanUrl: isPrivateLanUrl(_baseUrl) ? _baseUrl : null,
+      forceScan: true,
+    );
+
+    if (_configEpoch != startEpoch) return null;
+
+    if (found != null) {
+      await _activateAutoModeWithUrl(found);
+      return found;
+    }
+
+    // Only switch into Auto mode without a found server if there is no manual URL to protect.
+    if (!_manualOverride) {
+      await enableAutoMode();
+    }
+    return null;
+  }
+
+  /// Explicitly selects Auto mode without erasing any currently saved URL unless
+  /// discovery later succeeds on the local Wi-Fi network.
+  Future<void> enableAutoMode() async {
+    _configEpoch++;
+    _manualOverride = false;
+    _autoModeEnabled = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(prefKeyManualOverride, false);
+      await prefs.setString(prefKeyServerMode, 'auto');
+    } catch (e) {
+      debugPrint('[AppConfigService] enableAutoMode save error: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> _activateAutoModeWithUrl(String discoveredUrl) async {
+    _manualOverride = false;
+    _autoModeEnabled = true;
+    await _applyDiscoveredLocalUrl(discoveredUrl, forceAutoMode: true);
+  }
+
   /// Runs tiered LAN discovery (1. Verify cached LAN IP, 2. UDP broadcast,
-  /// 3. Parallel /24 HTTP subnet probe) and optionally applies the result.
+  /// 3. Parallel /24 HTTP subnet probe) and optionally applies the result only
+  /// when manual override is not active.
   Future<String?> discoverLocalBackend({
     String? cachedLanUrl,
     bool forceScan = false,
     bool applyResult = false,
   }) async {
     if (envMode == 'prod') return null;
+    if (applyResult && _manualOverride) return null;
 
+    final found = await _discoverLocalBackendInternal(
+      cachedLanUrl: cachedLanUrl,
+      forceScan: forceScan,
+    );
+    if (applyResult && found != null && !_manualOverride && _autoModeEnabled) {
+      await _applyDiscoveredLocalUrl(found);
+    }
+    return found;
+  }
+
+  Future<String?> _discoverLocalBackendInternal({
+    String? cachedLanUrl,
+    required bool forceScan,
+  }) async {
     if (_inFlightDiscovery != null) {
-      final existing = await _inFlightDiscovery!;
-      if (applyResult && existing != null) {
-        await _applyDiscoveredLocalUrl(existing, clearManualOverride: true);
-      }
-      return existing;
+      return _inFlightDiscovery!;
     }
 
     final future = _runDiscoveryChain(
@@ -164,11 +249,7 @@ class AppConfigService extends ChangeNotifier {
     );
     _inFlightDiscovery = future;
     try {
-      final found = await future;
-      if (applyResult && found != null) {
-        await _applyDiscoveredLocalUrl(found, clearManualOverride: true);
-      }
-      return found;
+      return await future;
     } finally {
       _inFlightDiscovery = null;
     }
@@ -180,16 +261,16 @@ class AppConfigService extends ChangeNotifier {
   }) async {
     // Tier 1: Fast verify last known LAN URL
     if (!forceScan && cachedLanUrl != null && isPrivateLanUrl(cachedLanUrl)) {
-      final verified = await _probeCandidate(cachedLanUrl, const Duration(milliseconds: 700));
+      final verified = await _probeCandidate(cachedLanUrl, const Duration(milliseconds: 1000));
       if (verified != null) return verified;
     }
 
     // Tier 2: Fast UDP broadcast across local Wi-Fi interface(s)
-    final udpFound = await _discoverViaUdpBroadcast(const Duration(milliseconds: 650));
+    final udpFound = await _discoverViaUdpBroadcast(const Duration(milliseconds: 1200));
     if (udpFound != null) return udpFound;
 
     // Tier 3: Asynchronous /24 subnet HTTP fallback when UDP broadcast is filtered
-    final subnetFound = await _discoverViaSubnetProbe(const Duration(milliseconds: 500));
+    final subnetFound = await _discoverViaSubnetProbe(const Duration(milliseconds: 850));
     if (subnetFound != null) return subnetFound;
 
     return null;
@@ -197,26 +278,25 @@ class AppConfigService extends ChangeNotifier {
 
   Future<void> _applyDiscoveredLocalUrl(
     String discoveredUrl, {
-    bool clearManualOverride = false,
+    bool forceAutoMode = false,
   }) async {
+    if (_manualOverride && !forceAutoMode) return;
     final cleaned = _sanitizeUrl(discoveredUrl);
     if (cleaned.isEmpty) return;
 
-    final changed = cleaned != _baseUrl || !_isLocalLanActive;
+    final changed = cleaned != _baseUrl || !_isLocalLanActive || !_autoModeEnabled || _manualOverride;
     _baseUrl = cleaned;
     _wsUrl = _deriveWsUrl(cleaned);
     _isLocalLanActive = true;
-    if (clearManualOverride) {
-      _manualOverride = false;
-    }
+    _manualOverride = false;
+    _autoModeEnabled = true;
 
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(prefKeyServerUrl, _baseUrl);
       await prefs.setBool(prefKeyIsLocalLan, true);
-      if (clearManualOverride) {
-        await prefs.setBool(prefKeyManualOverride, false);
-      }
+      await prefs.setBool(prefKeyManualOverride, false);
+      await prefs.setString(prefKeyServerMode, 'auto');
     } catch (e) {
       debugPrint('[AppConfigService] Save discovered URL error: $e');
     }
@@ -226,10 +306,10 @@ class AppConfigService extends ChangeNotifier {
     }
   }
 
-  /// Called automatically when an API call encounters a network/socket failure
-  /// (e.g., PC IP changed or device switched Wi-Fi) so callers can retry.
+  /// Called when an API call encounters a socket/network failure.
+  /// Never overrides a manually selected server and never silently falls back to the Test Server.
   Future<bool> handleConnectionErrorAndRediscover({bool force = false}) async {
-    if (!_canAutoDiscover || _manualOverride) return false;
+    if (!_canAutoDiscover) return false;
 
     final now = DateTime.now();
     if (!force &&
@@ -239,28 +319,21 @@ class AppConfigService extends ChangeNotifier {
     }
     _lastRediscoverAttempt = now;
 
-    final discovered = await discoverLocalBackend(forceScan: true);
-    if (discovered != null) {
+    final discovered = await _discoverLocalBackendInternal(forceScan: true, cachedLanUrl: null);
+    if (_manualOverride || !_autoModeEnabled) return false;
+    if (discovered != null && discovered != _baseUrl) {
       await _applyDiscoveredLocalUrl(discovered);
       return true;
     }
 
-    if (envMode == 'auto' && _isLocalLanActive) {
-      _isLocalLanActive = false;
-      if (isPrivateLanUrl(_baseUrl)) {
-        _baseUrl = defaultServerUrl;
-        _wsUrl = _deriveWsUrl(defaultServerUrl);
-        notifyListeners();
-        return true;
-      }
-    }
+    // Do NOT silently fall back to defaultServerUrl if discovery fails.
     return false;
   }
 
   /// Called when app returns to foreground (AppLifecycleState.resumed).
-  /// Returns true if the active backend baseUrl changed.
+  /// Respects manual server selection and never silently switches to the Test Server.
   Future<bool> refreshOnAppResume({bool force = false}) async {
-    if (!_canAutoDiscover || _manualOverride) return false;
+    if (!_canAutoDiscover) return false;
 
     final now = DateTime.now();
     if (!force &&
@@ -274,27 +347,20 @@ class AppConfigService extends ChangeNotifier {
 
     // If currently pointing to a LAN URL, check if it is still reachable on this Wi-Fi
     if (_isLocalLanActive || isPrivateLanUrl(_baseUrl)) {
-      final stillAlive = await _probeCandidate(_baseUrl, const Duration(milliseconds: 650));
+      final stillAlive = await _probeCandidate(_baseUrl, const Duration(milliseconds: 900));
       if (stillAlive != null) {
         return false;
       }
     }
 
-    final discovered = await discoverLocalBackend(forceScan: true);
-    if (discovered != null) {
+    final discovered = await _discoverLocalBackendInternal(forceScan: true, cachedLanUrl: null);
+    if (_manualOverride || !_autoModeEnabled) return false;
+    if (discovered != null && discovered != _baseUrl) {
       await _applyDiscoveredLocalUrl(discovered);
       return _baseUrl != prevUrl;
     }
 
-    if (envMode == 'auto' && isPrivateLanUrl(_baseUrl)) {
-      _isLocalLanActive = false;
-      _baseUrl = defaultServerUrl;
-      _wsUrl = _deriveWsUrl(defaultServerUrl);
-      notifyListeners();
-      unawaited(fetchRemoteConfig());
-      return _baseUrl != prevUrl;
-    }
-
+    // Preserve user's saved server URL instead of silently switching to Test Server.
     return false;
   }
 
@@ -492,11 +558,14 @@ class AppConfigService extends ChangeNotifier {
     }
   }
 
-  /// Fetches centralized remote configuration when running in production mode
-  /// or when no local Wi-Fi backend is active.
+  /// Fetches centralized remote configuration ONLY when no manual/custom/local
+  /// server URL is selected (never overrides manual selection).
   Future<bool> fetchRemoteConfig({Duration timeout = const Duration(seconds: 2)}) async {
+    if (_manualOverride) return false;
     if (envMode == 'local') return false;
-    if (envMode == 'auto' && _isLocalLanActive) return false;
+    if (envMode == 'auto' && (!_autoModeEnabled || _isLocalLanActive || _baseUrl != defaultServerUrl)) {
+      return false;
+    }
     if (_isFetchingRemote) return false;
     _isFetchingRemote = true;
 
@@ -515,6 +584,7 @@ class AppConfigService extends ChangeNotifier {
 
       for (final endpoint in endpointsToTry) {
         try {
+          if (_manualOverride) return false;
           final uri = Uri.tryParse(endpoint);
           if (uri == null || !uri.hasScheme) continue;
 
@@ -528,7 +598,9 @@ class AppConfigService extends ChangeNotifier {
               if (remoteServerUrl != null && remoteServerUrl.trim().isNotEmpty) {
                 final sanitizedServerUrl = _sanitizeUrl(remoteServerUrl);
                 if (sanitizedServerUrl.isNotEmpty && sanitizedServerUrl != _baseUrl) {
-                  if (envMode == 'auto' && _isLocalLanActive) return false;
+                  if (_manualOverride || (envMode == 'auto' && _isLocalLanActive)) {
+                    return false;
+                  }
                   debugPrint('[AppConfigService] Updating base URL from remote: $_baseUrl -> $sanitizedServerUrl');
                   _baseUrl = sanitizedServerUrl;
                   _wsUrl = (remoteWsUrl != null && remoteWsUrl.trim().isNotEmpty)
@@ -558,7 +630,9 @@ class AppConfigService extends ChangeNotifier {
   }
 
   /// Updates and persists the backend server URL.
-  Future<void> updateBaseUrl(String newUrl, {bool manual = false}) async {
+  /// Defaults to manual priority so saved server URLs are never overridden by
+  /// auto LAN discovery, remote config, or connection failures.
+  Future<void> updateBaseUrl(String newUrl, {bool manual = true}) async {
     final sanitized = _sanitizeUrl(newUrl);
     if (sanitized.isEmpty) return;
 
@@ -568,6 +642,7 @@ class AppConfigService extends ChangeNotifier {
     _isLocalLanActive = isPrivateLanUrl(sanitized);
     if (manual) {
       _manualOverride = true;
+      _autoModeEnabled = false;
     }
 
     try {
@@ -576,6 +651,7 @@ class AppConfigService extends ChangeNotifier {
       await prefs.setBool(prefKeyIsLocalLan, _isLocalLanActive);
       if (manual) {
         await prefs.setBool(prefKeyManualOverride, true);
+        await prefs.setString(prefKeyServerMode, 'manual');
       }
     } catch (e) {
       debugPrint('[AppConfigService] updateBaseUrl save error: $e');
@@ -584,7 +660,8 @@ class AppConfigService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clears any manual override and switches back to Wi-Fi auto-discovery.
+  /// Clears any manual override. Auto mode still requires explicit activation
+  /// via [enableAutoMode] or [enableAutoModeAndDiscover].
   Future<void> clearManualOverride() async {
     _manualOverride = false;
     try {
@@ -612,6 +689,7 @@ class AppConfigService extends ChangeNotifier {
     _isFetchingRemote = false;
     _isLocalLanActive = false;
     _manualOverride = false;
+    _autoModeEnabled = false;
     _configEpoch = 0;
     _inFlightInitialize = null;
     _inFlightDiscovery = null;

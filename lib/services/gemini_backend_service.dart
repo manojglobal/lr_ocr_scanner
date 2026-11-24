@@ -25,8 +25,8 @@ class GeminiBackendService {
     await AppConfigService.instance.initialize();
   }
 
-  /// Updates and persists the backend server URL.
-  Future<void> updateServerUrl(String newUrl, {bool manual = false}) async {
+  /// Updates and persists the backend server URL (manual priority by default).
+  Future<void> updateServerUrl(String newUrl, {bool manual = true}) async {
     await AppConfigService.instance.updateBaseUrl(newUrl, manual: manual);
   }
 
@@ -35,6 +35,10 @@ class GeminiBackendService {
         error is TimeoutException ||
         error is HandshakeException ||
         error is http.ClientException;
+  }
+
+  bool _isSocketConnectError(Object error) {
+    return error is SocketException || error is HandshakeException;
   }
 
   Future<http.Response> _getWithRediscover(
@@ -402,7 +406,7 @@ class GeminiBackendService {
 
     } catch (e) {
 
-      if (allowRediscover && _isNetworkError(e)) {
+      if (allowRediscover && _isSocketConnectError(e)) {
         final recovered = await AppConfigService.instance.handleConnectionErrorAndRediscover();
         if (recovered) {
           return _extractHandwritingAttempt(
@@ -584,7 +588,7 @@ class GeminiBackendService {
         tableRows: tableInfo.rows,
       );
     } catch (e) {
-      if (allowRediscover && _isNetworkError(e)) {
+      if (allowRediscover && _isSocketConnectError(e)) {
         final recovered = await AppConfigService.instance.handleConnectionErrorAndRediscover();
         if (recovered) {
           return _extractMultipleFilesAttempt(
@@ -1289,6 +1293,70 @@ class GeminiBackendService {
     return [];
   }
 
+  Future<bool> _postPreviousUploadAction(
+    String path,
+    Map<String, dynamic> body,
+    String? sessionToken,
+  ) async {
+    try {
+      final uri = Uri.parse('$_currentServerUrl$path');
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      if (sessionToken != null && sessionToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $sessionToken';
+      }
+      final response = await http
+          .post(uri, headers: headers, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return decoded is Map && decoded['success'] == true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Deletes a single entry from backend previous uploads via POST /api/previous-uploads/delete.
+  Future<bool> deletePreviousUpload(
+    String fileIdOrName, {
+    String? userId,
+    String? userMobile,
+    String? userName,
+    String? sessionToken,
+  }) async {
+    final target = fileIdOrName.trim();
+    if (target.isEmpty) return false;
+    return _postPreviousUploadAction(
+      '/api/previous-uploads/delete',
+      {
+        'file_id_or_name': target,
+        if (userId != null && userId.isNotEmpty) 'user_id': userId,
+        if (userMobile != null && userMobile.isNotEmpty) 'user_mobile': userMobile,
+        if (userName != null && userName.isNotEmpty) 'user_name': userName,
+      },
+      sessionToken,
+    );
+  }
+
+  /// Clears all user entries from backend previous uploads via POST /api/previous-uploads/clear-all.
+  Future<bool> clearAllPreviousUploads({
+    String? userId,
+    String? userMobile,
+    String? userName,
+    String? sessionToken,
+  }) async {
+    return _postPreviousUploadAction(
+      '/api/previous-uploads/clear-all',
+      {
+        if (userId != null && userId.isNotEmpty) 'user_id': userId,
+        if (userMobile != null && userMobile.isNotEmpty) 'user_mobile': userMobile,
+        if (userName != null && userName.isNotEmpty) 'user_name': userName,
+      },
+      sessionToken,
+    );
+  }
 }
 
 

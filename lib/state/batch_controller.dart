@@ -45,6 +45,30 @@ class BatchProcessingController extends ChangeNotifier {
   String? _activeSessionToken;
   Timer? _cloudSyncTimer;
   Completer<void>? _processingCompleter;
+  final Set<String> _completedItemIds = {};
+
+  /// Normalizes user identifier (mobile digits preferred, falling back to userId).
+  static String resolveUserKey(String? mobile, {String? userId}) {
+    final cleanMob = (mobile ?? '').replaceAll(RegExp(r'\D'), '');
+    if (cleanMob.isNotEmpty) return cleanMob;
+    final cleanId = (userId ?? '').trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+    return cleanId;
+  }
+
+  /// Scopes a SharedPreferences cache key by the active user's mobile/userId.
+  static String scopedStorageKey(String baseKey, String? mobile, {String? userId}) {
+    final userKey = resolveUserKey(mobile, userId: userId);
+    if (userKey.isEmpty) return baseKey;
+    return '${baseKey}_$userKey';
+  }
+
+  bool _canReadLegacyUnscoped(SharedPreferences prefs, String userKey) {
+    if (userKey.isEmpty) return true;
+    final owner = prefs.getString('bnf_cache_owner_mobile') ?? '';
+    if (owner.isNotEmpty) return owner == userKey;
+    final savedMob = resolveUserKey(prefs.getString('bnf_user_mobile'));
+    return savedMob.isEmpty || savedMob == userKey;
+  }
 
   BatchProcessingController({
     PermissionService? permissionService,
@@ -166,7 +190,9 @@ class BatchProcessingController extends ChangeNotifier {
     });
 
     SharedPreferences.getInstance().then((p) {
-      p.setString('bnf_recent_uploaded_lrs', jsonEncode(_previousUploadsCache));
+      final userKey = resolveUserKey(_activeUserMobile ?? p.getString('bnf_user_mobile'));
+      final recentKey = scopedStorageKey('bnf_recent_uploaded_lrs', userKey);
+      p.setString(recentKey, jsonEncode(_previousUploadsCache));
     }).catchError((_) {});
 
     try {
@@ -428,8 +454,30 @@ bool _duplicateNoticePending = false;
     }
 
     // B. Check previous uploads cache (so duplicate documents are caught on FIRST upload attempt)
+    BatchItem? excludedItem;
+    if (excludeItemId != null) {
+      for (final i in _items) {
+        if (i.id == excludeItemId) {
+          excludedItem = i;
+          break;
+        }
+      }
+    }
     for (final prev in _previousUploadsCache) {
-      if (excludeItemId != null && prev['id'] == excludeItemId) continue;
+      if (excludeItemId != null) {
+        final prevId = (prev['id'] ?? prev['file_id'] ?? '').toString();
+        if (prevId == excludeItemId) continue;
+        final exclSaved = (excludedItem?.record['saved_filename'] ?? '').trim().toLowerCase();
+        final prevSaved = (prev['saved_filename'] ??
+                (prev['record'] is Map ? prev['record']['saved_filename'] : '') ??
+                '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (exclSaved.isNotEmpty && prevSaved.isNotEmpty && exclSaved == prevSaved) {
+          continue;
+        }
+      }
       if (prev['is_deleted'] == true || prev['isDeleted'] == true) continue;
 
       // Tier 1: Check LR number
@@ -476,23 +524,198 @@ bool _duplicateNoticePending = false;
   String? get activeSessionToken => _activeSessionToken;
   String? get sessionToken => _activeSessionToken;
 
+  Future<void> _persistActiveBatchCache([String? explicitMobile]) async {
+    final userKey = resolveUserKey(explicitMobile ?? _activeUserMobile);
+    if (userKey.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('bnf_cache_owner_mobile', userKey);
+      final key = scopedStorageKey('bnf_active_batch', userKey);
+      final encoded = _items.map((i) => i.toLocalJson()).toList();
+      await prefs.setString(key, jsonEncode(encoded));
+    } catch (_) {}
+  }
+
+  Future<void> _persistCompletedItemsCache([String? explicitMobile]) async {
+    final userKey = resolveUserKey(explicitMobile ?? _activeUserMobile);
+    if (userKey.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('bnf_cache_owner_mobile', userKey);
+      final key = scopedStorageKey('bnf_completed_items', userKey);
+      await prefs.setStringList(key, _completedItemIds.toList());
+    } catch (_) {}
+  }
+
+  Future<void> _persistRecentUploadsCache([String? explicitMobile]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userKey = resolveUserKey(
+        explicitMobile ?? _activeUserMobile ?? prefs.getString('bnf_user_mobile'),
+      );
+      final key = scopedStorageKey('bnf_recent_uploaded_lrs', userKey);
+      if (userKey.isNotEmpty) {
+        await prefs.setString('bnf_cache_owner_mobile', userKey);
+      }
+      await prefs.setString(key, jsonEncode(_previousUploadsCache));
+    } catch (_) {}
+  }
+
+  Future<Set<String>> _readDismissedSet(SharedPreferences prefs, String mob) async {
+    const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+    final userKey = resolveUserKey(mob);
+    final dismissedKey = scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+    final rawList = prefs.getStringList(dismissedKey) ??
+        (_canReadLegacyUnscoped(prefs, userKey)
+            ? (prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[])
+            : <String>[]);
+    return rawList.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
+  }
+
+  Future<void> _addDismissedIdentifiers(Iterable<String> rawIds, {String? mobile}) async {
+    const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+    final cleaned = rawIds
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty && !generic.contains(s.toLowerCase()))
+        .toList();
+    if (cleaned.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mob = mobile ?? _activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? '';
+      final dismissedKey = scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+      final existing = (prefs.getStringList(dismissedKey) ?? <String>[]).toSet();
+      existing.addAll(cleaned);
+      await prefs.setStringList(dismissedKey, existing.toList());
+    } catch (_) {}
+  }
+
+  Future<void> _loadScopedCachesFromPrefs(
+    SharedPreferences prefs,
+    String mob, {
+    required bool allowLegacyMigration,
+  }) async {
+    final userKey = resolveUserKey(mob);
+    if (userKey.isNotEmpty) {
+      await prefs.setString('bnf_cache_owner_mobile', userKey);
+    }
+
+    // 1. Load completed/exported LR IDs
+    final completedKey = scopedStorageKey('bnf_completed_items', mob);
+    final completedList = prefs.getStringList(completedKey) ??
+        (allowLegacyMigration && _canReadLegacyUnscoped(prefs, userKey)
+            ? (prefs.getStringList('bnf_completed_items') ?? <String>[])
+            : <String>[]);
+    _completedItemIds
+      ..clear()
+      ..addAll(completedList);
+
+    // 2. Load local active batch items (preserves exportedAt, editedAt, versions offline)
+    final batchKey = scopedStorageKey('bnf_active_batch', mob);
+    final batchRaw = prefs.getString(batchKey) ??
+        (allowLegacyMigration && _canReadLegacyUnscoped(prefs, userKey)
+            ? prefs.getString('bnf_active_batch')
+            : null);
+    if (batchRaw != null && batchRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(batchRaw) as List<dynamic>;
+        final restored = <BatchItem>[];
+        for (final entry in decoded) {
+          if (entry is Map) {
+            final item = BatchItem.fromLocalJson(Map<String, dynamic>.from(entry));
+            if (!item.isDeleted && item.id.isNotEmpty && !_items.any((e) => e.id == item.id)) {
+              if (item.isExported) _completedItemIds.add(item.id);
+              restored.add(item);
+            }
+          }
+        }
+        if (restored.isNotEmpty) {
+          _items.addAll(restored);
+          _purgeOldItems();
+        }
+      } catch (_) {}
+    }
+
+    // 3. Load recent uploaded LRs cache
+    final recentKey = scopedStorageKey('bnf_recent_uploaded_lrs', mob);
+    final recentRaw = prefs.getString(recentKey) ??
+        (allowLegacyMigration && _canReadLegacyUnscoped(prefs, userKey)
+            ? prefs.getString('bnf_recent_uploaded_lrs')
+            : null);
+    if (recentRaw != null && recentRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(recentRaw) as List<dynamic>;
+        _previousUploadsCache = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } catch (_) {}
+    }
+  }
+
+  /// True if the given LR has been exported and not subsequently modified.
+  bool isItemExported(BatchItem item) {
+    return item.isExported || _completedItemIds.contains(item.id);
+  }
+
+  /// Returns verified items eligible for Excel export.
+  /// By default only unexported verified LRs are returned matching Web.
+  List<BatchItem> getExportableVerifiedItems({bool includeAlreadyExported = false}) {
+    return _items.where((item) {
+      if (item.isDeleted || !item.isVerified) return false;
+      if (includeAlreadyExported) return true;
+      return !isItemExported(item);
+    }).toList();
+  }
+
+  /// Marks the specified LR IDs as exported with a timestamp and syncs to storage & cloud.
+  Future<void> markItemsAsExported(
+    List<String> itemIds, {
+    DateTime? exportedAt,
+  }) async {
+    if (itemIds.isEmpty) return;
+    final targetIds = itemIds.toSet();
+    final ts = exportedAt ?? DateTime.now();
+    final iso = ts.toIso8601String();
+    bool changed = false;
+
+    for (int i = 0; i < _items.length; i++) {
+      final item = _items[i];
+      if (targetIds.contains(item.id)) {
+        final rec = Map<String, String>.from(item.record);
+        rec['is_exported'] = 'true';
+        rec['exported_at'] = iso;
+        _items[i] = item.copyWith(record: rec, exportedAt: ts);
+        _completedItemIds.add(item.id);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      if (!_isDisposed) notifyListeners();
+      await _persistCompletedItemsCache();
+      await _persistActiveBatchCache();
+      triggerCloudSync();
+    }
+  }
+
+  bool _recordsDiffer(Map<String, String> a, Map<String, String> b) {
+    const ignored = {'is_exported', 'exported_at', 'edited_at'};
+    final keys = {...a.keys, ...b.keys}.where((k) => !ignored.contains(k));
+    for (final k in keys) {
+      if ((a[k] ?? '') != (b[k] ?? '')) return true;
+    }
+    return false;
+  }
+
   Future<void> _loadSavedSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final mob = prefs.getString('bnf_user_mobile');
       final name = prefs.getString('bnf_user_name');
       final token = prefs.getString('bnf_user_token') ?? prefs.getString('bnf_session_token');
-      final recentRaw = prefs.getString('bnf_recent_uploaded_lrs');
-      if (recentRaw != null && recentRaw.isNotEmpty) {
-        try {
-          final decoded = jsonDecode(recentRaw) as List<dynamic>;
-          _previousUploadsCache = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        } catch (_) {}
-      }
       if (mob != null && mob.trim().isNotEmpty) {
         _activeUserMobile = mob.trim();
         _activeUserName = name ?? _activeUserName;
         _activeSessionToken = token;
+        await _loadScopedCachesFromPrefs(prefs, _activeUserMobile!, allowLegacyMigration: true);
+        if (!_isDisposed) notifyListeners();
         await hydrateFromCloud();
       }
     } catch (_) {}
@@ -524,74 +747,158 @@ bool _duplicateNoticePending = false;
     return clean;
   }
 
-    /// Hydrates active batch and previous uploads from shared cloud JSON DB (/api/user-cloud-storage)
+  bool _matchesIdentifierSet(Map<String, dynamic> doc, Set<String> identifiers) {
+    if (identifiers.isEmpty) return false;
+    final lowerSet = identifiers.map((s) => s.trim().toLowerCase()).toSet();
+    final id = (doc['id'] ?? doc['file_id'] ?? '').toString().trim();
+    final fn = (doc['filename'] ?? doc['fileName'] ?? '').toString().trim();
+    final sv = (doc['saved_filename'] ?? '').toString().trim();
+    const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
+    if (id.isNotEmpty && !generic.contains(id.toLowerCase()) && (identifiers.contains(id) || lowerSet.contains(id.toLowerCase()))) return true;
+    if (fn.isNotEmpty && !generic.contains(fn.toLowerCase()) && (identifiers.contains(fn) || lowerSet.contains(fn.toLowerCase()))) return true;
+    if (sv.isNotEmpty && !generic.contains(sv.toLowerCase()) && (identifiers.contains(sv) || lowerSet.contains(sv.toLowerCase()))) return true;
+    return false;
+  }
+
+  /// Resolves timestamp/version/verification conflicts between local and cloud BatchItem.
+  BatchItem _resolveCloudConflict(BatchItem local, BatchItem cloud) {
+    final localTs = local.editedAt ?? local.createdAt;
+    final cloudTs = cloud.editedAt ?? cloud.createdAt;
+
+    BatchItem winner;
+    if (cloudTs.isAfter(localTs)) {
+      winner = cloud;
+    } else if (localTs.isAfter(cloudTs)) {
+      winner = local;
+    } else if (cloud.currentVersion != local.currentVersion) {
+      winner = cloud.currentVersion > local.currentVersion ? cloud : local;
+    } else if (cloud.isVerified != local.isVerified) {
+      winner = cloud.isVerified ? cloud : local;
+    } else {
+      winner = local;
+    }
+
+    // Preserve exportedAt if either side exported more recently than the winner's last edit
+    final winnerEdited = winner.editedAt ?? winner.createdAt;
+    DateTime? latestValidExport = winner.exportedAt;
+    for (final candidate in [local, cloud]) {
+      final exp = candidate.exportedAt;
+      if (exp != null && !exp.isBefore(winnerEdited)) {
+        if (latestValidExport == null || exp.isAfter(latestValidExport)) {
+          latestValidExport = exp;
+        }
+      }
+    }
+
+    if (latestValidExport != null && winner.exportedAt == null && winner.record['is_exported'] != 'false') {
+      final mergedRec = Map<String, String>.from(winner.record);
+      mergedRec['is_exported'] = 'true';
+      mergedRec['exported_at'] = latestValidExport.toIso8601String();
+      return winner.copyWith(record: mergedRec, exportedAt: latestValidExport);
+    }
+    return winner;
+  }
+
+  /// Hydrates active batch and previous uploads from shared cloud JSON DB (/api/user-cloud-storage)
   Future<void> hydrateFromCloud() async {
     final mob = _activeUserMobile;
     if (mob == null || mob.trim().isEmpty) return;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final userKey = resolveUserKey(mob);
+      if (userKey.isNotEmpty) {
+        await prefs.setString('bnf_cache_owner_mobile', userKey);
+      }
+
       final cloudData = await UserCloudService.instance.fetchUserCloudData(mob, baseUrl: _geminiService.serverUrl);
       if (_isDisposed || _activeUserMobile != mob) return;
       if (cloudData != null) {
-        // 1. Hydrate active batch (merge without duplicating)
-        if (cloudData['active_batch'] is List) {
-          final cloudList = (cloudData['active_batch'] as List);
-          bool batchChanged = false;
-          for (final rawDoc in cloudList) {
-            if (rawDoc is Map) {
-              final item = BatchItem.fromCloudDoc(Map<String, dynamic>.from(rawDoc));
-              final exists = _items.any((i) =>
-                  i.id == item.id ||
-                  (item.record['saved_filename'] != null &&
-                      item.record['saved_filename']!.isNotEmpty &&
-                      i.record['saved_filename'] == item.record['saved_filename']));
-              if (!exists) {
-                _items.add(item);
-                batchChanged = true;
-              }
-            }
-          }
-          if (batchChanged && !_isDisposed) notifyListeners();
-        }
-
-        // 2. Cache uploaded LRs from cloud into local SharedPreferences for instant HomeScreen parity
-        final prefs = await SharedPreferences.getInstance();
-        final dismissedRaw = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+        // Synchronize dismissed tombstones first (scoped by active user)
         const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
-        final dismissed = dismissedRaw.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
-
-        // Synchronize cloud-side dismissed items so cross-platform dismissals persist after restart
+        final dismissedKey = scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+        final dismissed = await _readDismissedSet(prefs, mob);
         if (cloudData['dismissed_uploads'] is List) {
           final serverDismissed = (cloudData['dismissed_uploads'] as List)
               .map((e) => e.toString().trim())
               .where((s) => s.isNotEmpty && !generic.contains(s.toLowerCase()));
           dismissed.addAll(serverDismissed);
-          await prefs.setStringList('bnf_dismissed_recent_lrs', dismissed.toList());
+          await prefs.setStringList(dismissedKey, dismissed.toList());
         }
 
+        // Sync completed exported IDs if provided by cloud
+        if (cloudData['completed_items'] is List) {
+          for (final cid in (cloudData['completed_items'] as List)) {
+            final clean = cid.toString().trim();
+            if (clean.isNotEmpty) _completedItemIds.add(clean);
+          }
+        }
+
+        // 1. Hydrate active batch with conflict resolution & deleted filtering
+        bool pushLocalWinnerToCloud = false;
+        if (cloudData['active_batch'] is List) {
+          final cloudList = (cloudData['active_batch'] as List);
+          bool batchChanged = false;
+          for (final rawDoc in cloudList) {
+            if (rawDoc is Map) {
+              final docMap = Map<String, dynamic>.from(rawDoc);
+              if (docMap['is_deleted'] == true || docMap['isDeleted'] == true) {
+                continue;
+              }
+              final cloudItem = BatchItem.fromCloudDoc(docMap);
+              if (_deletedItems.any((d) => d.id == cloudItem.id)) {
+                continue;
+              }
+              final existingIdx = _items.indexWhere((i) =>
+                  i.id == cloudItem.id ||
+                  (cloudItem.record['saved_filename'] != null &&
+                      cloudItem.record['saved_filename']!.isNotEmpty &&
+                      i.record['saved_filename'] == cloudItem.record['saved_filename']));
+              if (existingIdx == -1) {
+                _items.add(cloudItem);
+                if (cloudItem.isExported) {
+                  _completedItemIds.add(cloudItem.id);
+                }
+                batchChanged = true;
+              } else {
+                final localItem = _items[existingIdx];
+                final resolved = _resolveCloudConflict(localItem, cloudItem);
+                if (!identical(resolved, localItem)) {
+                  _items[existingIdx] = resolved;
+                  if (resolved.isExported) {
+                    _completedItemIds.add(resolved.id);
+                  } else {
+                    _completedItemIds.remove(resolved.id);
+                  }
+                  batchChanged = true;
+                } else if (localItem.editedAt != null &&
+                    (cloudItem.editedAt == null || localItem.editedAt!.isAfter(cloudItem.editedAt!))) {
+                  pushLocalWinnerToCloud = true;
+                }
+              }
+            }
+          }
+          if (batchChanged) {
+            await _persistActiveBatchCache(mob);
+            await _persistCompletedItemsCache(mob);
+            if (!_isDisposed) notifyListeners();
+          }
+          if (pushLocalWinnerToCloud) {
+            triggerCloudSync();
+          }
+        }
+
+        // 2. Cache uploaded LRs from cloud into user-scoped SharedPreferences
         if (cloudData['uploaded_lrs'] is List && (cloudData['uploaded_lrs'] as List).isNotEmpty) {
           final cloudUploads = (cloudData['uploaded_lrs'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-
-          final filteredCloud = cloudUploads.where((u) {
-            final id = (u['id'] ?? u['file_id'] ?? '').toString().trim();
-            final fn = (u['filename'] ?? u['fileName'] ?? '').toString().trim().toLowerCase();
-            final sv = (u['saved_filename'] ?? '').toString().trim().toLowerCase();
-            if (id.isNotEmpty && !generic.contains(id) && dismissed.contains(id)) return false;
-            if (fn.isNotEmpty && !generic.contains(fn) && dismissed.contains(fn)) return false;
-            if (sv.isNotEmpty && !generic.contains(sv) && dismissed.contains(sv)) return false;
-            return true;
-          }).toList();
+          final filteredCloud = cloudUploads.where((u) => !_matchesIdentifierSet(u, dismissed)).toList();
 
           final mergedUploads = <Map<String, dynamic>>[...filteredCloud];
           for (final local in _previousUploadsCache) {
+            if (_matchesIdentifierSet(local, dismissed)) continue;
             final lId = (local['id'] ?? local['file_id'] ?? '').toString().trim();
             final lFn = (local['fileName'] ?? local['filename'] ?? '').toString().trim().toLowerCase();
             final lSv = (local['saved_filename'] ?? '').toString().trim().toLowerCase();
-            if ((lId.isNotEmpty && !generic.contains(lId) && dismissed.contains(lId)) ||
-                (lFn.isNotEmpty && !generic.contains(lFn) && dismissed.contains(lFn)) ||
-                (lSv.isNotEmpty && !generic.contains(lSv) && dismissed.contains(lSv))) {
-              continue;
-            }
-            final exists = mergedUploads.any((m) {
+            final matchIdx = mergedUploads.indexWhere((m) {
               final mId = (m['id'] ?? m['file_id'] ?? '').toString().trim();
               final mSv = (m['saved_filename'] ?? '').toString().trim().toLowerCase();
               final mFn = (m['filename'] ?? m['fileName'] ?? '').toString().trim().toLowerCase();
@@ -600,16 +907,29 @@ bool _duplicateNoticePending = false;
               if (lFn.isNotEmpty && mFn.isNotEmpty && !generic.contains(lFn) && !generic.contains(mFn) && lFn == mFn) return true;
               return false;
             });
-            if (!exists) mergedUploads.add(local);
+            if (matchIdx == -1) {
+              mergedUploads.add(local);
+            } else {
+              // Timestamp/version resolution for uploaded_lrs metadata too
+              final cloudEntry = mergedUploads[matchIdx];
+              final lTs = DateTime.tryParse((local['editedAt'] ?? local['edited_at'] ?? local['createdAt'] ?? '').toString());
+              final cTs = DateTime.tryParse((cloudEntry['editedAt'] ?? cloudEntry['edited_at'] ?? cloudEntry['createdAt'] ?? '').toString());
+              final lVer = int.tryParse((local['current_version'] ?? 1).toString()) ?? 1;
+              final cVer = int.tryParse((cloudEntry['current_version'] ?? 1).toString()) ?? 1;
+              if ((lTs != null && (cTs == null || lTs.isAfter(cTs))) || (lTs == cTs && lVer > cVer)) {
+                mergedUploads[matchIdx] = local;
+              }
+            }
           }
           final cleanMerged = mergedUploads.map(_cleanDocForStorage).toList();
           _previousUploadsCache = cleanMerged;
-          await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cleanMerged));
+          await _persistRecentUploadsCache(mob);
         }
 
-        // 3. Cache generated Excel exports
+        // 3. Cache generated Excel exports scoped by user
         if (cloudData['generated_excels'] is List && (cloudData['generated_excels'] as List).isNotEmpty) {
-          await prefs.setString('bnf_exported_batches', jsonEncode(cloudData['generated_excels']));
+          final exportedKey = scopedStorageKey('bnf_exported_batches', mob);
+          await prefs.setString(exportedKey, jsonEncode(cloudData['generated_excels']));
         }
       }
     } catch (e) {
@@ -626,30 +946,18 @@ bool _duplicateNoticePending = false;
       );
       if (uploads.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
-        final dismissedRaw = prefs.getStringList('bnf_dismissed_recent_lrs') ?? <String>[];
+        final mob = _activeUserMobile ?? prefs.getString('bnf_user_mobile') ?? '';
         const generic = {'lr document', 'document', 'item', 'null', 'none', 'undefined', ''};
-        final dismissed = dismissedRaw.where((s) => !generic.contains(s.trim().toLowerCase())).toSet();
+        final dismissed = await _readDismissedSet(prefs, mob);
 
-        final filteredUploads = uploads.where((u) {
-          final id = (u['id'] ?? u['file_id'] ?? '').toString().trim();
-          final fn = (u['filename'] ?? u['fileName'] ?? '').toString().trim().toLowerCase();
-          final sv = (u['saved_filename'] ?? '').toString().trim().toLowerCase();
-          if (id.isNotEmpty && !generic.contains(id) && dismissed.contains(id)) return false;
-          if (fn.isNotEmpty && !generic.contains(fn) && dismissed.contains(fn)) return false;
-          if (sv.isNotEmpty && !generic.contains(sv) && dismissed.contains(sv)) return false;
-          return true;
-        }).toList();
+        final filteredUploads = uploads.where((u) => !_matchesIdentifierSet(u, dismissed)).toList();
 
         final mergedUploads = <Map<String, dynamic>>[...filteredUploads];
         for (final local in _previousUploadsCache) {
+          if (_matchesIdentifierSet(local, dismissed)) continue;
           final lId = (local['id'] ?? local['file_id'] ?? '').toString().trim();
           final lFn = (local['fileName'] ?? local['filename'] ?? '').toString().trim().toLowerCase();
           final lSv = (local['saved_filename'] ?? '').toString().trim().toLowerCase();
-          if ((lId.isNotEmpty && !generic.contains(lId) && dismissed.contains(lId)) ||
-              (lFn.isNotEmpty && !generic.contains(lFn) && dismissed.contains(lFn)) ||
-              (lSv.isNotEmpty && !generic.contains(lSv) && dismissed.contains(lSv))) {
-            continue;
-          }
           final exists = mergedUploads.any((m) {
             final mId = (m['id'] ?? m['file_id'] ?? '').toString().trim();
             final mSv = (m['saved_filename'] ?? '').toString().trim().toLowerCase();
@@ -663,7 +971,7 @@ bool _duplicateNoticePending = false;
         }
         final cleanMerged = mergedUploads.map(_cleanDocForStorage).toList();
         _previousUploadsCache = cleanMerged;
-        await prefs.setString('bnf_recent_uploaded_lrs', jsonEncode(cleanMerged));
+        await _persistRecentUploadsCache(mob);
         return cleanMerged;
       }
       return uploads;
@@ -694,17 +1002,24 @@ bool _duplicateNoticePending = false;
 
   /// Sets active user session and guarantees complete data isolation between logins
   void setActiveUser(String? mobile, {String? name, String? sessionToken}) {
+    final bool userChanged = _activeUserMobile != mobile;
     final bool sessionChanged = (sessionToken != null && _activeSessionToken != sessionToken) ||
-        (sessionToken == null && _activeUserMobile != mobile);
+        userChanged;
 
     if (sessionChanged) {
+      final previousMobile = _activeUserMobile;
+      _cloudSyncTimer?.cancel();
       _items.clear();
       _deletedItems.clear();
+      _previousUploadsCache.clear();
+      _completedItemIds.clear();
+      _lastExportedPath = null;
+      _statusMessage = null;
       _activeUserMobile = mobile;
-      _activeUserName = name ?? _activeUserName;
+      _activeUserName = name ?? (userChanged ? null : _activeUserName);
       _activeSessionToken = sessionToken;
-      notifyListeners();
-      hydrateFromCloud();
+      if (!_isDisposed) notifyListeners();
+      _switchUserStorageAndHydrate(mobile, previousMobile: previousMobile);
       MasterDataService.instance.fetchMasterDataFromBackend(baseUrl: _geminiService.serverUrl);
     } else {
       bool changed = false;
@@ -716,18 +1031,79 @@ bool _duplicateNoticePending = false;
         _activeSessionToken = sessionToken;
         changed = true;
       }
-      if (changed) notifyListeners();
+      if (changed && !_isDisposed) notifyListeners();
     }
+  }
+
+  Future<void> _switchUserStorageAndHydrate(String? mobile, {String? previousMobile}) async {
+    try {
+      if (mobile == null || mobile.trim().isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      final prevKey = resolveUserKey(previousMobile);
+      final newKey = resolveUserKey(mobile);
+      final switchedAccounts = prevKey.isNotEmpty && prevKey != newKey;
+      if (switchedAccounts) {
+        // Clear legacy unscoped globals so previous user's data cannot leak into new account,
+        // while keeping previous user's scoped keys untouched.
+        await _removeLegacyUnscopedKeys(prefs);
+      }
+      if (_isDisposed || _activeUserMobile != mobile) return;
+      await _loadScopedCachesFromPrefs(
+        prefs,
+        mobile,
+        allowLegacyMigration: !switchedAccounts,
+      );
+      if (!_isDisposed) notifyListeners();
+      await hydrateFromCloud();
+    } catch (_) {}
+  }
+
+  Future<void> _removeLegacyUnscopedKeys(SharedPreferences prefs) async {
+    await prefs.remove('bnf_active_batch');
+    await prefs.remove('bnf_recent_uploaded_lrs');
+    await prefs.remove('bnf_dismissed_recent_lrs');
+    await prefs.remove('bnf_exported_batches');
+    await prefs.remove('bnf_completed_items');
+    await prefs.remove('bnf_cache_owner_mobile');
+  }
+
+  /// Clears ONLY the active user's local caches on logout without affecting server records or other users.
+  Future<void> clearUserCachesOnLogout({String? mobile, String? userId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final targetMobile = mobile ?? prefs.getString('bnf_user_mobile') ?? '';
+      final userKey = resolveUserKey(targetMobile, userId: userId);
+      if (userKey.isNotEmpty) {
+        await prefs.remove(scopedStorageKey('bnf_active_batch', userKey));
+        await prefs.remove(scopedStorageKey('bnf_recent_uploaded_lrs', userKey));
+        await prefs.remove(scopedStorageKey('bnf_dismissed_recent_lrs', userKey));
+        await prefs.remove(scopedStorageKey('bnf_exported_batches', userKey));
+        await prefs.remove(scopedStorageKey('bnf_completed_items', userKey));
+      }
+      final owner = prefs.getString('bnf_cache_owner_mobile') ?? '';
+      if (userKey.isEmpty || owner == userKey || owner.isEmpty) {
+        await _removeLegacyUnscopedKeys(prefs);
+      }
+    } catch (_) {}
   }
 
   /// Clears in-memory batch and user session upon logout to prevent any data leak
   void clearForLogout() {
+    final prevMobile = _activeUserMobile;
+    _cloudSyncTimer?.cancel();
     _items.clear();
     _deletedItems.clear();
+    _previousUploadsCache.clear();
+    _completedItemIds.clear();
+    _lastExportedPath = null;
+    _statusMessage = null;
     _activeUserMobile = null;
     _activeUserName = null;
     _activeSessionToken = null;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
+    if (prevMobile != null && prevMobile.trim().isNotEmpty) {
+      clearUserCachesOnLogout(mobile: prevMobile);
+    }
   }
 
   /// Sets the path of the last exported Excel file.
@@ -1097,6 +1473,68 @@ bool _duplicateNoticePending = false;
   /// Uploads multiple files (PDFs, images, or mixed) belonging to the same LR in a single operation.
   /// If multiple different LR numbers are detected, rejects with triggerMultipleLrsNotice.
   /// If valid, creates exactly ONE BatchItem in _items and returns true.
+  Future<void> _recordUploadInRecentHistory(BatchItem item) async {
+    try {
+      final completedDoc = _cleanDocForStorage({
+        'id': item.id,
+        'fileName': item.fileName,
+        'saved_filename': item.record['saved_filename'] ?? '',
+        'imagePath': item.imagePath,
+        'lrNo': extractLrNoFromRecord(item.record),
+        'isPdf': item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf'),
+        'createdAt': item.createdAt.toIso8601String(),
+        'editedAt': item.editedAt?.toIso8601String(),
+        'status': 'completed',
+        'isVerified': item.isVerified,
+        'is_exported': item.isExported,
+        'exportedAt': item.exportedAt?.toIso8601String(),
+        'preview_url': item.record['preview_url'] ?? '',
+        'preview_path': item.record['preview_path'] ?? '',
+        'preview_image': '',
+        'record': _cleanDocForStorage(item.record),
+      });
+      const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
+      final curId = completedDoc['id']?.toString().trim() ?? '';
+      final curFn = completedDoc['fileName']?.toString().trim().toLowerCase() ?? '';
+      final curSv = (completedDoc['saved_filename'] ?? '').toString().trim().toLowerCase();
+
+      _previousUploadsCache.removeWhere((r) {
+        final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim();
+        final rFn = (r['fileName'] ?? r['filename'] ?? '').toString().trim().toLowerCase();
+        final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
+        if (curId.isNotEmpty && rId.isNotEmpty && curId == rId) return true;
+        if (curSv.isNotEmpty && rSv.isNotEmpty && curSv == rSv) return true;
+        if (curFn.isNotEmpty && rFn.isNotEmpty && !genericFns.contains(curFn) && curFn == rFn) return true;
+        return false;
+      });
+      _previousUploadsCache.insert(0, completedDoc);
+
+      await _persistRecentUploadsCache();
+      final p = await SharedPreferences.getInstance();
+      final mob = _activeUserMobile ?? p.getString('bnf_user_mobile') ?? '';
+      final dismissedKey = scopedStorageKey('bnf_dismissed_recent_lrs', mob);
+      final toRemove = {curId, curFn, curSv}..removeWhere((s) => s.isEmpty || genericFns.contains(s.toLowerCase()));
+      final dismissed = p.getStringList(dismissedKey);
+      if (dismissed != null && dismissed.isNotEmpty && toRemove.isNotEmpty) {
+        final updated = dismissed
+            .where((s) => !toRemove.contains(s.trim().toLowerCase()) && !toRemove.contains(s.trim()))
+            .toList();
+        if (updated.length != dismissed.length) {
+          await p.setStringList(dismissedKey, updated);
+        }
+      }
+      if (mob.isNotEmpty && toRemove.isNotEmpty) {
+        UserCloudService.instance
+            .undismissCloudUpload(
+              mob,
+              toRemove.toList(),
+              baseUrl: _geminiService.serverUrl,
+            )
+            .catchError((_) => false);
+      }
+    } catch (_) {}
+  }
+
   Future<bool> addMultipleFilesAsSingleLr(List<String> paths) async {
     if (paths.isEmpty) return false;
 
@@ -1224,49 +1662,14 @@ bool _duplicateNoticePending = false;
 
       _items.add(item);
 
-      // Record completed LR into history cache immediately
-      try {
-        final completedDoc = _cleanDocForStorage({
-          'id': item.id,
-          'fileName': item.fileName,
-          'saved_filename': item.record['saved_filename'] ?? '',
-          'imagePath': item.imagePath,
-          'lrNo': item.record['LR No *'] ?? item.record['grno'] ?? item.record['BNF LR No'] ?? '',
-          'isPdf': item.fileName.toLowerCase().endsWith('.pdf') || item.imagePath.toLowerCase().endsWith('.pdf'),
-          'createdAt': item.createdAt.toIso8601String(),
-          'status': 'completed',
-          'isVerified': item.isVerified,
-          'preview_url': item.record['preview_url'] ?? '',
-          'preview_path': item.record['preview_path'] ?? '',
-          'preview_image': '',
-          'record': _cleanDocForStorage(item.record),
-        });
-        const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
-        final curId = completedDoc['id']?.toString().trim() ?? '';
-        final curFn = completedDoc['fileName']?.toString().trim().toLowerCase() ?? '';
-        final curSv = (completedDoc['saved_filename'] ?? '').toString().trim().toLowerCase();
-
-        _previousUploadsCache.removeWhere((r) {
-          final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim();
-          final rFn = (r['fileName'] ?? r['filename'] ?? '').toString().trim().toLowerCase();
-          final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
-          if (curId.isNotEmpty && rId.isNotEmpty && curId == rId) return true;
-          if (curSv.isNotEmpty && rSv.isNotEmpty && curSv == rSv) return true;
-          if (curFn.isNotEmpty && rFn.isNotEmpty && !genericFns.contains(curFn) && curFn == rFn) return true;
-          return false;
-        });
-        _previousUploadsCache.insert(0, completedDoc);
-        Future<void>(() async {
-          try {
-            final p = await SharedPreferences.getInstance();
-            await p.setString('bnf_recent_uploaded_lrs', jsonEncode(_previousUploadsCache));
-          } catch (_) {}
-        });
-      } catch (_) {}
-
       _isProcessing = false;
       _isProcessingMultiPage = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
+
+      // Record in history cache, undismiss if needed, persist local batch & trigger Cloud Sync
+      await _recordUploadInRecentHistory(item);
+      await _persistActiveBatchCache();
+      triggerCloudSync();
       return true;
     } catch (e) {
       _isProcessing = false;
@@ -1678,60 +2081,9 @@ bool _duplicateNoticePending = false;
               editHistory: initialHistory,
             );
 
-                        // Record completed LR into history cache immediately so it never automatically vanishes
-            try {
-              final completedDoc = _cleanDocForStorage({
-                'id': _items[currentIndex].id,
-                'fileName': _items[currentIndex].fileName,
-                'saved_filename': _items[currentIndex].record['saved_filename'] ?? '',
-                'imagePath': _items[currentIndex].imagePath,
-                'lrNo': _items[currentIndex].record['LR No *'] ?? _items[currentIndex].record['grno'] ?? _items[currentIndex].record['BNF LR No'] ?? '',
-                'isPdf': _items[currentIndex].fileName.toLowerCase().endsWith('.pdf') || _items[currentIndex].imagePath.toLowerCase().endsWith('.pdf'),
-                'createdAt': _items[currentIndex].createdAt.toIso8601String(),
-                'status': 'completed',
-                'isVerified': _items[currentIndex].isVerified,
-                'preview_url': _items[currentIndex].record['preview_url'] ?? '',
-                'preview_path': _items[currentIndex].record['preview_path'] ?? '',
-                'preview_image': '',
-                'record': _cleanDocForStorage(_items[currentIndex].record),
-              });
-              const genericFns = {'lr document', 'document', 'item', 'image', 'upload', 'null', 'undefined', ''};
-              final curId = completedDoc['id']?.toString().trim() ?? '';
-              final curFn = completedDoc['fileName']?.toString().trim().toLowerCase() ?? '';
-              final curSv = (completedDoc['saved_filename'] ?? '').toString().trim().toLowerCase();
-
-              _previousUploadsCache.removeWhere((r) {
-                final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim();
-                final rFn = (r['fileName'] ?? r['filename'] ?? '').toString().trim().toLowerCase();
-                final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
-                if (curId.isNotEmpty && rId.isNotEmpty && curId == rId) return true;
-                if (curSv.isNotEmpty && rSv.isNotEmpty && curSv == rSv) return true;
-                if (curFn.isNotEmpty && rFn.isNotEmpty && !genericFns.contains(curFn) && curFn == rFn) return true;
-                return false;
-              });
-              _previousUploadsCache.insert(0, completedDoc);
-              Future<void>(() async {
-                try {
-                  final p = await SharedPreferences.getInstance();
-                  await p.setString('bnf_recent_uploaded_lrs', jsonEncode(_previousUploadsCache));
-                  final dismissed = p.getStringList('bnf_dismissed_recent_lrs');
-                  if (dismissed != null && dismissed.isNotEmpty) {
-                    final toRemove = {curId, curFn, curSv}..removeWhere((s) => s.isEmpty);
-                    final updated = dismissed.where((s) => !toRemove.contains(s.trim().toLowerCase()) && !toRemove.contains(s.trim())).toList();
-                    if (updated.length != dismissed.length) {
-                      await p.setStringList('bnf_dismissed_recent_lrs', updated);
-                    }
-                    if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty && toRemove.isNotEmpty) {
-                      UserCloudService.instance.undismissCloudUpload(
-                        _activeUserMobile!,
-                        toRemove.toList(),
-                        baseUrl: _geminiService.serverUrl,
-                      ).catchError((_) => false);
-                    }
-                  }
-                } catch (_) {}
-              });
-            } catch (_) {}
+            // Record completed LR into user-scoped history cache & cloud sync immediately
+            await _recordUploadInRecentHistory(_items[currentIndex]);
+            await _persistActiveBatchCache();
           }
         } catch (e) {
           final currentIndex = _items.indexWhere((i) => i.id == item.id);
@@ -1869,15 +2221,27 @@ bool _duplicateNoticePending = false;
       } catch (_) {}
     }
 
+    final bool wasExportedChanged = oldVal != newValue && isItemExported(item);
+    if (wasExportedChanged) {
+      updatedRecord['is_exported'] = 'false';
+      updatedRecord.remove('exported_at');
+      _completedItemIds.remove(item.id);
+    }
+
     _items[index] = item.copyWith(
       record: updatedRecord,
       missingFields: updatedMissing,
       editedAt: now,
+      clearExportedAt: wasExportedChanged,
       editHistory: updatedHistory,
       currentVersion: newVer,
       versions: updatedVersions,
     );
     notifyListeners();
+    if (wasExportedChanged) {
+      _persistCompletedItemsCache();
+    }
+    _persistActiveBatchCache();
     triggerCloudSync();
   }
 
@@ -1915,78 +2279,185 @@ bool _duplicateNoticePending = false;
   }
 
   /// Replaces an existing batch item in the queue with an updated version.
+  /// Automatically resets exportedAt when an already-exported LR is modified.
   void updateItem(BatchItem item) {
     final index = _items.indexWhere((i) => i.id == item.id);
     if (index != -1) {
-      _items[index] = item;
+      final existing = _items[index];
+      BatchItem normalized = item;
+      final editedAfterExport = _recordsDiffer(existing.record, item.record) &&
+          (isItemExported(existing) || isItemExported(item)) &&
+          (item.exportedAt == null ||
+              (existing.exportedAt != null && !item.exportedAt!.isAfter(existing.exportedAt!)));
+
+      if (editedAfterExport || item.record['is_exported'] == 'false') {
+        final rec = Map<String, String>.from(item.record);
+        rec['is_exported'] = 'false';
+        rec.remove('exported_at');
+        _completedItemIds.remove(item.id);
+        final bumpedVer = item.currentVersion > existing.currentVersion
+            ? item.currentVersion
+            : existing.currentVersion + 1;
+        normalized = item.copyWith(
+          record: rec,
+          clearExportedAt: true,
+          editedAt: item.editedAt ?? DateTime.now(),
+          currentVersion: bumpedVer,
+        );
+        _persistCompletedItemsCache();
+      } else if (normalized.isExported) {
+        _completedItemIds.add(normalized.id);
+        _persistCompletedItemsCache();
+      }
+
+      _items[index] = normalized;
       notifyListeners();
+      _persistActiveBatchCache();
       triggerCloudSync();
     }
+  }
+
+  List<String> _collectItemIdentifiers(BatchItem item) {
+    final ids = <String>[item.id];
+    if (item.fileName.trim().isNotEmpty) ids.add(item.fileName.trim());
+    final savedFn = (item.record['saved_filename'] ?? '').trim();
+    if (savedFn.isNotEmpty && !ids.contains(savedFn)) {
+      ids.add(savedFn);
+    }
+    return ids;
+  }
+
+  Future<void> _applyLocalDelete(BatchItem item, DateTime now) async {
+    final newVer = item.currentVersion + 1;
+    final updatedVersions = List<Map<String, dynamic>>.from(item.versions);
+    final updatedHistory = List<Map<String, dynamic>>.from(item.editHistory);
+
+    updatedVersions.add({
+      'version': newVer,
+      'timestamp': now.toIso8601String(),
+      'action': 'delete',
+      'user_name': _activeUserName ?? 'Logistics User',
+      'user_mobile': _activeUserMobile ?? '',
+      'details': 'Consignment item removed from batch queue',
+      'diff': {'deleted': true},
+      'snapshot_data': Map<String, String>.from(item.record),
+    });
+
+    updatedHistory.add({
+      'timestamp': now.toIso8601String(),
+      'user': _activeUserName ?? 'Logistics User',
+      'mobile': _activeUserMobile ?? '',
+      'action': 'delete',
+      'version': newVer,
+      'details': 'Item removed from batch queue',
+    });
+
+    _deletedItems.add(item.copyWith(
+      deletedAt: now,
+      isDeleted: true,
+      currentVersion: newVer,
+      versions: updatedVersions,
+      editHistory: updatedHistory,
+    ));
+
+    try {
+      FileLifecycleService.instance.recordFileDeletion(
+        item.fileName,
+        user: _activeUserName ?? 'Logistics User',
+        reason: 'Consignment item removed from batch queue',
+      );
+    } catch (_) {}
+
+    final ids = _collectItemIdentifiers(item);
+    _items.removeWhere((i) => i.id == item.id);
+    _completedItemIds.remove(item.id);
+    purgeFromPreviousUploads(
+      id: item.id,
+      fileName: item.fileName,
+      imagePath: item.imagePath,
+      savedFilename: item.record['saved_filename'],
+    );
+    if (!_isDisposed) notifyListeners();
+    await _addDismissedIdentifiers(ids);
+    await _persistActiveBatchCache();
+    await _persistCompletedItemsCache();
+  }
+
+  /// Waits for server delete (/api/user-cloud-storage/delete-lr & /api/previous-uploads/delete)
+  /// before deleting an LR locally and updating tombstones/caches.
+  Future<bool> deleteItemWithCloudSync(String itemId) async {
+    final index = _items.indexWhere((i) => i.id == itemId);
+    if (index == -1) return false;
+
+    final item = _items[index];
+    final identifiers = _collectItemIdentifiers(item);
+    final mob = _activeUserMobile;
+    if (mob != null && mob.trim().isNotEmpty) {
+      final cloudDeleted = await UserCloudService.instance.deleteCloudLr(
+        mob,
+        identifiers,
+        baseUrl: _geminiService.serverUrl,
+      );
+      if (!cloudDeleted) {
+        return false;
+      }
+
+      final prevTarget = (item.record['saved_filename'] ?? '').trim().isNotEmpty
+          ? item.record['saved_filename']!.trim()
+          : (item.fileName.trim().isNotEmpty ? item.fileName.trim() : item.id);
+      await _geminiService.deletePreviousUpload(
+        prevTarget,
+        userMobile: mob,
+        userName: _activeUserName,
+        sessionToken: _activeSessionToken,
+      );
+      UserCloudService.instance
+          .deleteCloudUploadHistory(
+            mob,
+            identifiers,
+            baseUrl: _geminiService.serverUrl,
+          )
+          .catchError((_) => false);
+    }
+
+    await _applyLocalDelete(item, DateTime.now());
+    triggerCloudSync();
+    return true;
   }
 
   /// Removes an individual item from the queue and records lifecycle deletion.
   void removeItem(String itemId) {
     final index = _items.indexWhere((i) => i.id == itemId);
-    if (index != -1) {
-      final item = _items[index];
-      final now = DateTime.now();
-      final newVer = item.currentVersion + 1;
-      final updatedVersions = List<Map<String, dynamic>>.from(item.versions);
-      final updatedHistory = List<Map<String, dynamic>>.from(item.editHistory);
-
-      updatedVersions.add({
-        'version': newVer,
-        'timestamp': now.toIso8601String(),
-        'action': 'delete',
-        'user_name': _activeUserName ?? 'Logistics User',
-        'user_mobile': _activeUserMobile ?? '',
-        'details': 'Consignment item removed from batch queue',
-        'diff': {'deleted': true},
-        'snapshot_data': Map<String, String>.from(item.record),
-      });
-
-      updatedHistory.add({
-        'timestamp': now.toIso8601String(),
-        'user': _activeUserName ?? 'Logistics User',
-        'mobile': _activeUserMobile ?? '',
-        'action': 'delete',
-        'version': newVer,
-        'details': 'Item removed from batch queue',
-      });
-
-      final deletedItem = item.copyWith(
-        deletedAt: now,
-        isDeleted: true,
-        currentVersion: newVer,
-        versions: updatedVersions,
-        editHistory: updatedHistory,
-      );
-      _deletedItems.add(deletedItem);
-
-      try {
-        FileLifecycleService.instance.recordFileDeletion(
-          item.fileName,
-          user: _activeUserName ?? 'Logistics User',
-          reason: 'Consignment item removed from batch queue',
-        );
-      } catch (_) {}
-    }
     final removed = _items.where((i) => i.id == itemId).toList();
-    _items.removeWhere((i) => i.id == itemId);
-    notifyListeners();
+    if (index != -1) {
+      _applyLocalDelete(_items[index], DateTime.now());
+    } else {
+      _items.removeWhere((i) => i.id == itemId);
+      if (!_isDisposed) notifyListeners();
+    }
     triggerCloudSync();
     if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty) {
+      final ids = [itemId, ...removed.map((r) => r.fileName)];
       UserCloudService.instance.deleteCloudLr(
         _activeUserMobile!,
-        [itemId, ...removed.map((r) => r.fileName)],
+        ids,
         baseUrl: _geminiService.serverUrl,
+      );
+      final target = removed.isNotEmpty ? removed.first : null;
+      final prevTarget = (target?.record['saved_filename'] ?? '').trim().isNotEmpty
+          ? target!.record['saved_filename']!.trim()
+          : (target != null && target.fileName.trim().isNotEmpty ? target.fileName.trim() : itemId);
+      _geminiService.deletePreviousUpload(
+        prevTarget,
+        userMobile: _activeUserMobile,
+        userName: _activeUserName,
+        sessionToken: _activeSessionToken,
       );
     }
   }
 
-  /// Clears the entire queue and records lifecycle deletion.
-  void clearQueue() {
-    final now = DateTime.now();
+  Future<void> _applyLocalClearAll(DateTime now) async {
+    final tombstoneIds = <String>{};
     for (final item in _items) {
       final newVer = item.currentVersion + 1;
       final updatedVersions = List<Map<String, dynamic>>.from(item.versions);
@@ -2019,6 +2490,7 @@ bool _duplicateNoticePending = false;
         versions: updatedVersions,
         editHistory: updatedHistory,
       ));
+      tombstoneIds.addAll(_collectItemIdentifiers(item));
       try {
         FileLifecycleService.instance.recordFileDeletion(
           item.fileName,
@@ -2027,18 +2499,76 @@ bool _duplicateNoticePending = false;
         );
       } catch (_) {}
     }
-    final allIds = _items.map((i) => i.id).toList();
+    for (final prev in _previousUploadsCache) {
+      final pId = (prev['id'] ?? prev['file_id'] ?? '').toString().trim();
+      final pFn = (prev['fileName'] ?? prev['filename'] ?? '').toString().trim();
+      final pSv = (prev['saved_filename'] ?? '').toString().trim();
+      if (pId.isNotEmpty) tombstoneIds.add(pId);
+      if (pFn.isNotEmpty) tombstoneIds.add(pFn);
+      if (pSv.isNotEmpty) tombstoneIds.add(pSv);
+    }
     _items.clear();
+    _previousUploadsCache.clear();
+    _completedItemIds.clear();
     _lastExportedPath = null;
     _statusMessage = null;
-    notifyListeners();
-    triggerCloudSync();
-    if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty && allIds.isNotEmpty) {
-      UserCloudService.instance.deleteCloudLr(
-        _activeUserMobile!,
-        allIds,
+    if (!_isDisposed) notifyListeners();
+    await _addDismissedIdentifiers(tombstoneIds);
+    await _persistActiveBatchCache();
+    await _persistRecentUploadsCache();
+    await _persistCompletedItemsCache();
+  }
+
+  /// Synchronizes Clear All with /api/user-cloud-storage/clear-all and /api/previous-uploads/clear-all.
+  /// Keeps local state intact if cloud clearing fails; preserves export history.
+  Future<bool> clearAllWithCloudSync() async {
+    final mob = _activeUserMobile;
+    if (mob != null && mob.trim().isNotEmpty) {
+      final cloudCleared = await UserCloudService.instance.clearAllCloudStorage(
+        mob,
+        clearHistory: false,
+        sessionToken: _activeSessionToken,
         baseUrl: _geminiService.serverUrl,
       );
+      if (!cloudCleared) {
+        return false;
+      }
+      await _geminiService.clearAllPreviousUploads(
+        userMobile: mob,
+        userName: _activeUserName,
+        sessionToken: _activeSessionToken,
+      );
+    }
+
+    _cloudSyncTimer?.cancel();
+    await _applyLocalClearAll(DateTime.now());
+    return true;
+  }
+
+  /// Clears the entire queue and records lifecycle deletion.
+  void clearQueue() {
+    final allIds = _items.map((i) => i.id).toList();
+    _cloudSyncTimer?.cancel();
+    _applyLocalClearAll(DateTime.now());
+    if (_activeUserMobile != null && _activeUserMobile!.isNotEmpty) {
+      UserCloudService.instance.clearAllCloudStorage(
+        _activeUserMobile!,
+        clearHistory: false,
+        sessionToken: _activeSessionToken,
+        baseUrl: _geminiService.serverUrl,
+      );
+      _geminiService.clearAllPreviousUploads(
+        userMobile: _activeUserMobile,
+        userName: _activeUserName,
+        sessionToken: _activeSessionToken,
+      );
+      if (allIds.isNotEmpty) {
+        UserCloudService.instance.deleteCloudLr(
+          _activeUserMobile!,
+          allIds,
+          baseUrl: _geminiService.serverUrl,
+        );
+      }
     }
   }
 

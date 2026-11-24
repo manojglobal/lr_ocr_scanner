@@ -24,6 +24,7 @@ import '../widgets/step_indicator_bar.dart';
 import 'camera_scan_screen.dart';
 import 'edit_bilty_screen.dart';
 
+import 'excel_generated_screen.dart';
 import 'excel_preview_screen.dart';
 
 /// Screen 7: LR Batch Queue List (For Consolidated Excel Export).
@@ -557,38 +558,153 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
   Future<void> _pickAndAddFiles({List<String>? allowedExtensions}) async {
     try {
-      // Enforce upload of only 1 LR at a time matching Web
-
-      final file = await FilePicker.pickFile(
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
-
         allowedExtensions:
             allowedExtensions ?? ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
       );
 
-      if (file == null) return;
+      if (files.isEmpty) return;
 
       // Validate maximum size of 10 MB per file matching Web showFileSizeValidationModal
+      for (final file in files) {
+        final size =
+            file.lengthSync() ??
+            (await file.length()) ??
+            (file.path != null && File(file.path!).existsSync()
+                ? File(file.path!).lengthSync()
+                : 0);
 
-      final size =
-          file.lengthSync() ??
-          (await file.length()) ??
-          (file.path != null && File(file.path!).existsSync()
-              ? File(file.path!).lengthSync()
-              : 0);
+        if (size > 10 * 1024 * 1024) {
+          if (mounted) {
+            final sizeMb = (size / (1024 * 1024)).toStringAsFixed(2);
 
-      if (size > 10 * 1024 * 1024) {
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: const Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.amber,
+                      size: 28,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'File Size Validation',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Limit Exceeded',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'File "${file.name}" ($sizeMb MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                    ),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return;
+        }
+      }
+
+      final paths = <String>[];
+      for (final file in files) {
+        final path = await _resolvePlatformFilePath(file);
+        if (path != null && path.isNotEmpty) {
+          paths.add(path);
+        }
+      }
+
+      if (paths.isEmpty) return;
+
+      // Validate 15-page total limit across all combined files
+      int totalPages = 0;
+      for (final path in paths) {
+        final ext = path.split('.').last.toLowerCase();
+        if (ext == 'pdf') {
+          final count = await PdfAssemblerService.countPdfPages(path);
+          totalPages += count > 0 ? count : 1;
+        } else {
+          totalPages += 1;
+        }
+      }
+      if (totalPages > 15) {
         if (mounted) {
-          final sizeMb = (size / (1024 * 1024)).toStringAsFixed(2);
+          _showPageLimitExceededDialog();
+        }
+        return;
+      }
 
+      final countBefore = widget.controller.items.length;
+
+      BuildContext? processingDialogContext;
+      if (mounted) {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dCtx) {
+            processingDialogContext = dCtx;
+            return OcrProcessingDialog(controller: widget.controller);
+          },
+        );
+      }
+
+      try {
+        if (paths.length > 1) {
+          await widget.controller.addMultipleFilesAsSingleLr(paths);
+        } else {
+          await widget.controller.addFilePaths([paths.first]);
+        }
+      } finally {
+        final dCtx = processingDialogContext;
+        if (dCtx != null && dCtx.mounted && Navigator.of(dCtx).canPop()) {
+          Navigator.of(dCtx).pop();
+        } else if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      }
+
+      if (widget.controller.multipleLrsNoticePending) {
+        final msg =
+            widget.controller.multipleLrsNoticeMessage ??
+            'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
+        widget.controller.acknowledgeMultipleLrsNotice();
+        if (mounted) {
           showDialog<void>(
             context: context,
-
+            barrierDismissible: false,
             builder: (ctx) => AlertDialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-
               title: const Row(
                 children: [
                   Icon(
@@ -596,94 +712,58 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                     color: Colors.amber,
                     size: 28,
                   ),
-
                   SizedBox(width: 8),
-
-                  Text(
-                    'File Size Validation',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ],
-              ),
-
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-                  Text(
-                    'Limit Exceeded',
-
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade600,
+                  Expanded(
+                    child: Text(
+                      'Multiple LRs Not Allowed',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    'File "${file.name}" ($sizeMb MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.',
-
-                    style: const TextStyle(fontSize: 13),
-                  ),
                 ],
               ),
-
+              content: Text(msg, style: const TextStyle(fontSize: 13, height: 1.4)),
               actions: [
                 FilledButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
+                    backgroundColor: const Color(0xFF0284C7),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-
+                  onPressed: () => Navigator.of(ctx).pop(),
                   child: const Text('OK'),
                 ),
               ],
             ),
           );
         }
-
         return;
       }
 
-      final path = await _resolvePlatformFilePath(file);
-
-      if (path == null || path.isEmpty) return;
-
-      // Validate 15-page limit
-      final ext = path.split('.').last.toLowerCase();
-      if (ext == 'pdf') {
-        final count = await PdfAssemblerService.countPdfPages(path);
-        if (count > 15) {
-          if (mounted) {
-            _showPageLimitExceededDialog();
-          }
-          return;
+      if (widget.controller.invalidLrNoticePending) {
+        final msg =
+            widget.controller.invalidLrNoticeMessage ??
+            'Invalid LR – Please upload a valid LR document.';
+        widget.controller.acknowledgeInvalidLrNotice();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: Colors.red),
+          );
         }
+        return;
       }
 
-      final countBefore = widget.controller.items.length;
-
-      if (mounted) {
-        showDialog<void>(
-          context: context,
-
-          barrierDismissible: false,
-
-          builder: (_) => OcrProcessingDialog(controller: widget.controller),
-        );
-      }
-
-      try {
-        await widget.controller.addFilePaths([path]);
-      } finally {
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
+      if (widget.controller.connectionErrorNoticePending) {
+        final msg =
+            widget.controller.connectionErrorNoticeMessage ??
+            'Server connection error during extraction.';
+        widget.controller.acknowledgeConnectionErrorNotice();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: Colors.red),
+          );
         }
+        return;
       }
 
       // Automatically open Step 2: LR & Master Verification for the uploaded file
@@ -711,23 +791,21 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
   }
 
   Future<void> _handleDirectDownloadExcel() async {
-    final allItems = widget.controller.items.where((i) => i.isVerified).toList();
-
-    final verifiedItems = allItems;
-
-    final verifiedCount = verifiedItems.length;
+    final allItems = widget.controller.items;
+    final allVerifiedItems = allItems.where((i) => i.isVerified).toList();
+    final unexportedVerified = widget.controller.getExportableVerifiedItems(
+      includeAlreadyExported: false,
+    );
+    final unverifiedCount = allItems.where((i) => !i.isVerified).length;
 
     // Web Parity: If no verified LRs are available, show alert modal
-
-    if (verifiedCount == 0) {
+    if (allVerifiedItems.isEmpty) {
       showDialog<void>(
         context: context,
-
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-
           title: const Row(
             children: [
               Icon(
@@ -735,83 +813,85 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                 color: Color(0xFFD97706),
                 size: 24,
               ),
-
               SizedBox(width: 8),
-
               Text(
                 'Download Excel',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ],
           ),
-
           content: const Text(
             'No verified LRs available for download.',
-
             style: TextStyle(fontSize: 14),
           ),
-
           actions: [
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF0284C7),
               ),
-
               onPressed: () => Navigator.of(ctx).pop(),
-
               child: const Text('OK'),
             ),
           ],
         ),
       );
-
       return;
     }
 
-    final unverifiedCount = allItems.length - verifiedCount;
+    final isReExport = unexportedVerified.isEmpty;
+    final verifiedItems = isReExport ? allVerifiedItems : unexportedVerified;
+    final verifiedCount = verifiedItems.length;
 
-    final message = unverifiedCount > 0
-        ? 'Download $verifiedCount Verified consignment note(s)?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
-        : 'Are you sure you want to download $verifiedCount verified consignment note(s)?';
+    final String message;
+    final String dialogTitle;
+    final String confirmLabel;
+    if (isReExport) {
+      dialogTitle = 'Re-Export Verified LRs?';
+      confirmLabel = 'Re-Export ($verifiedCount LRs)';
+      message = unverifiedCount > 0
+          ? 'All $verifiedCount verified LR(s) have already been exported to Excel.\n\nDo you want to re-export them again?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
+          : 'All $verifiedCount verified LR(s) have already been exported to Excel.\n\nDo you want to re-export them again?';
+    } else {
+      dialogTitle = 'Download Excel';
+      confirmLabel = 'Download ($verifiedCount LRs)';
+      message = unverifiedCount > 0
+          ? 'Download $verifiedCount Verified consignment note(s)?\n\nNote: $unverifiedCount Unverified LR(s) will be excluded because mandatory (*) fields are not complete.'
+          : 'Are you sure you want to download $verifiedCount verified consignment note(s)?';
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
-
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.file_download, color: Color(0xFF0284C7), size: 24),
-
-            SizedBox(width: 8),
-
-            Text(
-              'Download Excel',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Icon(
+              isReExport ? Icons.refresh_rounded : Icons.file_download,
+              color: const Color(0xFF0284C7),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                dialogTitle,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ),
           ],
         ),
-
         content: Text(message, style: const TextStyle(fontSize: 14)),
-
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-
             child: const Text('Cancel'),
           ),
-
           FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF059669),
             ),
-
             onPressed: () => Navigator.of(ctx).pop(true),
-
             icon: const Icon(Icons.download, size: 16),
-
-            label: Text('Download ($verifiedCount LRs)'),
+            label: Text(confirmLabel),
           ),
         ],
       ),
@@ -837,43 +917,35 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
       final userToken =
           widget.controller.sessionToken ?? prefs.getString('bnf_user_token');
 
-      final exportIso = DateTime.now().toIso8601String();
+      final exportTime = DateTime.now();
+      final exportIso = exportTime.toIso8601String();
 
       final docs = verifiedItems.map((i) {
         return {
           'filename': i.fileName,
-
           'document_title': 'Consignment Note',
-
           'data': Map<String, String>.from(i.record),
-
           'created_at': i.createdAt.toIso8601String(),
-
           'edited_at': i.editedAt?.toIso8601String(),
-
           'exported_at': exportIso,
-
           'edit_history': i.editHistory,
         };
       }).toList();
 
       String? finalPath;
-
       String? defaultFilename;
+      Map<String, dynamic>? backendResult;
 
       if (widget.controller.useGeminiBackend) {
         final result = await widget.controller.geminiService
             .exportExcelWithSnapshot(
               documents: docs,
-
               formatType: 'gr_bnf_49',
-
               userName: userName,
-
               userMobile: userMobile,
-
               sessionToken: userToken,
             );
+        backendResult = result;
 
         if (result['success'] == true) {
           final downloadUrl = result['download_url']?.toString();
@@ -888,14 +960,12 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
             if (bytes != null && bytes.isNotEmpty) {
               final file = await widget.controller.excelService.saveBytesToFile(
                 bytes,
-
                 customFileName: defaultFilename,
               );
 
               final publicDlPath = await widget.controller.excelService
                   .saveFileToDownloads(
                     file.path,
-
                     targetFileName: defaultFilename,
                   );
 
@@ -908,11 +978,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
       }
 
       // Fallback: If network export failed or backend not used, generate locally via ExcelService
-
       if (finalPath == null) {
         final filePath = await widget.controller.exportToExcel(
           schema: DocumentSchema.grBnf,
-
           itemsToExport: verifiedItems,
         );
 
@@ -933,117 +1001,41 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
       if (finalPath != null) {
         defaultFilename ??= finalPath.split(RegExp(r'[/\\]')).last;
 
-        showDialog<void>(
-          context: context,
+        await widget.controller.markItemsAsExported(
+          verifiedItems.map((i) => i.id).toList(),
+          exportedAt: exportTime,
+        );
 
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+        final exportResult = <String, dynamic>{
+          if (backendResult != null && backendResult['success'] == true)
+            ...backendResult,
+          'success': true,
+          'filename': defaultFilename,
+          'total_lrs': verifiedItems.length,
+          'unverified_excluded': unverifiedCount,
+          'exported_by': backendResult?['exported_by'] ?? userName,
+          'user_name': backendResult?['user_name'] ?? userName,
+          'user_mobile': backendResult?['user_mobile'] ?? userMobile,
+          'generated_on': backendResult?['generated_on'] ?? exportIso,
+          'exported_at': backendResult?['exported_at'] ?? exportIso,
+          'local_path': finalPath,
+        };
+        exportResult['sha256'] = ExcelGeneratedScreen.deriveAuditSha256(exportResult);
+
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ExcelGeneratedScreen(
+              exportResult: exportResult,
+              controller: widget.controller,
+              exportedItems: verifiedItems,
             ),
-
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Color(0xFF059669), size: 24),
-
-                SizedBox(width: 8),
-
-                Text(
-                  'Excel Downloaded!',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ],
-            ),
-
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  'File: $defaultFilename',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-
-                const SizedBox(height: 6),
-
-                Text(
-                  'Verified LRs Exported: $verifiedCount',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF16A34A),
-                  ),
-                ),
-
-                if (unverifiedCount > 0) ...[
-                  const SizedBox(height: 4),
-
-                  Text(
-                    'Unverified LRs Excluded: $unverifiedCount',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFDC2626),
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 6),
-
-                Text(
-                  'Saved to: $finalPath',
-                  style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
-                ),
-              ],
-            ),
-
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-
-                child: const Text('OK'),
-              ),
-
-              if (widget.controller.lastExportedPath != null) ...[
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-
-                    await widget.controller.shareLastExport();
-                  },
-
-                  icon: const Icon(Icons.share, size: 16),
-
-                  label: const Text('Share'),
-                ),
-
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF059669),
-                  ),
-
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-
-                    await widget.controller.openLastExport();
-                  },
-
-                  icon: const Icon(Icons.open_in_new, size: 16),
-
-                  label: const Text('Open'),
-                ),
-              ],
-            ],
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Excel export failed. Please verify LR records.'),
-
             backgroundColor: Colors.red,
           ),
         );
@@ -2162,11 +2154,22 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                                     backgroundColor: Colors.red,
                                                   ),
 
-                                                  onPressed: () {
-                                                    widget.controller
-                                                        .removeItem(item.id);
-
+                                                  onPressed: () async {
+                                                    final messenger =
+                                                        ScaffoldMessenger.of(context);
                                                     Navigator.of(ctx).pop();
+                                                    final ok = await widget.controller
+                                                        .deleteItemWithCloudSync(item.id);
+                                                    if (!ok && mounted) {
+                                                      messenger.showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                            'Failed to delete LR from server. Local queue preserved.',
+                                                          ),
+                                                          backgroundColor: Colors.red,
+                                                        ),
+                                                      );
+                                                    }
                                                   },
 
                                                   child: const Text('Delete'),
@@ -2233,10 +2236,22 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                           backgroundColor: Colors.red,
                                         ),
 
-                                        onPressed: () {
-                                          widget.controller.clearQueue();
-
+                                        onPressed: () async {
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
                                           Navigator.of(ctx).pop();
+                                          final ok = await widget.controller
+                                              .clearAllWithCloudSync();
+                                          if (!ok && mounted) {
+                                            messenger.showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Failed to clear queue on server. Local LRs preserved.',
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
                                         },
 
                                         child: const Text('Clear All'),

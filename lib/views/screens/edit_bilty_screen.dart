@@ -380,9 +380,25 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         updated['oamount'] = textVal.isNotEmpty ? textVal : '0.00';
       }
     }
+    bool changedExported = false;
+    if (_currentItem.isExported) {
+      for (final key in updated.keys) {
+        if (key == 'is_exported' || key == 'exported_at') continue;
+        if ((_currentItem.record[key] ?? '') != (updated[key] ?? '')) {
+          changedExported = true;
+          break;
+        }
+      }
+      if (changedExported) {
+        updated['is_exported'] = 'false';
+        updated.remove('exported_at');
+      }
+    }
     final newItem = _currentItem.copyWith(
       record: updated,
       status: BatchItemStatus.completed,
+      editedAt: changedExported ? DateTime.now() : _currentItem.editedAt,
+      clearExportedAt: changedExported,
     );
     widget.controller.updateItem(newItem);
     _currentItem = newItem;

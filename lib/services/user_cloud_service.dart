@@ -239,4 +239,51 @@ class UserCloudService {
     }
     return false;
   }
+
+  /// Clears active cloud batch (and optionally upload history) matching POST /api/user-cloud-storage/clear-all.
+  Future<bool> clearAllCloudStorage(
+    String mobile, {
+    String? userId,
+    bool clearHistory = false,
+    String? sessionToken,
+    String? baseUrl,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final effectiveMobile = mobile.isNotEmpty ? mobile : (prefs.getString(_prefUserMobile) ?? '');
+    final cleanMobile = effectiveMobile.replaceAll(RegExp(r'\D'), '');
+    if (cleanMobile.isEmpty) return false;
+
+    try {
+      final server = await _resolveServerUrl(baseUrl);
+      final uri = Uri.parse('$server/api/user-cloud-storage/clear-all');
+
+      final token = (sessionToken != null && sessionToken.isNotEmpty)
+          ? sessionToken
+          : (prefs.getString('bnf_user_token') ?? prefs.getString(_prefSessionToken) ?? '');
+      final resolvedId = userId ?? prefs.getString(_prefUserId);
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      if (token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+
+      final payload = jsonEncode({
+        'user_mobile': cleanMobile,
+        'user_id': resolvedId,
+        'clear_history': clearHistory,
+      });
+
+      final resp = await http.post(uri, headers: headers, body: payload).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        final jsonBody = jsonDecode(resp.body);
+        return jsonBody is Map && jsonBody['success'] == true;
+      }
+    } catch (e) {
+      debugPrint('[UserCloudService] clearAllCloudStorage error: $e');
+    }
+    return false;
+  }
 }

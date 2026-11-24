@@ -341,6 +341,10 @@ class BatchItem {
     return true;
   }
 
+  /// True when this LR has been exported to Excel and not subsequently edited.
+  bool get isExported =>
+      exportedAt != null || record['is_exported'] == 'true';
+
   /// Returns list of missing mandatory field keys across all tabs.
   List<String> get missingMandatoryFields {
     final missing = <String>[];
@@ -389,6 +393,7 @@ class BatchItem {
     DateTime? processedAt,
     DateTime? editedAt,
     DateTime? exportedAt,
+    bool clearExportedAt = false,
     DateTime? deletedAt,
     List<Map<String, dynamic>>? editHistory,
     int? currentVersion,
@@ -412,7 +417,7 @@ class BatchItem {
       createdAt: createdAt ?? this.createdAt,
       processedAt: processedAt ?? this.processedAt,
       editedAt: editedAt ?? this.editedAt,
-      exportedAt: exportedAt ?? this.exportedAt,
+      exportedAt: clearExportedAt ? null : (exportedAt ?? this.exportedAt),
       deletedAt: deletedAt ?? this.deletedAt,
       editHistory: editHistory ?? this.editHistory,
       currentVersion: currentVersion ?? this.currentVersion,
@@ -441,10 +446,96 @@ class BatchItem {
       'preview_pages': record['preview_pages'] ?? '',
       'page_count': record['page_count'] ?? '1',
       'isVerified': isVerified,
+      'is_verified': isVerified,
+      'is_exported': isExported,
+      'exportedAt': exportedAt?.toIso8601String(),
+      'editedAt': editedAt?.toIso8601String(),
+      'current_version': currentVersion,
+      'versions': versions,
+      'editHistory': editHistory,
+      'imageHash': imageHash,
       'status': status.name,
       'data': record,
       'createdAt': createdAt.toIso8601String(),
     };
+  }
+
+  Map<String, dynamic> toLocalJson() {
+    return {
+      'id': id,
+      'imagePath': imagePath,
+      'fileName': fileName,
+      'status': status.name,
+      'createdAt': createdAt.toIso8601String(),
+      'processedAt': processedAt?.toIso8601String(),
+      'editedAt': editedAt?.toIso8601String(),
+      'exportedAt': exportedAt?.toIso8601String(),
+      'deletedAt': deletedAt?.toIso8601String(),
+      'editHistory': editHistory,
+      'currentVersion': currentVersion,
+      'versions': versions,
+      'isDeleted': isDeleted,
+      'record': record,
+      'missingFields': missingFields,
+      'rawOcrText': rawOcrText,
+      'errorMessage': errorMessage,
+      'tableHeaders': tableHeaders,
+      'tableRows': tableRows,
+      'structureType': structureType,
+      'ocrEngine': ocrEngine,
+      'imageHash': imageHash,
+    };
+  }
+
+  static BatchItem fromLocalJson(Map<String, dynamic> json) {
+    final rec = <String, String>{};
+    if (json['record'] is Map) {
+      (json['record'] as Map).forEach((k, v) {
+        if (k != null && v != null) rec[k.toString()] = v.toString();
+      });
+    }
+    final statusName = json['status']?.toString() ?? 'completed';
+    final parsedStatus = BatchItemStatus.values.firstWhere(
+      (s) => s.name == statusName,
+      orElse: () => BatchItemStatus.completed,
+    );
+    final rawRows = json['tableRows'];
+    final parsedRows = rawRows is List
+        ? rawRows.whereType<List>().map((r) => r.map((c) => c.toString()).toList()).toList()
+        : const <List<String>>[];
+
+    return BatchItem(
+      id: (json['id'] ?? '').toString(),
+      imagePath: (json['imagePath'] ?? json['fileName'] ?? '').toString(),
+      fileName: (json['fileName'] ?? 'LR Document').toString(),
+      status: parsedStatus,
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      processedAt: DateTime.tryParse(json['processedAt']?.toString() ?? ''),
+      editedAt: DateTime.tryParse(json['editedAt']?.toString() ?? ''),
+      exportedAt: DateTime.tryParse(json['exportedAt']?.toString() ?? ''),
+      deletedAt: DateTime.tryParse(json['deletedAt']?.toString() ?? ''),
+      editHistory: json['editHistory'] is List
+          ? (json['editHistory'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : const [],
+      currentVersion: int.tryParse((json['currentVersion'] ?? 1).toString()) ?? 1,
+      versions: json['versions'] is List
+          ? (json['versions'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : const [],
+      isDeleted: json['isDeleted'] == true,
+      record: rec,
+      missingFields: json['missingFields'] is List
+          ? (json['missingFields'] as List).map((e) => e.toString()).toList()
+          : const [],
+      rawOcrText: json['rawOcrText']?.toString() ?? '',
+      errorMessage: json['errorMessage']?.toString(),
+      tableHeaders: json['tableHeaders'] is List
+          ? (json['tableHeaders'] as List).map((e) => e.toString()).toList()
+          : const [],
+      tableRows: parsedRows,
+      structureType: json['structureType']?.toString() ?? 'form',
+      ocrEngine: json['ocrEngine']?.toString() ?? 'server',
+      imageHash: json['imageHash']?.toString(),
+    );
   }
 
   static BatchItem fromCloudDoc(Map<String, dynamic> doc) {
@@ -477,7 +568,57 @@ class BatchItem {
       dataMap['file_url'] = doc['file_url'].toString();
     }
 
-    final dt = DateTime.tryParse(doc['createdAt']?.toString() ?? '') ?? DateTime.now();
+    if (!dataMap.containsKey('is_verified')) {
+      if (doc['isVerified'] == true ||
+          doc['is_verified'] == true ||
+          doc['is_verified']?.toString() == 'true') {
+        dataMap['is_verified'] = 'true';
+      } else if (doc['isVerified'] == false ||
+          doc['is_verified'] == false ||
+          doc['is_verified']?.toString() == 'false') {
+        dataMap['is_verified'] = 'false';
+      }
+    }
+
+    final dt = DateTime.tryParse(
+          (doc['createdAt'] ?? doc['created_at'] ?? '').toString(),
+        ) ??
+        DateTime.now();
+    final editedDt = DateTime.tryParse(
+      (doc['editedAt'] ?? doc['edited_at'] ?? dataMap['edited_at'] ?? '').toString(),
+    );
+
+    final rawExportedAt = doc['exportedAt'] ?? doc['exported_at'] ?? dataMap['exported_at'];
+    DateTime? exportedDt =
+        rawExportedAt != null ? DateTime.tryParse(rawExportedAt.toString()) : null;
+    final explicitUnexported = doc['is_exported'] == false ||
+        doc['is_exported']?.toString() == 'false' ||
+        dataMap['is_exported'] == 'false';
+    final isExportedFlag = doc['is_exported'] == true ||
+        doc['is_exported']?.toString() == 'true' ||
+        dataMap['is_exported'] == 'true';
+
+    if (explicitUnexported) {
+      exportedDt = null;
+      dataMap['is_exported'] = 'false';
+      dataMap.remove('exported_at');
+    } else if (exportedDt != null || isExportedFlag) {
+      exportedDt ??= dt;
+      dataMap['is_exported'] = 'true';
+      dataMap['exported_at'] = exportedDt.toIso8601String();
+    }
+
+    final currentVer = int.tryParse(
+          (doc['current_version'] ?? doc['currentVersion'] ?? 1).toString(),
+        ) ??
+        1;
+    final versionsList = doc['versions'] is List
+        ? (doc['versions'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        : const <Map<String, dynamic>>[];
+    final historyList = doc['editHistory'] is List
+        ? (doc['editHistory'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        : const <Map<String, dynamic>>[];
+
     final id = (doc['id'] ?? doc['file_id'] ?? 'lr_${dt.millisecondsSinceEpoch}').toString();
     final fn = (doc['filename'] ?? doc['saved_filename'] ?? 'LR Document').toString();
     final imgPath = (doc['file_path'] ?? doc['preview_url'] ?? doc['imagePath'] ?? fn).toString();
@@ -488,6 +629,12 @@ class BatchItem {
       fileName: fn,
       status: BatchItemStatus.completed,
       createdAt: dt,
+      editedAt: editedDt,
+      exportedAt: exportedDt,
+      currentVersion: currentVer,
+      versions: versionsList,
+      editHistory: historyList,
+      imageHash: doc['imageHash']?.toString(),
       record: dataMap,
       ocrEngine: 'cloud_sync',
     );
