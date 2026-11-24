@@ -2,6 +2,7 @@ import '../../services/excel_service.dart';
 import 'package:flutter/material.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
+import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../home_screen.dart';
 import '../widgets/step_indicator_bar.dart';
@@ -77,7 +78,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               const Text(
-                'The consolidated 49-column BNF Excel document is ready for download.',
+                'The consolidated 52-column BNF Excel document is ready for download.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
@@ -145,7 +146,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  '$totalLrs Consignments • 49 Columns Clean BNF Format',
+                                  '$totalLrs Consignments • 52 Columns Clean BNF Format',
                                   style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
                                 ),
                               ],
@@ -174,7 +175,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Complete 49-Column Export Data Preview Card
+              // Complete 52-Column Export Data Preview Card
               _buildSnapshotPreviewCard(
                 context,
                 filename: filename,
@@ -366,11 +367,50 @@ class ExcelGeneratedScreen extends StatelessWidget {
   }
 
   String _getCellValue(BatchItem item, DocumentField field) {
-    if (item.record.containsKey(field.key) && item.record[field.key]!.trim().isNotEmpty) {
-      return item.record[field.key]!.trim();
+    final rec = Map<String, String>.from(item.record);
+    MasterDataService.normalizeUnicharmCustomer(rec, rawText: item.rawOcrText);
+
+    if (field.key == 'branchrefcode') {
+      final cnt = (rec['Counter'] ?? rec['Counter name'] ?? rec['counter'] ?? rec['Countername'] ?? '').trim();
+      final mapped = MasterDataService.instance.getBranchNameForCounter(cnt);
+      if (mapped.isNotEmpty) return mapped;
+      final rawBr = (rec['Branch'] ?? rec['branchrefcode'] ?? '').trim();
+      return (rawBr.isNotEmpty && rawBr != cnt) ? rawBr : '';
+    }
+    if (field.key == 'custrefcode' || field.key == 'staxpaidby' || field.key == 'dlvtype' || field.key == 'pmark') {
+      return '';
+    }
+    if (field.key == 'Customer Name *') {
+      final direct = (rec['Customer Name *'] ?? rec['Customer Name'] ?? rec['Customer'] ?? rec['customer_name'] ?? rec['customer'] ?? '').trim();
+      if (direct.isNotEmpty) return direct;
+      if (rec.containsKey('Customer Name *')) return '';
+      return (rec['cngr'] ?? rec['consignor'] ?? '').trim();
+    }
+    if (field.key == 'PickupPoint') {
+      final pp = (rec['PickupPoint'] ?? rec['pickup_point'] ?? rec['pickuppoint'] ?? '').trim();
+      return pp.isNotEmpty ? pp : (rec['orgrefcode'] ?? rec['Origen'] ?? rec['from'] ?? rec['origin'] ?? '').trim();
+    }
+    if (field.key == 'DeliveryPoint') {
+      final dp = (rec['DeliveryPoint'] ?? rec['delivery_point'] ?? rec['deliverypoint'] ?? '').trim();
+      return dp.isNotEmpty ? dp : (rec['destrefcode'] ?? rec['Destination'] ?? rec['to'] ?? rec['destination'] ?? '').trim();
+    }
+    if (field.key == 'EwayBillDate' || field.key == 'ewaybilldt') {
+      final ewd = (rec['EwayBillDate'] ?? rec['ewaybilldate'] ?? rec['ewaybilldt'] ?? rec['grdt *'] ?? rec['grdt'] ?? rec['date'] ?? '').trim();
+      return ewd.isNotEmpty ? ExcelService.formatToDdMmYyyy(ewd) : '';
+    }
+    if (field.key == 'goods') {
+      final gRaw = (rec['goods'] ?? rec['Goods'] ?? '').trim();
+      return MasterDataService.instance.matchValidGoods(gRaw) ?? '';
+    }
+    if (field.key == 'Vehicle Type *') {
+      return (rec['VehicleTypeName'] ?? rec['Vehicle Type *'] ?? rec['Vehicle Type'] ?? rec['vehtype'] ?? '').trim();
+    }
+
+    if (rec.containsKey(field.key) && rec[field.key]!.trim().isNotEmpty) {
+      return rec[field.key]!.trim();
     }
     final cleanHeader = field.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-    for (final entry in item.record.entries) {
+    for (final entry in rec.entries) {
       final cleanKey = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
       if (cleanKey == cleanHeader && entry.value.trim().isNotEmpty) {
         return entry.value.trim();
@@ -378,7 +418,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
     }
     for (final alias in field.aliases) {
       final cleanAlias = alias.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-      for (final entry in item.record.entries) {
+      for (final entry in rec.entries) {
         final cleanKey = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
         if (cleanKey == cleanAlias && entry.value.trim().isNotEmpty) {
           return entry.value.trim();
@@ -386,12 +426,11 @@ class ExcelGeneratedScreen extends StatelessWidget {
       }
     }
     // Specific field fallbacks
-    if (field.key == 'Customer Name *') return item.record['cngr'] ?? item.record['consignor'] ?? '';
-    if (field.key == 'LR No *') return item.record['grno'] ?? item.record['biltyno'] ?? '';
-    if (field.key == 'BNF LR No') return item.record['BNF LR No'] ?? item.record['bnf lr no'] ?? item.record['bnflrno'] ?? item.record['bnflr'] ?? '';
-    if (field.key == 'Loading Start date *') return item.record['grdt'] ?? item.record['date'] ?? '';
-    if (field.key == 'Valid Upto') return item.record['validupto'] ?? '';
-    if (field.key == 'stockdt' || field.key == 'stockdt ') return item.record['stockdt'] ?? item.record['grdt'] ?? '';
+    if (field.key == 'LR No *') return rec['grno'] ?? rec['biltyno'] ?? '';
+    if (field.key == 'BNF LR No') return rec['BNF LR No'] ?? rec['bnf lr no'] ?? rec['bnflrno'] ?? rec['bnflr'] ?? '';
+    if (field.key == 'Loading Start date *') return rec['grdt'] ?? rec['date'] ?? '';
+    if (field.key == 'Valid Upto') return rec['validupto'] ?? '';
+    if (field.key == 'stockdt' || field.key == 'stockdt ') return rec['stockdt'] ?? rec['grdt'] ?? '';
     return '';
   }
 
@@ -537,7 +576,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: _buildSnapshotMetaItem('Schema Format', 'Clean BNF (All 49 Columns)'),
+                      child: _buildSnapshotMetaItem('Schema Format', 'Clean BNF (All 52 Columns)'),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -575,7 +614,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
-                    '49 COLUMNS',
+                    '52 COLUMNS',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
@@ -587,7 +626,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
             ),
           ),
 
-          // 4. Horizontally Scrollable 49-Column Table
+          // 4. Horizontally Scrollable 52-Column Table
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
@@ -663,7 +702,7 @@ class ExcelGeneratedScreen extends StatelessWidget {
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Export includes complete 49-column dataset. Saved in device Downloads.',
+                    'Export includes complete 52-column dataset. Saved in device Downloads.',
                     style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
                   ),
                 ),

@@ -121,18 +121,20 @@ void main() {
       expect(find.text('14-10-2026'), findsOneWidget);
     });
 
-    test('E-Way Bill Date is strictly excluded from 49-column Excel schema', () {
-      // 49-column canonical headers
-      expect(ExcelService.lrFormat49Headers.length, equals(49));
-      expect(ExcelService.lrFormat49Headers.contains('ewaybilldt'), isFalse);
-      expect(ExcelService.lrFormat49Headers.contains('E-Way Bill Date'), isFalse);
-      expect(ExcelService.lrFormat49Headers.contains('eway_bill_date'), isFalse);
+    test('E-Way Bill Date, PickupPoint and DeliveryPoint are included in 52-column GTInfiniti Excel schema', () {
+      // 52-column canonical headers
+      expect(ExcelService.lrFormat52Headers.length, equals(52));
+      expect(ExcelService.lrFormat49Headers.length, equals(52));
+      expect(ExcelService.lrFormat52Headers.contains('PickupPoint'), isTrue);
+      expect(ExcelService.lrFormat52Headers.contains('DeliveryPoint'), isTrue);
+      expect(ExcelService.lrFormat52Headers.contains('EwayBillDate'), isTrue);
 
       // grBnf schema headers
-      expect(DocumentSchema.grBnf.fields.length, equals(49));
+      expect(DocumentSchema.grBnf.fields.length, equals(52));
       final grBnfKeys = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
-      expect(grBnfKeys.contains('ewaybilldt'), isFalse);
-      expect(grBnfKeys.contains('E-Way Bill Date'), isFalse);
+      expect(grBnfKeys.contains('PickupPoint'), isTrue);
+      expect(grBnfKeys.contains('DeliveryPoint'), isTrue);
+      expect(grBnfKeys.contains('EwayBillDate'), isTrue);
     });
   });
 }

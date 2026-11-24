@@ -244,8 +244,8 @@ class _OcrProcessingDialogState extends State<OcrProcessingDialog>
                   _buildStepRow(
                     stepNumber: 4,
                     label: step > 4
-                        ? 'Mapped with BNF 49-Column Format'
-                        : 'Mapping with BNF 49-Column Format',
+                        ? 'Mapped with BNF 52-Column Format'
+                        : 'Mapping with BNF 52-Column Format',
                     currentStep: step,
                   ),
                   const SizedBox(height: 10),

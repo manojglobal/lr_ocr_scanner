@@ -16,6 +16,46 @@ class MasterDataService {
 
   static const String _prefKeyManifestCache = 'bnf_manifest_customer_departments_cache';
   static const String _prefKeyCountersCache = 'bnf_booking_counters_cache';
+  static const String _prefKeyCounterRecordsCache = 'bnf_booking_counter_records_cache';
+  static const String _prefKeyPartiesCache = 'bnf_master_party_gst_cache';
+  static const String _prefKeyVehicleTypesCache = 'bnf_master_vehicle_types_cache';
+  static const String _prefKeyGoodsCache = 'bnf_master_goods_cache';
+
+  static final RegExp unicharmRegex = RegExp(r'(?:unicharm|uvicharm|vuicharm|micharm)', caseSensitive: false);
+  static const String webUnicharmDefaultCustomer = 'Global Marketing';
+
+  static const Map<String, String> _knownBrandGstMap = {
+    'patanjali': '07AAFCP1505P2Z8',
+    'himalaya': '29AADFT3025B2ZK',
+    'globalmarketing': '29AJYPK4522G1ZR',
+    'indrahosiery': '0303AAAFI3511ZG',
+    'vescocycle': '03AAOFV6259L1ZJ',
+    'hitech': '0303AADFH966966',
+    'montecarlo': '0303AAFCM788788',
+    'umorthotics': '0303AADCU323323',
+    'goldplus': '2929AAICG789789',
+    'shreeciment': '27AADFG7889B1Z2',
+  };
+
+  Map<String, String> _partyGstMap = {};
+
+  List<String> _vehicleTypes = [
+    '32 FT Open',
+    '32 FT TRAULLA',
+    '20 FT Open',
+    '10 Axle Trolly',
+    '8 Axle Trolly',
+    'TAURUS',
+    '14 FT Open',
+  ];
+
+  List<String> _goodsList = [];
+
+  /// Returns synced VehicleTypeMaster options.
+  List<String> get vehicleTypes => List<String>.unmodifiable(_vehicleTypes);
+
+  /// Returns synced GoodsMaster options.
+  List<String> get goodsList => List<String>.unmodifiable(_goodsList);
 
   /// Exact Department values parsed directly from ManiFest.xlsx (single source of truth).
   /// Preserves exact capitalization, spaces, spelling, and special characters.
@@ -220,6 +260,75 @@ class MasterDataService {
             await prefs.setString(_prefKeyCountersCache, jsonEncode(_bookingCounters));
           }
         }
+        if (data['success'] == true && data['records'] is List) {
+          final parsedRecords = <Map<String, String>>[];
+          for (final r in (data['records'] as List)) {
+            if (r is Map) {
+              final cnt = (r['counter_name'] ?? r['counter'] ?? '').toString();
+              final br = (r['branch_name'] ?? r['branch'] ?? '').toString();
+              if (cnt.isNotEmpty) {
+                parsedRecords.add({'counter': cnt, 'branch': br});
+              }
+            }
+          }
+          if (parsedRecords.isNotEmpty) {
+            _bookingCounterRecords = parsedRecords;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_prefKeyCounterRecordsCache, jsonEncode(_bookingCounterRecords));
+          }
+        }
+      }
+
+      // Sync Parties GST map
+      try {
+        final respParties = await http.get(Uri.parse('$effectiveBase/api/master/parties')).timeout(const Duration(seconds: 4));
+        if (respParties.statusCode == 200) {
+          final dParties = jsonDecode(respParties.body);
+          if (dParties['success'] == true && dParties['gst_map'] is Map) {
+            final parsedGst = <String, String>{};
+            (dParties['gst_map'] as Map).forEach((k, v) {
+              final ks = k.toString().trim();
+              final vs = v.toString().trim();
+              if (ks.isNotEmpty && vs.isNotEmpty) parsedGst[ks] = vs;
+            });
+            _partyGstMap = parsedGst;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_prefKeyPartiesCache, jsonEncode(_partyGstMap));
+          }
+        }
+      } catch (e) {
+        debugPrint('[MasterDataService] Parties sync notice: $e');
+      }
+
+      // Sync VehicleTypeMaster
+      try {
+        final respVeh = await http.get(Uri.parse('$effectiveBase/api/master/vehicle-types')).timeout(const Duration(seconds: 4));
+        if (respVeh.statusCode == 200) {
+          final dVeh = jsonDecode(respVeh.body);
+          final rawTypes = dVeh['types'] ?? dVeh['vehicle_types'] ?? dVeh['vehicleTypes'];
+          if (dVeh['success'] == true && rawTypes is List && rawTypes.isNotEmpty) {
+            _vehicleTypes = rawTypes.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_prefKeyVehicleTypesCache, jsonEncode(_vehicleTypes));
+          }
+        }
+      } catch (e) {
+        debugPrint('[MasterDataService] Vehicle types sync notice: $e');
+      }
+
+      // Sync GoodsMaster
+      try {
+        final respGoods = await http.get(Uri.parse('$effectiveBase/api/master/goods-master')).timeout(const Duration(seconds: 4));
+        if (respGoods.statusCode == 200) {
+          final dGoods = jsonDecode(respGoods.body);
+          if (dGoods['success'] == true && dGoods['goods'] is List) {
+            _goodsList = (dGoods['goods'] as List).map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_prefKeyGoodsCache, jsonEncode(_goodsList));
+          }
+        }
+      } catch (e) {
+        debugPrint('[MasterDataService] Goods master sync notice: $e');
       }
     } catch (e) {
       debugPrint('[MasterDataService] Dynamic master sync: $e');
@@ -291,6 +400,43 @@ class MasterDataService {
         final decoded = jsonDecode(cachedCounters) as List<dynamic>;
         final parsed = decoded.map((e) => e.toString()).toList();
         if (parsed.isNotEmpty) _bookingCounters = parsed;
+      }
+
+      final cachedCounterRecs = prefs.getString(_prefKeyCounterRecordsCache);
+      if (cachedCounterRecs != null && cachedCounterRecs.isNotEmpty) {
+        final decoded = jsonDecode(cachedCounterRecs) as List<dynamic>;
+        final parsed = <Map<String, String>>[];
+        for (final r in decoded) {
+          if (r is Map) {
+            parsed.add({
+              'counter': (r['counter'] ?? '').toString(),
+              'branch': (r['branch'] ?? '').toString(),
+            });
+          }
+        }
+        if (parsed.isNotEmpty) _bookingCounterRecords = parsed;
+      }
+
+      final cachedParties = prefs.getString(_prefKeyPartiesCache);
+      if (cachedParties != null && cachedParties.isNotEmpty) {
+        final decoded = jsonDecode(cachedParties) as Map<String, dynamic>;
+        final parsed = <String, String>{};
+        decoded.forEach((k, v) => parsed[k] = v.toString());
+        if (parsed.isNotEmpty) _partyGstMap = parsed;
+      }
+
+      final cachedVehTypes = prefs.getString(_prefKeyVehicleTypesCache);
+      if (cachedVehTypes != null && cachedVehTypes.isNotEmpty) {
+        final decoded = jsonDecode(cachedVehTypes) as List<dynamic>;
+        final parsed = decoded.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+        if (parsed.isNotEmpty) _vehicleTypes = parsed;
+      }
+
+      final cachedGoods = prefs.getString(_prefKeyGoodsCache);
+      if (cachedGoods != null && cachedGoods.isNotEmpty) {
+        final decoded = jsonDecode(cachedGoods) as List<dynamic>;
+        final parsed = decoded.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+        if (parsed.isNotEmpty) _goodsList = parsed;
       }
 
       final raw = prefs.getString(_prefKeyDriverRegistry);
@@ -506,6 +652,103 @@ class MasterDataService {
   /// Returns list of booking counters from BookingCounterMast.xlsx
   List<String> getCounters() {
     return List<String>.unmodifiable(_bookingCounters);
+  }
+
+  /// Resolves exact Branch Name for a given Booking Counter Name from BookingCounterMast.xlsx.
+  String getBranchNameForCounter(String? counter) {
+    final c = (counter ?? '').trim();
+    if (c.isEmpty) return '';
+    final cUpper = c.toUpperCase();
+    for (final rec in _bookingCounterRecords) {
+      final cnt = (rec['counter'] ?? '').trim();
+      if (cnt.toUpperCase() == cUpper) {
+        return (rec['branch'] ?? '').trim();
+      }
+    }
+    return '';
+  }
+
+  /// Auto-matches party/consignor/consignee GSTIN matching Web matchPartyGstWeb().
+  String? matchPartyGst(String? partyText) {
+    final raw = (partyText ?? '').trim();
+    if (raw.isEmpty) return null;
+    final clean = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (clean.isEmpty) return null;
+
+    if (_partyGstMap.containsKey(clean) && (_partyGstMap[clean] ?? '').isNotEmpty) {
+      return _partyGstMap[clean];
+    }
+    for (final entry in _knownBrandGstMap.entries) {
+      if (clean.contains(entry.key)) return entry.value;
+    }
+    for (final entry in _partyGstMap.entries) {
+      final k = entry.key;
+      if (k.length >= 5 && (clean.contains(k) || k.contains(clean))) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  /// Validates/normalizes an extracted or typed Goods value against GoodsMaster.
+  /// When GoodsMaster is loaded, returns the exact master string if matched, or null if unmatched.
+  String? matchValidGoods(String? rawGoods) {
+    final val = (rawGoods ?? '').trim();
+    if (val.isEmpty) return null;
+    if (_goodsList.isEmpty) return val;
+    final lower = val.toLowerCase();
+    for (final item in _goodsList) {
+      if (item.trim().toLowerCase() == lower) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  /// Sets GoodsMaster list in memory (primarily for tests or pre-seeded offline use).
+  void setGoodsListForTesting(List<String> goods) {
+    _goodsList = List<String>.from(goods);
+  }
+
+  /// Sets VehicleTypes list in memory (primarily for tests).
+  void setVehicleTypesForTesting(List<String> types) {
+    _vehicleTypes = List<String>.from(types);
+  }
+
+  /// Sets Party GST map in memory (primarily for tests).
+  void setPartyGstMapForTesting(Map<String, String> gstMap) {
+    _partyGstMap = Map<String, String>.from(gstMap);
+  }
+
+  /// Applies Web Unicharm Customer default rule ("Global Marketing") without affecting other customers.
+  static bool normalizeUnicharmCustomer(Map<String, String> data, {String rawText = ''}) {
+    bool isUnicharm = unicharmRegex.hasMatch(rawText);
+    if (!isUnicharm) {
+      for (final key in ['Customer Name *', 'Customer Name', 'Customer', 'customer', 'cngr *', 'cngr', 'cnge *', 'cnge']) {
+        if (unicharmRegex.hasMatch(data[key] ?? '')) {
+          isUnicharm = true;
+          break;
+        }
+      }
+    }
+    if (!isUnicharm) return false;
+
+    final currentCust = (data['Customer Name *'] ??
+            data['Customer Name'] ??
+            data['Customer'] ??
+            data['customer'] ??
+            data['customer_name'] ??
+            '')
+        .trim();
+    if (currentCust.isEmpty || unicharmRegex.hasMatch(currentCust)) {
+      data['Customer Name *'] = webUnicharmDefaultCustomer;
+      data['Customer Name'] = webUnicharmDefaultCustomer;
+      data['Customer'] = webUnicharmDefaultCustomer;
+      data['customer'] = webUnicharmDefaultCustomer;
+      data['customer_name'] = webUnicharmDefaultCustomer;
+      return true;
+    }
+    return false;
   }
 
   /// Looks up driver details synchronously by vehicle registration number

@@ -705,6 +705,7 @@ bool _duplicateNoticePending = false;
       _activeSessionToken = sessionToken;
       notifyListeners();
       hydrateFromCloud();
+      MasterDataService.instance.fetchMasterDataFromBackend(baseUrl: _geminiService.serverUrl);
     } else {
       bool changed = false;
       if (name != null && _activeUserName != name) {
@@ -957,6 +958,142 @@ bool _duplicateNoticePending = false;
     return anyAdded;
   }
 
+  /// Unified Web-parity post-OCR enrichment for both single-file and multi-file uploads.
+  void _enrichExtractedRecord(
+    Map<String, String> data, {
+    bool isOrangeYellow = false,
+    String rawText = '',
+  }) {
+    if (isOrangeYellow) {
+      data['BNF LR No'] = '';
+    }
+
+    // 1. Web Unicharm -> "Global Marketing" Customer default
+    MasterDataService.normalizeUnicharmCustomer(data, rawText: rawText);
+
+    // 2. Ensure driver details remain empty if absent in OCR (driver_master auto-fill disabled)
+    for (final drvKey in ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
+      data.putIfAbsent(drvKey, () => '');
+    }
+
+    // 3. Strip whitespace in GSTINs and auto-lookup blank GSTs from Party Master / known brands
+    for (final gstKey in ['cngrgstno *', 'cngrgstno', 'cngrgst', 'consignorgst', 'consignorgstin', 'cngegstno *', 'cngegstno', 'cngegst', 'consigneegst', 'consigneegstin']) {
+      if (data.containsKey(gstKey)) {
+        data[gstKey] = data[gstKey]!.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+      }
+    }
+    final curCngrGst = (data['cngrgstno *'] ?? data['cngrgstno'] ?? '').trim();
+    if (curCngrGst.isEmpty) {
+      final matchedCngrGst = MasterDataService.instance.matchPartyGst(data['cngr *'] ?? data['cngr'] ?? '') ??
+          MasterDataService.instance.matchPartyGst(data['Customer Name *'] ?? data['customer'] ?? '');
+      if (matchedCngrGst != null && matchedCngrGst.isNotEmpty) {
+        data['cngrgstno *'] = matchedCngrGst;
+        data['cngrgstno'] = matchedCngrGst;
+      }
+    }
+    final curCngeGst = (data['cngegstno *'] ?? data['cngegstno'] ?? '').trim();
+    if (curCngeGst.isEmpty) {
+      final matchedCngeGst = MasterDataService.instance.matchPartyGst(data['cnge *'] ?? data['cnge'] ?? '');
+      if (matchedCngeGst != null && matchedCngeGst.isNotEmpty) {
+        data['cngegstno *'] = matchedCngeGst;
+        data['cngegstno'] = matchedCngeGst;
+      }
+    }
+
+    // 4. Freight mandatory manual entry, PMark blank on initial load, blank 3 BNF fields
+    data['freight  *'] = '';
+    data['freight'] = '';
+    data['pmark'] = '';
+    data['Private Mark'] = '';
+    data['custrefcode'] = '';
+    data['staxpaidby'] = '';
+    data['dlvtype'] = '';
+
+    // 5. GoodsMaster strict filtering (clear unmatched extracted Goods when master is loaded)
+    final rawGoods = (data['goods'] ?? data['Goods'] ?? '').trim();
+    if (rawGoods.isNotEmpty && MasterDataService.instance.goodsList.isNotEmpty) {
+      final matchedGoods = MasterDataService.instance.matchValidGoods(rawGoods) ?? '';
+      data['goods'] = matchedGoods;
+      data['Goods'] = matchedGoods;
+    }
+
+    // 6. Product Code vs Product Type separation
+    const prodTypeOptions = {'Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'};
+    final pCode = (data['productcode'] ?? '').trim();
+    if (prodTypeOptions.contains(pCode)) {
+      data['productcode'] = '';
+    }
+    if ((data['product_type'] ?? '').trim().isEmpty) {
+      data['product_type'] = 'Surface-FTL';
+      data['Product Type'] = 'Surface-FTL';
+    }
+
+    // 7. Auto-detect Department, Counter & resolve Branch via BookingCounterMast
+    final custName = (data['Customer Name *'] ?? data['customer'] ?? data['cngr *'] ?? '').trim();
+    final rawOrg = (data['orgrefcode'] ?? data['Origen'] ?? data['from'] ?? data['origin'] ?? '').trim();
+    final rawDest = (data['destrefcode'] ?? data['Destination'] ?? data['to'] ?? data['destination'] ?? '').trim();
+    final rawDept = (data['Depatment Name'] ?? data['department'] ?? '').trim();
+
+    final detectedDept = MasterDataService.instance.autoDetectDepartment(
+      originCity: rawOrg,
+      customer: custName,
+      deptRaw: rawDept,
+    );
+    data['Depatment Name'] = detectedDept;
+    data['department'] = detectedDept;
+
+    final rawCounter = (data['Counter'] ?? data['Counter name'] ?? data['counter'] ?? '').trim();
+    final rawBranch = (data['Branch'] ?? data['branchrefcode'] ?? data['branch'] ?? '').trim();
+    final detectedCounter = MasterDataService.instance.autoDetectCounter(
+      originCity: rawOrg,
+      counterRaw: rawCounter,
+      branchRaw: rawBranch,
+    );
+    if (detectedCounter.isNotEmpty) {
+      final mappedBranch = MasterDataService.instance.getBranchNameForCounter(detectedCounter);
+      data['Counter'] = detectedCounter;
+      data['Counter name'] = detectedCounter;
+      data['counter'] = detectedCounter;
+      if (mappedBranch.isNotEmpty) {
+        data['Branch'] = mappedBranch;
+        data['branchrefcode'] = mappedBranch;
+      } else {
+        data['Branch'] = (rawBranch.isNotEmpty && rawBranch != detectedCounter) ? rawBranch : '';
+        data['branchrefcode'] = data['Branch']!;
+      }
+    } else {
+      data['Counter'] = '';
+      data['Counter name'] = '';
+      data['counter'] = '';
+      data['Branch'] = '';
+      data['branchrefcode'] = '';
+    }
+
+    // 8. Standardize date fields strictly to DD-MM-YYYY
+    for (final dk in ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *', 'EwayBillDate', 'ewaybilldt']) {
+      if ((data[dk] ?? '').trim().isNotEmpty) {
+        data[dk] = ExcelService.formatToDdMmYyyy(data[dk]);
+      }
+    }
+
+    // 9. Mirror defaults for PickupPoint, DeliveryPoint & EwayBillDate
+    final grdtFmt = (data['grdt *'] ?? data['grdt'] ?? '').trim();
+    if ((data['ewaybilldt'] ?? data['EwayBillDate'] ?? '').trim().isEmpty && grdtFmt.isNotEmpty) {
+      data['ewaybilldt'] = grdtFmt;
+      data['EwayBillDate'] = grdtFmt;
+    }
+    if ((data['PickupPoint'] ?? data['pickup_point'] ?? '').trim().isEmpty && rawOrg.isNotEmpty) {
+      data['PickupPoint'] = rawOrg;
+    }
+    if ((data['DeliveryPoint'] ?? data['delivery_point'] ?? '').trim().isEmpty && rawDest.isNotEmpty) {
+      data['DeliveryPoint'] = rawDest;
+    }
+
+    // 10. Pending verification status
+    data['pending_verification'] = 'true';
+    data['is_verified'] = 'false';
+  }
+
   /// Uploads multiple files (PDFs, images, or mixed) belonging to the same LR in a single operation.
   /// If multiple different LR numbers are detected, rejects with triggerMultipleLrsNotice.
   /// If valid, creates exactly ONE BatchItem in _items and returns true.
@@ -1036,8 +1173,7 @@ bool _duplicateNoticePending = false;
       }
 
       final rec = Map<String, String>.from(result.data);
-      rec['pending_verification'] = 'true';
-      rec['is_verified'] = 'false';
+      _enrichExtractedRecord(rec, rawText: result.rawText);
 
       final docId = _uuid.v4();
       final primaryFn = permanentPaths.first.split(RegExp(r'[/\\]')).last;
@@ -1334,13 +1470,10 @@ bool _duplicateNoticePending = false;
                   )
                   .timeout(const Duration(seconds: 90));
 
-                            if (serverResult.status != ExtractionStatus.failed) {
+                if (serverResult.status != ExtractionStatus.failed) {
                 parseResult = serverResult;
                 rawOcrText = serverResult.rawText;
                 activeOcrEngine = 'server';
-                if (isOrangeYellow) {
-                  parseResult.data['BNF LR No'] = '';
-                }
               } else if (serverResult.isMultipleLrs || serverResult.errorCode == 'MULTIPLE_LRS') {
                 debugPrint('Multiple LRs rejected by server for item. Discarding.');
                 final rejectedId = item.id;
@@ -1487,87 +1620,15 @@ bool _duplicateNoticePending = false;
             continue;
           }
 
-          // Step 5: Validating Data & Preserving Blanks
+          // Step 5: Validating Data & Preserving Blanks (Web-parity enrichment)
           _currentOcrStep = 5;
           notifyListeners();
 
-          // Ensure driver details remain empty if absent in OCR (driver_master auto-fill disabled)
-          for (final drvKey in ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
-            parseResult.data.putIfAbsent(drvKey, () => '');
-          }
-
-          // Consignor & Consignee GST Field Validation: Strip any spaces from OCR extraction
-          for (final gstKey in ['cngrgstno *', 'cngrgstno', 'cngrgst', 'consignorgst', 'consignorgstin', 'cngegstno *', 'cngegstno', 'cngegst', 'consigneegst', 'consigneegstin']) {
-            if (parseResult.data.containsKey(gstKey)) {
-              parseResult.data[gstKey] = parseResult.data[gstKey]!.replaceAll(RegExp(r'\s+'), '').toUpperCase();
-            }
-          }
-
-          // Freight: Must be mandatory manual input. Keep empty by default.
-          parseResult.data['freight  *'] = '';
-          parseResult.data['freight'] = '';
-
-          // Product Type vs Product Code separation:
-          // Product Code must not use Product Type value. Extract Product Code only when explicitly available in scanned LR.
-          // If missing or set to a product type option, keep it empty.
-          const prodTypeOptions = {'Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'};
-          final pCode = (parseResult.data['productcode'] ?? '').trim();
-          if (prodTypeOptions.contains(pCode)) {
-            parseResult.data['productcode'] = '';
-          }
-          // Product Type is stored separately as product_type, defaulting to Surface-FTL for new records.
-          if ((parseResult.data['product_type'] ?? '').trim().isEmpty) {
-            parseResult.data['product_type'] = 'Surface-FTL';
-            parseResult.data['Product Type'] = 'Surface-FTL';
-          }
-
-          // Auto-detect Department & Counter using Origin City extracted from LR
-          final custName = (parseResult.data['Customer Name *'] ?? parseResult.data['cngr *'] ?? '').trim();
-          final rawOrg = (parseResult.data['orgrefcode'] ?? parseResult.data['from'] ?? parseResult.data['origin'] ?? '').trim();
-          final rawDept = (parseResult.data['Depatment Name'] ?? parseResult.data['department'] ?? '').trim();
-
-          final detectedDept = MasterDataService.instance.autoDetectDepartment(
-            originCity: rawOrg,
-            customer: custName,
-            deptRaw: rawDept,
+          _enrichExtractedRecord(
+            parseResult.data,
+            isOrangeYellow: isOrangeYellow,
+            rawText: rawOcrText,
           );
-          if (detectedDept.isNotEmpty) {
-            parseResult.data['Depatment Name'] = detectedDept;
-            parseResult.data['department'] = detectedDept;
-          } else {
-            parseResult.data['Depatment Name'] = '';
-            parseResult.data['department'] = '';
-          }
-
-          // Auto-detect Counter from BookingCounterMast.xlsx using Origin City
-          final rawCounter = (parseResult.data['Counter'] ?? parseResult.data['counter'] ?? '').trim();
-          final rawBranch = (parseResult.data['branchrefcode'] ?? parseResult.data['branch'] ?? '').trim();
-
-          final detectedCounter = MasterDataService.instance.autoDetectCounter(
-            originCity: rawOrg,
-            counterRaw: rawCounter,
-            branchRaw: rawBranch,
-          );
-          if (detectedCounter.isNotEmpty) {
-            parseResult.data['Counter'] = detectedCounter;
-            parseResult.data['counter'] = detectedCounter;
-            parseResult.data['branchrefcode'] = detectedCounter;
-          } else {
-            parseResult.data['Counter'] = '';
-            parseResult.data['counter'] = '';
-            parseResult.data['branchrefcode'] = '';
-          }
-
-          // Standardize date fields in extracted data strictly to DD-MM-YYYY
-          for (final dk in ['grdt', 'grdt *', 'stockdt', 'Loading Start date *', 'invoiedt', 'Valid Upto', 'Valid Up to *']) {
-            if ((parseResult.data[dk] ?? '').trim().isNotEmpty) {
-              parseResult.data[dk] = ExcelService.formatToDdMmYyyy(parseResult.data[dk]);
-            }
-          }
-
-          // Mark newly scanned LR as unverified / pending verification
-          parseResult.data['pending_verification'] = 'true';
-          parseResult.data['is_verified'] = 'false';
 
           // Find current index after asynchronous gap
           final currentIndex = _items.indexWhere((i) => i.id == item.id);

@@ -87,6 +87,43 @@ def _load_env_file():
 
 _load_env_file()
 
+
+def get_server_host(default: str = "0.0.0.0") -> str:
+    """Resolves bind host from HOST environment variable."""
+    raw = os.getenv("HOST", "").strip()
+    return raw if raw else default
+
+
+def get_server_port(default: int = 8000) -> int:
+    """Resolves bind port from CLI --port or PORT / BACKEND_PORT in .env."""
+    for i, arg in enumerate(sys.argv):
+        if arg.startswith("--port="):
+            val = arg.split("=", 1)[1].strip()
+            if val.isdigit() and 1 <= int(val) <= 65535:
+                return int(val)
+        elif arg == "--port" and i + 1 < len(sys.argv):
+            val = sys.argv[i + 1].strip()
+            if val.isdigit() and 1 <= int(val) <= 65535:
+                return int(val)
+    for env_name in ("PORT", "BACKEND_PORT"):
+        raw = os.getenv(env_name, "").strip()
+        if raw.isdigit() and 1 <= int(raw) <= 65535:
+            return int(raw)
+    return default
+
+
+def get_public_server_url() -> str | None:
+    """Returns optional PUBLIC_SERVER_URL / SERVER_URL override from .env."""
+    for env_name in ("PUBLIC_SERVER_URL", "SERVER_URL"):
+        raw = os.getenv(env_name, "").strip().rstrip("/")
+        if raw:
+            return raw
+    return None
+
+
+SERVER_HOST = get_server_host()
+SERVER_PORT = get_server_port()
+
 API_KEY = os.getenv("GEMINI_API_KEY", "")
 if not API_KEY or API_KEY.strip() in ("", "YOUR_GEMINI_API_KEY_HERE", "your_gemini_api_key_here"):
     print("=" * 70)
@@ -1834,8 +1871,119 @@ def health_check():
         "service": "OCR to Excel Dual Engine",
         "model": MODEL_NAME,
         "local_ip": get_local_ip(),
-        "port": 8000
+        "port": get_server_port()
     }
+
+
+# --- ROUTE 2A: Zero-Config Wi-Fi LAN Auto-Discovery ---
+DISCOVERY_MAGIC = "OCR_TO_EXCEL_DISCOVER"
+DISCOVERY_UDP_PORT = int(os.getenv("DISCOVERY_UDP_PORT", "8001"))
+
+_lan_discovery_stop = threading.Event()
+_lan_discovery_lock = threading.Lock()
+_lan_discovery_socket: socket.socket | None = None
+_lan_discovery_thread: threading.Thread | None = None
+
+
+def _build_discovery_payload(request_port: int | None = None) -> dict[str, Any]:
+    port = request_port or get_server_port()
+    payload: dict[str, Any] = {
+        "service": "ocr_to_excel",
+        "status": "online",
+        "ip": get_local_ip(),
+        "port": port,
+        "model": MODEL_NAME,
+    }
+    public_url = get_public_server_url()
+    if public_url:
+        payload["public_server_url"] = public_url
+    return payload
+
+
+@app.get("/api/discover")
+def discover_server(request: Request):
+    """Lightweight identity endpoint for same-Wi-Fi Android LAN auto-discovery."""
+    return _build_discovery_payload(request_port=request.url.port)
+
+
+def _lan_discovery_loop(sock: socket.socket) -> None:
+    while not _lan_discovery_stop.is_set():
+        try:
+            data, addr = sock.recvfrom(1024)
+            msg = data.decode("utf-8", errors="ignore").strip()
+            if msg == DISCOVERY_MAGIC or msg.startswith(DISCOVERY_MAGIC):
+                reply = json.dumps(_build_discovery_payload()).encode("utf-8")
+                sock.sendto(reply, addr)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        except Exception:
+            continue
+
+
+def start_lan_discovery_responder(udp_port: int | None = None) -> int | None:
+    """Starts the non-blocking daemon UDP broadcast responder for local Wi-Fi discovery."""
+    global _lan_discovery_socket, _lan_discovery_thread
+    if os.getenv("DISABLE_LAN_DISCOVERY", "").strip().lower() in ("1", "true", "yes"):
+        return None
+    target_port = DISCOVERY_UDP_PORT if udp_port is None else int(udp_port)
+    with _lan_discovery_lock:
+        if _lan_discovery_thread is not None and _lan_discovery_thread.is_alive() and _lan_discovery_socket is not None:
+            try:
+                return int(_lan_discovery_socket.getsockname()[1])
+            except Exception:
+                return target_port
+        _lan_discovery_stop.clear()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.settimeout(1.0)
+            sock.bind(("0.0.0.0", target_port))
+            bound_port = int(sock.getsockname()[1])
+        except OSError:
+            try:
+                sock.close()
+            except Exception:
+                pass
+            return None
+
+        _lan_discovery_socket = sock
+        t = threading.Thread(
+            target=_lan_discovery_loop,
+            args=(sock,),
+            name="lan-udp-discovery",
+            daemon=True,
+        )
+        _lan_discovery_thread = t
+        t.start()
+        return bound_port
+
+
+def stop_lan_discovery_responder() -> None:
+    """Stops the UDP LAN discovery responder cleanly on server shutdown."""
+    global _lan_discovery_socket, _lan_discovery_thread
+    _lan_discovery_stop.set()
+    with _lan_discovery_lock:
+        sock = _lan_discovery_socket
+        _lan_discovery_socket = None
+        _lan_discovery_thread = None
+    if sock is not None:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+@app.on_event("startup")
+def _on_startup_lan_discovery() -> None:
+    start_lan_discovery_responder()
+
+
+@app.on_event("shutdown")
+def _on_shutdown_lan_discovery() -> None:
+    stop_lan_discovery_responder()
 
 
 # --- ROUTE 3: Android APK Download ---
@@ -1871,32 +2019,76 @@ def download_excel_template():
     raise HTTPException(status_code=404, detail="Template file Customer_Master_GTInfiniti-Consignment_Entry.xlsx not found.")
 
 
+def _derive_ws_url(http_url: str) -> str:
+    clean = http_url.strip().rstrip("/")
+    if clean.startswith("https://"):
+        return f"wss://{clean[len('https://'):]}/ws"
+    if clean.startswith("http://"):
+        return f"ws://{clean[len('http://'):]}/ws"
+    return f"ws://{clean}/ws"
+
+
 # --- ROUTE 3B: Centralized Remote Configuration Endpoint ---
 @app.get("/api/config")
 def get_server_config():
     """
     Returns the centralized server configuration including active base URL,
     websocket URL, fallback endpoints, and minimum app requirements.
+    Respects .env PUBLIC_SERVER_URL and PORT settings without breaking server_config.json.
     """
     config_path = os.path.join(BASE_DIR, "server_config.json")
     if not os.path.exists(config_path):
         config_path = os.path.join(os.path.dirname(BASE_DIR), "server_config.json")
-    
+
+    file_cfg: dict[str, Any] | None = None
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    file_cfg = loaded
         except Exception as e:
-            logger.warning(f"Failed to read server_config.json: {e}")
+            print(f"[Warning] Failed to read server_config.json: {e}")
 
+    public_url = get_public_server_url()
+    port = get_server_port()
     local_ip = get_local_ip()
+
+    if public_url:
+        base_cfg = dict(file_cfg) if file_cfg else {}
+        base_cfg.update({
+            "server_url": public_url,
+            "websocket_url": _derive_ws_url(public_url),
+            "fallback_urls": [public_url],
+        })
+        base_cfg.setdefault("config_version", 2)
+        base_cfg.setdefault("app_min_version", "1.0.0")
+        base_cfg.setdefault("maintenance_mode", False)
+        return base_cfg
+
+    is_local_env = os.getenv("APP_ENV", "").strip().lower() in ("local", "dev", "development")
+    if port == 8000 or is_local_env:
+        local_url = f"http://{local_ip}:{port}"
+        return {
+            "server_url": local_url,
+            "websocket_url": f"ws://{local_ip}:{port}/ws",
+            "fallback_urls": [local_url],
+            "config_version": (file_cfg or {}).get("config_version", 1),
+            "app_min_version": (file_cfg or {}).get("app_min_version", "1.0.0"),
+            "maintenance_mode": (file_cfg or {}).get("maintenance_mode", False),
+        }
+
+    if file_cfg:
+        return file_cfg
+
+    local_url = f"http://{local_ip}:{port}"
     return {
-        "server_url": f"http://{local_ip}:8000",
-        "websocket_url": f"ws://{local_ip}:8000/ws",
-        "fallback_urls": [f"http://{local_ip}:8000"],
+        "server_url": local_url,
+        "websocket_url": f"ws://{local_ip}:{port}/ws",
+        "fallback_urls": [local_url],
         "config_version": 1,
         "app_min_version": "1.0.0",
-        "maintenance_mode": False
+        "maintenance_mode": False,
     }
 
 
@@ -5893,10 +6085,17 @@ async def cleanup_expired_snapshots(days: int = 30):
 if __name__ == "__main__":
     import uvicorn
     local_ip = get_local_ip()
+    host = get_server_host()
+    port = get_server_port()
+    public_url = get_public_server_url()
+    reload_enabled = os.getenv("UVICORN_RELOAD", "").strip().lower() in ("1", "true", "yes")
     print("=" * 65)
     print("  OCR to Excel Studio - Server Starting")
-    print(f"  Web Component (Browser) : http://localhost:8000")
-    print(f"  Network / Phone Access  : http://{local_ip}:8000")
-    print(f"  Download Android APK    : http://{local_ip}:8000/download-apk")
+    print(f"  Bind Host / Port        : {host}:{port}")
+    print(f"  Web Component (Browser) : http://localhost:{port}")
+    print(f"  Network / Phone Access  : http://{local_ip}:{port}")
+    if public_url:
+        print(f"  Public Server URL       : {public_url}")
+    print(f"  Download Android APK    : http://{local_ip}:{port}/download-apk")
     print("=" * 65)
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("main:app", host=host, port=port, reload=reload_enabled)

@@ -254,11 +254,11 @@ class DocumentSchema {
     ],
   );
 
-  /// Extended 49-Column Logistics GR BNF Import (BNF file Modify.xlsx)
+  /// Extended 52-Column Logistics GR BNF Import (Customer_Master_GTInfiniti-Consignment_Entry.xlsx)
   static const DocumentSchema grBnf = DocumentSchema(
     id: 'gr_bnf_49',
-    name: 'GR BNF Extended (49 Cols)',
-    description: 'Matches GT Modify FIle with 49 columns including Vehicle, Driver, Counter, and Weight info.',
+    name: 'GR BNF Extended (52 Cols)',
+    description: 'Matches GTInfiniti 52-column import template including PickupPoint, DeliveryPoint, EwayBillDate, Vehicle, Driver, Counter, and Weight info.',
     fields: [
       DocumentField(key: 'branchrefcode', displayName: 'branchrefcode', aliases: ['branchrefcode', 'branch', 'counter', 'booking counter']),
       DocumentField(key: 'grno (*)', displayName: 'grno (*)', aliases: ['grno', 'gr number', 'bilty no', 'lr no', 'consignment note', 'c note', 'consignment note no', 'LR No *', 'LR No']),
@@ -270,6 +270,8 @@ class DocumentSchema {
       DocumentField(key: 'Transit Days', displayName: 'Transit Days', aliases: ['transit days', 'transit_days']),
       DocumentField(key: 'orgrefcode', displayName: 'orgrefcode', aliases: ['orgrefcode', 'from', 'origin']),
       DocumentField(key: 'destrefcode', displayName: 'destrefcode', aliases: ['destrefcode', 'to', 'destination']),
+      DocumentField(key: 'PickupPoint', displayName: 'PickupPoint', aliases: ['pickuppoint', 'pickup point', 'pickup_point']),
+      DocumentField(key: 'DeliveryPoint', displayName: 'DeliveryPoint', aliases: ['deliverypoint', 'delivery point', 'delivery_point']),
       DocumentField(key: 'cngr *', displayName: 'cngr *', aliases: ['cngr', 'consignor', 'sender']),
       DocumentField(key: 'cnge *', displayName: 'cnge *', aliases: ['cnge', 'consignee', 'receiver']),
       DocumentField(key: 'cngrgstno *', displayName: 'cngrgstno *', aliases: ['cngrgstno', 'consignor gst']),
@@ -286,7 +288,7 @@ class DocumentSchema {
       DocumentField(key: 'Valid Up to *', displayName: 'Valid Up to *', aliases: ['valid up to', 'valid upto']),
       DocumentField(key: 'Loading Start date *', displayName: 'Loading Start date *', aliases: ['loading start date']),
       DocumentField(key: 'freight  *', displayName: 'freight  *', aliases: ['freight', 'freight  *', 'freight amount', 'basic freight', 'total freight', 'freight charge', 'total_freight', 'basic_freight']),
-      DocumentField(key: 'oamount', displayName: 'oamount', aliases: ['oamount', 'total invoice amount', 'gross invoice value', 'grand total', 'total invoice value', 'valgoods', 'value of goods', 'invoice value', 'declared value', 'other amount', 'hamali', 'other charges', 'loading charges', 'unloading charges', 'aoc', 'labour', 'st charge', 'statistical charge', 'misc']),
+      DocumentField(key: 'oamount', displayName: 'oamount', aliases: ['oamount', 'other amount', 'hamali', 'other charges', 'loading charges', 'unloading charges', 'aoc', 'labour', 'st charge', 'statistical charge', 'misc']),
       DocumentField(key: 'cgst', displayName: 'cgst', aliases: ['cgst', 'cgst amount', 'central gst']),
       DocumentField(key: 'sgst', displayName: 'sgst', aliases: ['sgst', 'sgst amount', 'state gst']),
       DocumentField(key: 'igst', displayName: 'igst', aliases: ['igst', 'igst amount', 'integrated gst']),
@@ -304,6 +306,7 @@ class DocumentSchema {
       DocumentField(key: 'staxpaidby', displayName: 'staxpaidby', aliases: ['staxpaidby', 'service tax paid by', 'stax paid by', 'gst paid by', 'tax paid by']),
       DocumentField(key: 'dlvtype', displayName: 'dlvtype', aliases: ['dlvtype', 'delivery type', 'dlv type', 'delivery mode']),
       DocumentField(key: 'ewaybillno', displayName: 'ewaybillno', aliases: ['ewaybillno', 'eway bill']),
+      DocumentField(key: 'EwayBillDate', displayName: 'EwayBillDate', aliases: ['ewaybilldate', 'ewaybilldt', 'eway_bill_date', 'e-way bill date']),
       DocumentField(key: 'Valid Upto', displayName: 'Valid Upto', aliases: ['valid upto']),
       DocumentField(key: 'invoiceno', displayName: 'invoiceno', aliases: ['invoiceno', 'invoice no']),
       DocumentField(key: 'invoiedt', displayName: 'invoiedt', aliases: ['invoiedt', 'invoice date']),

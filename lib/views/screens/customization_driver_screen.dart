@@ -52,7 +52,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
 
   String _selectedDepartment = '';
   String _selectedCounter = '';
-  String _selectedVehicleCategory = 'MARKET';
+  String _selectedVehicleCategory = 'Market';
   String _selectedProductType = 'Surface-FTL';
 
   late final TextEditingController _freightController;
@@ -65,9 +65,10 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
   List<String> _counterOptions = [];
 
   final List<String> _vehicleCategoryOptions = [
-    'MARKET',
-    'OWN',
-    'ATTACHED',
+    'Market',
+    'Dedicated',
+    'Own',
+    'Attached',
   ];
 
   final List<String> _productTypeOptions = [
@@ -87,8 +88,11 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     _customerOptions = List<String>.from(master.getCustomers());
     _counterOptions = List<String>.from(master.getCounters());
 
-    // 1. Customer: Pre-populate from OCR or leave empty (never invent fake sample data)
-    final cust = (rec['Customer Name *'] ?? rec['customer'] ?? rec['cngr *'] ?? rec['cngr'] ?? '').trim();
+    // 1. Customer: Pre-populate from OCR or leave empty (respect explicit edits & Unicharm rule)
+    final directCust = (rec['Customer Name *'] ?? rec['Customer Name'] ?? rec['Customer'] ?? rec['customer'] ?? rec['customer_name'] ?? '').trim();
+    final cust = rec.containsKey('Customer Name *')
+        ? directCust
+        : (directCust.isNotEmpty ? directCust : (rec['cngr *'] ?? rec['cngr'] ?? '').trim());
     _customerController = TextEditingController(text: cust);
 
     // 2. Department: Exact preservation from ManiFest.xlsx without fallback or fake insertion
@@ -101,20 +105,20 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     }
 
     // 3. Counter: Exact preservation from BookingCounterMast.xlsx without fallback or fake insertion
-    final counter = rec['Counter'] ?? rec['Counter name'] ?? rec['counter'] ?? rec['branchrefcode'] ?? '';
+    final counter = rec['Counter'] ?? rec['Counter name'] ?? rec['counter'] ?? '';
     if (counter.isNotEmpty && _counterOptions.contains(counter)) {
       _selectedCounter = counter;
     } else {
       _selectedCounter = '';
     }
 
-    // 4. Vehicle Category: Default to extracted or MARKET
-    final vehCat = (rec['Vehicle Category'] ?? rec['Vehicle Type *'] ?? '').trim().toUpperCase();
-    if (_vehicleCategoryOptions.contains(vehCat)) {
-      _selectedVehicleCategory = vehCat;
-    } else {
-      _selectedVehicleCategory = 'MARKET';
-    }
+    // 4. Vehicle Category: Separate from Vehicle Type *, default to Market (matching Web)
+    final rawVehCat = (rec['Vehicle Category'] ?? rec['VehicleCategory'] ?? rec['Vehicle Category *'] ?? '').trim();
+    final matchedVehCat = _vehicleCategoryOptions.firstWhere(
+      (opt) => opt.toLowerCase() == rawVehCat.toLowerCase(),
+      orElse: () => 'Market',
+    );
+    _selectedVehicleCategory = matchedVehCat;
 
     // 5. Freight: Mandatory manual entry. Keep empty by default; do not display 0 or automatic values.
     final rawFrt = (rec['freight  *'] ?? rec['freight'] ?? '').trim();
@@ -129,50 +133,12 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
       _selectedProductType = 'Surface-FTL';
     }
 
-    // 5. Driver Details: Pre-populate from OCR or auto-fetch from Master Data
+    // 7. Driver Details: Populated only from OCR extraction / manual entry (driver_master auto-fill disabled matching Web)
     String dName = (rec['Driver Name *'] ?? rec['driver_name'] ?? rec['owner_or_driver_name'] ?? '').trim();
     String dMob = (rec['Mobile no   *'] ?? rec['mobile_no'] ?? rec['driver_mobile'] ?? rec['mobile'] ?? '').trim();
     String dLic = (rec['Liscense No *'] ?? rec['license_no'] ?? rec['driving_licence_number'] ?? '').trim();
     String dVal = (rec['Valid Up to *'] ?? rec['Valid Up to'] ?? rec['valid_up_to'] ?? rec['dl_valid_till'] ?? '').trim();
     if (dMob == '9999999999' || dMob == '0000000000') dMob = '';
-
-    final vehNo = (rec['Vehicle No *'] ?? rec['vehno'] ?? '').trim();
-    if (vehNo.isNotEmpty) {
-      DriverMasterRecord? found = master.getDriverForVehicle(vehNo);
-
-      // Check other items in queue if not in local registry
-      if (found == null) {
-        final cleanVeh = vehNo.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
-        for (final other in widget.controller.items) {
-          final otherVeh = (other.record['Vehicle No *'] ?? '').replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
-          final otherDriver = (other.record['Driver Name *'] ?? other.record['driver_name'] ?? '').trim();
-          if (cleanVeh == otherVeh && otherDriver.isNotEmpty) {
-            found = DriverMasterRecord(
-              vehicleNo: vehNo,
-              driverName: otherDriver,
-              mobileNo: (other.record['Mobile no   *'] ?? other.record['mobile_no'] ?? '').trim(),
-              licenseNo: (other.record['Liscense No *'] ?? other.record['license_no'] ?? '').trim(),
-              validUpTo: (other.record['Valid Up to *'] ?? other.record['valid_upto'] ?? '').trim(),
-              vehicleCategory: other.record['Vehicle Category'] ?? 'MARKET',
-            );
-            break;
-          }
-        }
-      }
-
-      if (found != null) {
-        if (dName.isEmpty) dName = found.driverName;
-        if (dMob.isEmpty || dMob == '9999999999') dMob = found.mobileNo;
-        if (dLic.isEmpty) dLic = found.licenseNo;
-        if (dVal.isEmpty) dVal = found.validUpTo;
-        if (_vehicleCategoryOptions.contains(found.vehicleCategory)) {
-          _selectedVehicleCategory = found.vehicleCategory;
-        }
-      } else {
-        // Asynchronously check backend in background
-        _autoFetchDriverFromBackend(vehNo);
-      }
-    }
 
     _driverNameController = TextEditingController(text: dName);
     _driverMobileController = TextEditingController(text: dMob);
@@ -191,35 +157,6 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     if (_hasValidated && mounted) {
       setState(() {});
     }
-  }
-
-  Future<void> _autoFetchDriverFromBackend(String vehNo) async {
-    try {
-      final backend = widget.controller.geminiService;
-      final found = await MasterDataService.instance.fetchDriverForVehicleAsync(
-        vehNo,
-        backend: backend,
-      );
-      if (found != null && mounted) {
-        setState(() {
-          if (_driverNameController.text.trim().isEmpty) {
-            _driverNameController.text = found.driverName;
-          }
-          if (_driverMobileController.text.trim().isEmpty || _driverMobileController.text.trim() == '9999999999') {
-            _driverMobileController.text = found.mobileNo;
-          }
-          if (_licenseNoController.text.trim().isEmpty) {
-            _licenseNoController.text = found.licenseNo;
-          }
-          if (_licenseValidController.text.trim().isEmpty) {
-            _licenseValidController.text = found.validUpTo;
-          }
-          if (_vehicleCategoryOptions.contains(found.vehicleCategory)) {
-            _selectedVehicleCategory = found.vehicleCategory;
-          }
-        });
-      }
-    } catch (_) {}
   }
 
   void _onCustomerChanged() {
@@ -402,16 +339,23 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
 
   BatchItem _collectUpdatedItem() {
     final updated = Map<String, String>.from(widget.item.record);
-    updated['Customer Name *'] = _customerController.text.trim();
-    updated['customer'] = _customerController.text.trim();
+    final custVal = _customerController.text.trim();
+    updated['Customer Name *'] = custVal;
+    updated['Customer Name'] = custVal;
+    updated['Customer'] = custVal;
+    updated['customer'] = custVal;
+    updated['customer_name'] = custVal;
     updated['Depatment Name'] = _selectedDepartment;
     updated['department'] = _selectedDepartment;
     updated['Counter'] = _selectedCounter;
     updated['Counter name'] = _selectedCounter;
     updated['counter'] = _selectedCounter;
-    updated['branchrefcode'] = _selectedCounter;
+    final resolvedBranch = MasterDataService.instance.getBranchNameForCounter(_selectedCounter);
+    updated['Branch'] = resolvedBranch;
+    updated['branchrefcode'] = resolvedBranch;
     updated['Vehicle Category'] = _selectedVehicleCategory;
-    updated['Vehicle Type *'] = _selectedVehicleCategory;
+    updated['VehicleCategory'] = _selectedVehicleCategory;
+    updated['Vehicle Category *'] = _selectedVehicleCategory;
     updated['freight  *'] = _freightController.text.trim();
     updated['freight'] = _freightController.text.trim();
     updated['product_type'] = _selectedProductType;
@@ -550,6 +494,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
     checkStep2('grno (*)', 'LR / Consignment No. *', 'Basic Details', 0);
     checkStep2('grdt *', 'LR Date *', 'Basic Details', 0);
     checkStep2('Vehicle No *', 'Vehicle No. *', 'Basic Details', 0);
+    checkStep2('Vehicle Type *', 'Vehicle Type *', 'Basic Details', 0);
     checkStep2('cngr *', 'Consignor Name *', 'Consignor / Consignee', 1);
     checkStep2('cngrgstno *', 'Consignor GSTIN *', 'Consignor / Consignee', 1);
     checkStep2('cnge *', 'Consignee Name *', 'Consignor / Consignee', 1);
@@ -586,19 +531,6 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
 
       _showMandatoryIncompleteModal(emptyMandatory);
       return;
-    }
-
-    // Cache driver info in master if vehicle is present
-    final vehNo = (updated['Vehicle No *'] ?? '').trim();
-    if (vehNo.isNotEmpty && _driverNameController.text.trim().isNotEmpty) {
-      MasterDataService.instance.registerDriver(DriverMasterRecord(
-        vehicleNo: vehNo,
-        driverName: _driverNameController.text.trim(),
-        mobileNo: _driverMobileController.text.trim(),
-        licenseNo: _licenseNoController.text.trim(),
-        validUpTo: _licenseValidController.text.trim(),
-        vehicleCategory: _selectedVehicleCategory,
-      ));
     }
 
     // Mark record as verified and clear any pending or cancelled flags
@@ -980,7 +912,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Section 3: Driver Information (Auto-fetched from Master)
+                    // Section 3: Driver Information (Manual / OCR Input)
                     _buildSectionCard(
                       title: 'Driver Information',
                       icon: Icons.person_pin_outlined,

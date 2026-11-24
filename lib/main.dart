@@ -50,18 +50,34 @@ class OcrToExcelApp extends StatefulWidget {
   State<OcrToExcelApp> createState() => _OcrToExcelAppState();
 }
 
-class _OcrToExcelAppState extends State<OcrToExcelApp> {
+class _OcrToExcelAppState extends State<OcrToExcelApp> with WidgetsBindingObserver {
   late final BatchProcessingController _controller;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = BatchProcessingController(useGeminiBackend: true);
     _controller.checkLostData();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_handleResumeDiscovery());
+    }
+  }
+
+  Future<void> _handleResumeDiscovery() async {
+    final changed = await AppConfigService.instance.refreshOnAppResume();
+    if (changed) {
+      unawaited(MasterDataService.instance.fetchMasterDataFromBackend(baseUrl: AppConfigService.instance.baseUrl));
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }

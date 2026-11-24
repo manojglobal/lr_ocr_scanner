@@ -58,8 +58,8 @@ class ExcelService {
 
   static const Set<String> dateColumnKeys = {
     'grdate', 'drivingvalidupto', 'loadingstartdate', 'validupto', 'invoiedate',
-    'stockdt', 'grdt', 'invoiedt', 'exportdate', 'date', 'biltydate', 'lrdate',
-    'bookingdate', 'deliverydate', 'dispatchdate', 'entrydate'
+    'ewaybilldate', 'ewaybilldt', 'stockdt', 'grdt', 'invoiedt', 'exportdate', 'date',
+    'biltydate', 'lrdate', 'bookingdate', 'deliverydate', 'dispatchdate', 'entrydate'
   };
 
   static bool isDateHeader(String header) {
@@ -129,8 +129,8 @@ class ExcelService {
     return DateTime.tryParse(cleanS);
   }
 
-  /// Canonical 49-column LR format matching docs/LR_Format.xlsx exactly (0 asterisks in Excel export)
-  static const List<String> lrFormat49Headers = [
+  /// Canonical 52-column LR format matching Customer_Master_GTInfiniti-Consignment_Entry.xlsx & Web (0 asterisks)
+  static const List<String> lrFormat52Headers = [
     'Branch',
     'GrNo',
     'GrDate',
@@ -141,6 +141,8 @@ class ExcelService {
     'TransitDays',
     'Origen',
     'Destination',
+    'PickupPoint',
+    'DeliveryPoint',
     'Consignor',
     'ConsignorGST',
     'Consignee',
@@ -175,12 +177,16 @@ class ExcelService {
     'staxpaidby',
     'DeliveryType',
     'EwayBillNo',
+    'EwayBillDate',
     'ValidUpto',
     'InvoiceNo',
     'InvoieDate',
     'ValueOfGoods',
     'viaborder',
   ];
+
+  /// Legacy getter kept for backward compatibility (now aliases the 52-column GTInfiniti schema).
+  static const List<String> lrFormat49Headers = lrFormat52Headers;
   /// Generates the raw bytes for the .xlsx spreadsheet from the batch items.
   List<int> generateExcelBytes({
     required List<BatchItem> items,
@@ -331,8 +337,10 @@ class ExcelService {
         final List<String> rowValues;
         if (isLogisticsGr) {
           String cleanKey(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+          final workingRec = Map<String, String>.from(item.record);
+          MasterDataService.normalizeUnicharmCustomer(workingRec, rawText: item.rawOcrText);
           final Map<String, String> normRecord = {};
-          item.record.forEach((k, v) {
+          workingRec.forEach((k, v) {
             final ck = cleanKey(k);
             // Strictly preserve exact Excel values (including spaces) for Department and Counter
             if (ck == 'depatmentname' || ck == 'departmentname' || ck == 'department' || ck == 'customerdepartment' ||
@@ -346,7 +354,11 @@ class ExcelService {
           String getValForHeader(String h) {
             switch (h) {
               case 'Branch':
-                return normRecord['branchrefcode'] ?? normRecord['branch'] ?? normRecord['counter'] ?? normRecord['countername'] ?? '';
+                final cnt = normRecord['countername'] ?? normRecord['counter'] ?? normRecord['bookingcounter'] ?? '';
+                final mappedBranch = MasterDataService.instance.getBranchNameForCounter(cnt);
+                if (mappedBranch.isNotEmpty) return mappedBranch;
+                final rawBr = normRecord['branch'] ?? normRecord['branchrefcode'] ?? '';
+                return (rawBr.isNotEmpty && rawBr != cnt) ? rawBr : '';
               case 'GrNo':
                 final raw = normRecord['grno'] ?? normRecord['lrno'] ?? normRecord['biltyno'] ?? normRecord['grno'] ?? normRecord['lr no *'] ?? '';
                 final s = raw.trim();
@@ -364,7 +376,10 @@ class ExcelService {
               case 'GrType':
                 return normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? normRecord['paymenttype'] ?? '';
               case 'Customer':
-                return normRecord['customername'] ?? normRecord['customer'] ?? normRecord['cngr'] ?? normRecord['consignor'] ?? '';
+                final directCust = normRecord['customername'] ?? normRecord['customer'] ?? '';
+                if (directCust.isNotEmpty) return directCust;
+                if (workingRec.containsKey('Customer Name *')) return '';
+                return normRecord['cngr'] ?? normRecord['consignor'] ?? '';
               case 'CustomerDepartment':
                 return normRecord['depatmentname'] ?? normRecord['departmentname'] ?? normRecord['department'] ?? normRecord['customerdepartment'] ?? '';
               case 'Countername':
@@ -399,6 +414,14 @@ class ExcelService {
                 return normRecord['orgrefcode'] ?? normRecord['from'] ?? normRecord['origin'] ?? normRecord['origen'] ?? '';
               case 'Destination':
                 return normRecord['destrefcode'] ?? normRecord['to'] ?? normRecord['destination'] ?? '';
+              case 'PickupPoint':
+                final pp = normRecord['pickuppoint'] ?? '';
+                if (pp.isNotEmpty) return pp;
+                return normRecord['orgrefcode'] ?? normRecord['from'] ?? normRecord['origin'] ?? normRecord['origen'] ?? '';
+              case 'DeliveryPoint':
+                final dp = normRecord['deliverypoint'] ?? '';
+                if (dp.isNotEmpty) return dp;
+                return normRecord['destrefcode'] ?? normRecord['to'] ?? normRecord['destination'] ?? '';
               case 'Consignor':
                 return normRecord['cngr'] ?? normRecord['consignor'] ?? normRecord['sender'] ?? '';
               case 'ConsignorGST':
@@ -423,14 +446,14 @@ class ExcelService {
               case 'Packing':
                 return normRecord['packing'] ?? normRecord['packaging'] ?? '';
               case 'PMark':
-                final rawPm = normRecord['pmark'] ?? normRecord['privatemark'] ?? normRecord['sealno'] ?? normRecord['seal'] ?? '';
-                return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
+                return '';
               case 'Goods':
-                return normRecord['goods'] ?? normRecord['commodity'] ?? normRecord['goodsdescription'] ?? '';
+                final gRaw = normRecord['goods'] ?? normRecord['commodity'] ?? normRecord['goodsdescription'] ?? '';
+                return MasterDataService.instance.matchValidGoods(gRaw) ?? '';
               case 'VehicleNo':
                 return normRecord['vehicleno'] ?? normRecord['truckno'] ?? normRecord['lorryno'] ?? '';
               case 'VehicleTypeName':
-                return normRecord['vehicletypename'] ?? normRecord['vehicletype'] ?? normRecord['trucktype'] ?? 'Market';
+                return normRecord['vehicletypename'] ?? normRecord['vehicletype'] ?? normRecord['trucktype'] ?? '';
               case 'DriverName':
                 return normRecord['drivername'] ?? normRecord['driver'] ?? '';
               case 'DriverMobileNo':
@@ -507,27 +530,16 @@ class ExcelService {
               case 'ExtraMt':
                 return normRecord['extramt'] ?? '';
               case 'CustomerRefcode':
-                final code = normRecord['custrefcode'] ?? normRecord['customerrefcode'] ?? normRecord['customercode'] ?? normRecord['custcode'] ?? normRecord['partycode'] ?? normRecord['accountcode'] ?? normRecord['partyno'];
-                if (code != null && code.isNotEmpty) return code;
-                return 'CM001';
+                return '';
               case 'staxpaidby':
-                final stax = normRecord['staxpaidby'] ?? normRecord['servicetaxpaidby'] ?? normRecord['gstpaidby'] ?? '';
-                if (stax.isNotEmpty) {
-                  final u = stax.toUpperCase();
-                  return (u.startsWith('E') || u.contains('CONSIGNEE')) ? 'E' : ((u.startsWith('T') || u.contains('TRANSPORTER')) ? 'T' : 'C');
-                }
-                final payTerm = (normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? '').toUpperCase();
-                final isToPay = payTerm == 'T' || payTerm.contains('TOPAY') || payTerm.contains('TO PAY');
-                return isToPay ? 'E' : 'C';
+                return '';
               case 'DeliveryType':
-                final dlv = normRecord['dlvtype'] ?? normRecord['deliverytype'] ?? '';
-                if (dlv.isNotEmpty) {
-                  final u = dlv.toUpperCase();
-                  return (u.startsWith('D') || u.contains('DOOR')) ? 'D' : 'G';
-                }
-                return 'G';
+                return '';
               case 'EwayBillNo':
                 return normRecord['ewaybillno'] ?? normRecord['ewaybill'] ?? '';
+              case 'EwayBillDate':
+                final ewd = normRecord['ewaybilldate'] ?? normRecord['ewaybilldt'] ?? normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? '';
+                return ewd.isNotEmpty ? formatToDdMmYyyy(ewd) : '';
               case 'ValidUpto':
                 final vu = normRecord['validupto'] ?? '';
                 return vu.isNotEmpty ? formatToDdMmYyyy(vu) : '';
@@ -546,7 +558,40 @@ class ExcelService {
           }
 
           String getVal(DocumentField f) {
-            if (f.key == 'Customer Name *') return normRecord['cngr'] ?? normRecord['consignor'] ?? '';
+            if (f.key == 'branchrefcode') {
+              final cnt = normRecord['countername'] ?? normRecord['counter'] ?? normRecord['bookingcounter'] ?? '';
+              final mappedBranch = MasterDataService.instance.getBranchNameForCounter(cnt);
+              if (mappedBranch.isNotEmpty) return mappedBranch;
+              final rawBr = normRecord['branch'] ?? normRecord['branchrefcode'] ?? '';
+              return (rawBr.isNotEmpty && rawBr != cnt) ? rawBr : '';
+            }
+            if (f.key == 'Customer Name *') {
+              final directCust = normRecord['customername'] ?? normRecord['customer'] ?? '';
+              if (directCust.isNotEmpty) return directCust;
+              if (workingRec.containsKey('Customer Name *')) return '';
+              return normRecord['cngr'] ?? normRecord['consignor'] ?? '';
+            }
+            if (f.key == 'PickupPoint') {
+              final pp = normRecord['pickuppoint'] ?? '';
+              if (pp.isNotEmpty) return pp;
+              return normRecord['orgrefcode'] ?? normRecord['from'] ?? normRecord['origin'] ?? normRecord['origen'] ?? '';
+            }
+            if (f.key == 'DeliveryPoint') {
+              final dp = normRecord['deliverypoint'] ?? '';
+              if (dp.isNotEmpty) return dp;
+              return normRecord['destrefcode'] ?? normRecord['to'] ?? normRecord['destination'] ?? '';
+            }
+            if (f.key == 'EwayBillDate' || f.key == 'ewaybilldt') {
+              final ewd = normRecord['ewaybilldate'] ?? normRecord['ewaybilldt'] ?? normRecord['grdate'] ?? normRecord['grdt'] ?? normRecord['date'] ?? '';
+              return ewd.isNotEmpty ? formatToDdMmYyyy(ewd) : '';
+            }
+            if (f.key == 'goods') {
+              final gRaw = normRecord['goods'] ?? normRecord['commodity'] ?? normRecord['goodsdescription'] ?? '';
+              return MasterDataService.instance.matchValidGoods(gRaw) ?? '';
+            }
+            if (f.key == 'Vehicle Type *') {
+              return normRecord['vehicletypename'] ?? normRecord['vehicletype'] ?? normRecord['trucktype'] ?? '';
+            }
             if (f.key == 'LR No *' || f.key == 'grno (*)' || f.key == 'grno') {
               final raw = normRecord['grno'] ?? normRecord['lrno'] ?? normRecord['biltyno'] ?? normRecord['grno (*)'] ?? normRecord['lr no *'] ?? '';
               final s = raw.trim();
@@ -560,8 +605,7 @@ class ExcelService {
               return cleaned.isNotEmpty ? cleaned : s;
             }
             if (f.key == 'pmark') {
-              final rawPm = normRecord['pmark'] ?? normRecord['privatemark'] ?? normRecord['sealno'] ?? normRecord['seal'] ?? '';
-              return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
+              return '';
             }
             if (f.key == 'BNF LR No') return normRecord['bnflrno'] ?? normRecord['bnflr'] ?? normRecord['bnfno'] ?? '';
             if (f.key == 'Loading Start date *') return formatToDdMmYyyy(normRecord['grdt'] ?? normRecord['date'] ?? '');
@@ -660,27 +704,13 @@ class ExcelService {
               return 'N';
             }
             if (f.key == 'custrefcode') {
-              final code = normRecord['custrefcode'] ?? normRecord['customerrefcode'] ?? normRecord['customercode'] ?? normRecord['custcode'] ?? normRecord['partycode'] ?? normRecord['accountcode'] ?? normRecord['partyno'];
-              if (code != null && code.isNotEmpty) return code;
-              return 'CM001';
+              return '';
             }
             if (f.key == 'staxpaidby') {
-              final stax = normRecord['staxpaidby'] ?? normRecord['servicetaxpaidby'] ?? normRecord['gstpaidby'] ?? '';
-              if (stax.isNotEmpty) {
-                final u = stax.toUpperCase();
-                return (u.startsWith('E') || u.contains('CONSIGNEE')) ? 'E' : ((u.startsWith('T') || u.contains('TRANSPORTER')) ? 'T' : 'C');
-              }
-              final payTerm = (normRecord['grtype'] ?? normRecord['grtypedontknow'] ?? '').toUpperCase();
-              final isToPay = payTerm == 'T' || payTerm.contains('TOPAY') || payTerm.contains('TO PAY');
-              return isToPay ? 'E' : 'C';
+              return '';
             }
             if (f.key == 'dlvtype') {
-              final dlv = normRecord['dlvtype'] ?? normRecord['deliverytype'] ?? '';
-              if (dlv.isNotEmpty) {
-                final u = dlv.toUpperCase();
-                return (u.startsWith('D') || u.contains('DOOR')) ? 'D' : 'G';
-              }
-              return 'G';
+              return '';
             }
             if (f.key == 'bookedpckgs') {
               return normRecord['bookedpckgs'] ?? normRecord['packages'] ?? normRecord['pkgs'] ?? normRecord['quantity'] ?? '';
@@ -1400,8 +1430,43 @@ class ExcelService {
     // Helper to resolve field value from data map
     String cleanKey(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
-    String getVal(Map<String, String> data, DocumentField f) {
-      if (f.key == 'Customer Name *') return data['cngr'] ?? data['consignor'] ?? '';
+    String getVal(Map<String, String> rawData, DocumentField f) {
+      final data = Map<String, String>.from(rawData);
+      MasterDataService.normalizeUnicharmCustomer(data);
+      if (f.key == 'branchrefcode') {
+        final cnt = (data['Countername'] ?? data['Counter name'] ?? data['Counter'] ?? data['counter'] ?? '').trim();
+        final mappedBranch = MasterDataService.instance.getBranchNameForCounter(cnt);
+        if (mappedBranch.isNotEmpty) return mappedBranch;
+        final rawBr = (data['Branch'] ?? data['branchrefcode'] ?? '').trim();
+        return (rawBr.isNotEmpty && rawBr != cnt) ? rawBr : '';
+      }
+      if (f.key == 'Customer Name *') {
+        final directCust = (data['Customer Name *'] ?? data['Customer Name'] ?? data['Customer'] ?? data['customer_name'] ?? data['customer'] ?? '').trim();
+        if (directCust.isNotEmpty) return directCust;
+        if (data.containsKey('Customer Name *')) return '';
+        return (data['cngr *'] ?? data['cngr'] ?? data['consignor'] ?? '').trim();
+      }
+      if (f.key == 'PickupPoint') {
+        final pp = (data['PickupPoint'] ?? data['pickup_point'] ?? data['pickuppoint'] ?? '').trim();
+        if (pp.isNotEmpty) return pp;
+        return (data['Origen'] ?? data['orgrefcode'] ?? data['from'] ?? data['origin'] ?? '').trim();
+      }
+      if (f.key == 'DeliveryPoint') {
+        final dp = (data['DeliveryPoint'] ?? data['delivery_point'] ?? data['deliverypoint'] ?? '').trim();
+        if (dp.isNotEmpty) return dp;
+        return (data['Destination'] ?? data['destrefcode'] ?? data['to'] ?? data['destination'] ?? '').trim();
+      }
+      if (f.key == 'EwayBillDate' || f.key == 'ewaybilldt') {
+        final ewd = (data['EwayBillDate'] ?? data['ewaybilldate'] ?? data['ewaybilldt'] ?? data['grdt *'] ?? data['grdt'] ?? data['date'] ?? '').trim();
+        return ewd.isNotEmpty ? formatToDdMmYyyy(ewd) : '';
+      }
+      if (f.key == 'goods') {
+        final gRaw = (data['goods'] ?? data['Goods'] ?? data['commodity'] ?? '').trim();
+        return MasterDataService.instance.matchValidGoods(gRaw) ?? '';
+      }
+      if (f.key == 'Vehicle Type *') {
+        return (data['VehicleTypeName'] ?? data['Vehicle Type *'] ?? data['Vehicle Type'] ?? data['vehtype'] ?? '').trim();
+      }
       if (f.key == 'LR No *' || f.key == 'grno (*)' || f.key == 'grno') {
         final raw = data['grno'] ?? data['lrno'] ?? data['LR No *'] ?? data['biltyno'] ?? data['grno (*)'] ?? '';
         final s = raw.trim();
@@ -1415,8 +1480,7 @@ class ExcelService {
         return cleaned.isNotEmpty ? cleaned : s;
       }
       if (f.key == 'pmark') {
-        final rawPm = data['pmark'] ?? data['Private Mark'] ?? data['seal_no'] ?? data['seal'] ?? '';
-        return rawPm.replaceAll(RegExp(r'^(?:seal[v0o\.\s]*|no[\.\s]*|[=:#\-\s])+', caseSensitive: false), '').replaceAll(RegExp(r'^[^a-zA-Z0-9]+'), '').replaceAll(RegExp(r'[^a-zA-Z0-9]+$'), '');
+        return '';
       }
       if (f.key == 'BNF LR No') return data['BNF LR No'] ?? data['bnflrno'] ?? data['bnflr'] ?? data['bnfno'] ?? '';
       if (f.key == 'Loading Start date *') return data['grdt'] ?? data['date'] ?? '';
@@ -1456,12 +1520,11 @@ class ExcelService {
         return fr.isNotEmpty ? fr : '0';
       }
       if (f.key == 'oamount') {
-        final oamt = data['oamount'] ?? data['total invoice amount'] ?? data['gross invoice value'] ?? data['grand total'] ?? data['total invoice value'] ?? data['total amount'];
-        if (oamt != null && oamt.isNotEmpty && oamt != '0') return oamt;
-        final valG = data['valgoods'] ?? data['value of goods'] ?? data['invoice value'] ?? data['declared value'];
-        if (valG != null && valG.isNotEmpty) return valG;
-        if (oamt != null && oamt.isNotEmpty) return oamt;
-        return data['other amount'] ?? data['other charges'] ?? data['hamali'] ?? data['loading charges'] ?? data['aoc'] ?? data['labour'] ?? '0';
+        final oamt = data['oamount'] ?? data['other amount'] ?? data['other charges'] ?? data['hamali'] ?? data['loading charges'] ?? data['unloading charges'] ?? data['aoc'] ?? data['labour'] ?? data['misc'];
+        if (oamt != null && oamt.trim().isNotEmpty && oamt.trim() != '0' && oamt.trim() != '0.00' && oamt.trim().toLowerCase() != 'null' && oamt.trim().toLowerCase() != 'none') {
+          return oamt.trim();
+        }
+        return '0.00';
       }
       if (f.key == 'cgst') {
         final ig = data['igst'] ?? data['igst amount'] ?? data['integrated gst'] ?? '';
@@ -1513,27 +1576,13 @@ class ExcelService {
         return 'N';
       }
       if (f.key == 'custrefcode') {
-        final code = data['custrefcode'] ?? data['customer ref code'] ?? data['customer code'] ?? data['party code'] ?? data['account code'] ?? data['party no'];
-        if (code != null && code.isNotEmpty) return code;
-        return 'CM001';
+        return '';
       }
       if (f.key == 'staxpaidby') {
-        final stax = data['staxpaidby'] ?? data['stax paid by'] ?? data['gst paid by'] ?? '';
-        if (stax.isNotEmpty) {
-          final u = stax.toUpperCase();
-          return (u.startsWith('E') || u.contains('CONSIGNEE')) ? 'E' : ((u.startsWith('T') || u.contains('TRANSPORTER')) ? 'T' : 'C');
-        }
-        final payTerm = (data['grtype(Don’t know)'] ?? data['grtype'] ?? '').toUpperCase();
-        final isToPay = payTerm == 'T' || payTerm.contains('TOPAY') || payTerm.contains('TO PAY');
-        return isToPay ? 'E' : 'C';
+        return '';
       }
       if (f.key == 'dlvtype') {
-        final dlv = data['dlvtype'] ?? data['delivery type'] ?? data['dlv type'] ?? '';
-        if (dlv.isNotEmpty) {
-          final u = dlv.toUpperCase();
-          return (u.startsWith('D') || u.contains('DOOR')) ? 'D' : 'G';
-        }
-        return 'G';
+        return '';
       }
       if (f.key == 'bookedpckgs') {
         return data['bookedpckgs'] ?? data['packages'] ?? data['pkgs'] ?? data['quantity'] ?? '';

@@ -17,7 +17,7 @@ void main() {
       expect(cleaned.length, equals(15));
     });
 
-    test('ExcelService ensures exported GST columns contain zero spaces in 49-column export', () {
+    test('ExcelService ensures exported GST columns contain zero spaces in 52-column export', () {
       final item = BatchItem(
         id: 'test-gst-1',
         createdAt: DateTime.now(),
@@ -43,9 +43,9 @@ void main() {
       final excel = Excel.decodeBytes(excelBytes);
       final sheet = excel.tables[excel.tables.keys.first]!;
 
-      // Column 11 is ConsignorGST, Column 13 is ConsigneeGST
-      final cngrGstCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: 1)).value?.toString() ?? '';
-      final cngeGstCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 13, rowIndex: 1)).value?.toString() ?? '';
+      // Column 13 is ConsignorGST, Column 15 is ConsigneeGST (in 52-col schema)
+      final cngrGstCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 13, rowIndex: 1)).value?.toString() ?? '';
+      final cngeGstCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 15, rowIndex: 1)).value?.toString() ?? '';
 
       expect(cngrGstCell, equals('07AAAAA0000A1Z5'));
       expect(cngrGstCell.contains(' '), isFalse);
@@ -79,7 +79,7 @@ void main() {
       );
     });
 
-    test('Excel export succeeds when Freight is manually entered and maps to Column 25', () {
+    test('Excel export succeeds when Freight is manually entered and maps to Column 27', () {
       final item = BatchItem(
         id: 'test-freight-1',
         createdAt: DateTime.now(),
@@ -102,9 +102,9 @@ void main() {
       final excel = Excel.decodeBytes(excelBytes);
       final sheet = excel.tables[excel.tables.keys.first]!;
 
-      // Col 25 is Freight header at row 0, data at row 1
-      final freightHeader = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 25, rowIndex: 0)).value?.toString();
-      final freightVal = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 25, rowIndex: 1)).value?.toString();
+      // Col 27 is Freight header at row 0, data at row 1 (in 52-col schema)
+      final freightHeader = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 27, rowIndex: 0)).value?.toString();
+      final freightVal = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 27, rowIndex: 1)).value?.toString();
 
       expect(freightHeader, equals('Freight'));
       expect(freightVal, equals('2450.75'));
@@ -133,8 +133,8 @@ void main() {
       final excelNew = Excel.decodeBytes(excelBytesNew);
       final sheetNew = excelNew.tables[excelNew.tables.keys.first]!;
 
-      final prodHeader = sheetNew.cell(CellIndex.indexByColumnRow(columnIndex: 14, rowIndex: 0)).value?.toString();
-      final prodValNew = sheetNew.cell(CellIndex.indexByColumnRow(columnIndex: 14, rowIndex: 1)).value?.toString();
+      final prodHeader = sheetNew.cell(CellIndex.indexByColumnRow(columnIndex: 16, rowIndex: 0)).value?.toString();
+      final prodValNew = sheetNew.cell(CellIndex.indexByColumnRow(columnIndex: 16, rowIndex: 1)).value?.toString();
 
       expect(prodHeader, equals('ProductName'));
       expect(prodValNew, equals('Surface-FTL'));
@@ -163,8 +163,8 @@ void main() {
       final excelExisting = Excel.decodeBytes(excelBytesExisting);
       final sheetExisting = excelExisting.tables[excelExisting.tables.keys.first]!;
 
-      // Col 14 maps Product Type
-      final prodValExisting = sheetExisting.cell(CellIndex.indexByColumnRow(columnIndex: 14, rowIndex: 1)).value?.toString();
+      // Col 16 maps Product Type
+      final prodValExisting = sheetExisting.cell(CellIndex.indexByColumnRow(columnIndex: 16, rowIndex: 1)).value?.toString();
       expect(prodValExisting, equals('Global-TT'));
 
       // The record's actual Product Code is intact

@@ -14,13 +14,19 @@ if __name__ == "__main__":
     os.chdir(BACKEND_DIR)
 
     import uvicorn
-    from main import get_local_ip
+    from main import get_local_ip, get_public_server_url, get_server_host, get_server_port
 
     local_ip = get_local_ip()
+    host = get_server_host()
+    port = get_server_port()
+    public_url = get_public_server_url()
     print("=" * 65)
-    print("  OCR to Excel Studio - Starting Server")
-    print(f"  Web Component (Browser) : http://localhost:8000")
-    print(f"  Network / Phone Access  : http://{local_ip}:8000")
-    print(f"  Download Android APK    : http://{local_ip}:8000/download-apk")
+    print("  OCR to Excel Studio - Server Starting")
+    print(f"  Bind Host / Port        : {host}:{port}")
+    print(f"  Web Component (Browser) : http://localhost:{port}")
+    print(f"  Network / Phone Access  : http://{local_ip}:{port}")
+    if public_url:
+        print(f"  Public Server URL       : {public_url}")
+    print(f"  Download Android APK    : http://{local_ip}:{port}/download-apk")
     print("=" * 65)
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host=host, port=port, reload=True)

@@ -58,7 +58,7 @@ void main() {
     );
   }
 
-  testWidgets('renders Customization & Driver details with automatic master fetch and removed Fetch button', (tester) async {
+  testWidgets('renders Customization & Driver details with driver auto-fill disabled matching Web', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
@@ -75,9 +75,9 @@ void main() {
     // Verify 'Fetch from Master' button is removed
     expect(find.text('Fetch from Master'), findsNothing);
 
-    // Verify driver info automatically pre-populated on load from KA23B5235 master record
-    expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == 'DHANAJI S PATIL'), findsOneWidget);
-    expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == '9739443101'), findsOneWidget);
+    // Web Parity: Driver details must NOT auto-fill from driver_master for KA23B5235
+    expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == 'DHANAJI S PATIL'), findsNothing);
+    expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == '9739443101'), findsNothing);
   });
 }
 

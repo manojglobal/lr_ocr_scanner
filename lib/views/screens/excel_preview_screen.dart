@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/document_schema.dart';
 import '../../models/batch_item.dart';
+import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/step_indicator_bar.dart';
 
-/// Screen 8: Excel Preview (BNF GR Import Format - 49 Columns).
+/// Screen 8: Excel Preview (BNF GR Import Format - 52 Columns).
 class ExcelPreviewScreen extends StatefulWidget {
   final BatchProcessingController controller;
   final int initialTab;
@@ -237,16 +238,51 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     super.dispose();
   }
 
-  // The exact 49 columns of BNF GR Import format
+  // The exact 52 columns of GTInfiniti BNF GR Import format
   final List<String> _headers = DocumentSchema.grBnf.fields.map((f) => f.key).toList();
 
   String _getCellValue(BatchItem item, String header) {
+    final rec = Map<String, String>.from(item.record);
+    MasterDataService.normalizeUnicharmCustomer(rec, rawText: item.rawOcrText);
+
     String res = '';
-    if (item.record.containsKey(header)) {
-      res = item.record[header] ?? '';
+    if (header == 'branchrefcode') {
+      final cnt = (rec['Counter'] ?? rec['Counter name'] ?? rec['counter'] ?? rec['Countername'] ?? '').trim();
+      final mapped = MasterDataService.instance.getBranchNameForCounter(cnt);
+      if (mapped.isNotEmpty) {
+        res = mapped;
+      } else {
+        final rawBr = (rec['Branch'] ?? rec['branchrefcode'] ?? '').trim();
+        res = (rawBr.isNotEmpty && rawBr != cnt) ? rawBr : '';
+      }
+    } else if (header == 'custrefcode' || header == 'staxpaidby' || header == 'dlvtype' || header == 'pmark') {
+      res = '';
+    } else if (header == 'Customer Name *') {
+      final directCust = (rec['Customer Name *'] ?? rec['Customer Name'] ?? rec['Customer'] ?? rec['customer_name'] ?? rec['customer'] ?? '').trim();
+      if (directCust.isNotEmpty) {
+        res = directCust;
+      } else if (!rec.containsKey('Customer Name *')) {
+        res = (rec['cngr *'] ?? rec['cngr'] ?? '').trim();
+      }
+    } else if (header == 'PickupPoint') {
+      final pp = (rec['PickupPoint'] ?? rec['pickup_point'] ?? rec['pickuppoint'] ?? '').trim();
+      res = pp.isNotEmpty ? pp : (rec['orgrefcode'] ?? rec['Origen'] ?? rec['from'] ?? rec['origin'] ?? '').trim();
+    } else if (header == 'DeliveryPoint') {
+      final dp = (rec['DeliveryPoint'] ?? rec['delivery_point'] ?? rec['deliverypoint'] ?? '').trim();
+      res = dp.isNotEmpty ? dp : (rec['destrefcode'] ?? rec['Destination'] ?? rec['to'] ?? rec['destination'] ?? '').trim();
+    } else if (header == 'EwayBillDate' || header == 'ewaybilldt') {
+      final ewd = (rec['EwayBillDate'] ?? rec['ewaybilldate'] ?? rec['ewaybilldt'] ?? rec['grdt *'] ?? rec['grdt'] ?? rec['date'] ?? '').trim();
+      res = ewd;
+    } else if (header == 'goods') {
+      final gRaw = (rec['goods'] ?? rec['Goods'] ?? '').trim();
+      res = MasterDataService.instance.matchValidGoods(gRaw) ?? '';
+    } else if (header == 'Vehicle Type *') {
+      res = (rec['VehicleTypeName'] ?? rec['Vehicle Type *'] ?? rec['Vehicle Type'] ?? rec['vehtype'] ?? '').trim();
+    } else if (rec.containsKey(header)) {
+      res = rec[header] ?? '';
     } else {
       final cleanHeader = header.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-      for (final entry in item.record.entries) {
+      for (final entry in rec.entries) {
         final cleanKey = entry.key.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
         if (cleanKey == cleanHeader) {
           res = entry.value;
@@ -254,7 +290,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
         }
       }
       if (res.isEmpty && header == 'BNF LR No') {
-        res = item.record['BNF LR No'] ?? item.record['bnf lr no'] ?? item.record['bnflrno'] ?? item.record['bnflr'] ?? '';
+        res = rec['BNF LR No'] ?? rec['bnf lr no'] ?? rec['bnflrno'] ?? rec['bnflr'] ?? '';
       }
     }
 
@@ -262,7 +298,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
     const dateHeaders = {
       'grdt *', 'grdt', 'stockdt', 'stockdt ', 'Loading Start date *',
       'invoiedt', 'Valid Upto', 'Valid Up to *', 'GrDate', 'LoadingStartDate',
-      'InvoieDate', 'DrivingValidUpto'
+      'InvoieDate', 'DrivingValidUpto', 'EwayBillDate', 'ewaybilldt', 'ewaybilldate'
     };
     if (dateHeaders.contains(header) && res.isNotEmpty) {
       return ExcelService.formatToDdMmYyyy(res);
@@ -540,7 +576,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                     },
                     icon: const Icon(Icons.table_view_outlined, size: 15),
                     label: const Text(
-                      'Sheet 1: BNF Import Format (49 Columns)',
+                      'Sheet 1: BNF Import Format (52 Columns)',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                     style: FilledButton.styleFrom(
@@ -695,7 +731,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                         children: [
                           const Flexible(
                             child: Text(
-                              'Sheet 1: BNF Import Format (49 Columns)',
+                              'Sheet 1: BNF Import Format (52 Columns)',
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -708,7 +744,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Text(
-                              '49 Columns',
+                              '52 Columns',
                               style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
                             ),
                           ),
@@ -727,7 +763,7 @@ class _ExcelPreviewScreenState extends State<ExcelPreviewScreen> {
           ),
 
           const SizedBox(height: 12),
-          // Scrollable 49-Column Data Table (Full BNF Format)
+          // Scrollable 52-Column Data Table (Full BNF Format)
           SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/app_config_service.dart';
 import '../services/user_cloud_service.dart';
 import '../services/pdf_assembler_service.dart';
 
@@ -4075,7 +4076,7 @@ void _checkDuplicateNotice() {
 
                   decoration: const InputDecoration(
 
-                    hintText: 'http://122.179.131.232:9015',
+                    hintText: 'Auto-detected Wi-Fi or Production URL',
 
                     border: OutlineInputBorder(),
 
@@ -4087,7 +4088,13 @@ void _checkDuplicateNotice() {
 
                 const SizedBox(height: 12),
 
-                Row(
+                Wrap(
+
+                  spacing: 8,
+
+                  runSpacing: 8,
+
+                  crossAxisAlignment: WrapCrossAlignment.center,
 
                   children: [
 
@@ -4109,7 +4116,7 @@ void _checkDuplicateNotice() {
 
                               });
 
-                              await widget.controller.geminiService.updateServerUrl(textController.text);
+                              await widget.controller.geminiService.updateServerUrl(textController.text, manual: true);
 
                               final ok = await widget.controller.geminiService.checkHealth();
 
@@ -4135,25 +4142,68 @@ void _checkDuplicateNotice() {
 
                     ),
 
-                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+
+                      onPressed: isPinging
+
+                          ? null
+
+                          : () async {
+
+                              setDialogState(() {
+
+                                isPinging = true;
+
+                                pingResult = 'Scanning Wi-Fi...';
+
+                                isOnline = null;
+
+                              });
+
+                              await AppConfigService.instance.clearManualOverride();
+
+                              final found = await AppConfigService.instance.discoverLocalBackend(
+                                forceScan: true,
+                                applyResult: true,
+                              );
+
+                              if (found != null) {
+                                textController.text = found;
+                              }
+
+                              setDialogState(() {
+
+                                isPinging = false;
+
+                                isOnline = found != null;
+
+                                pingResult = found != null
+                                    ? 'Found: $found'
+                                    : 'No local backend found on Wi-Fi.';
+
+                              });
+
+                            },
+
+                      icon: const Icon(Icons.radar_rounded, size: 16),
+
+                      label: const Text('Auto-Detect Wi-Fi'),
+
+                    ),
 
                     if (pingResult != null)
 
-                      Expanded(
+                      Text(
 
-                        child: Text(
+                        pingResult!,
 
-                          pingResult!,
+                        style: TextStyle(
 
-                          style: TextStyle(
+                          fontSize: 11,
 
-                            fontSize: 11,
+                          color: isOnline == true ? Colors.green.shade700 : Colors.red,
 
-                            color: isOnline == true ? Colors.green.shade700 : Colors.red,
-
-                            fontWeight: FontWeight.bold,
-
-                          ),
+                          fontWeight: FontWeight.bold,
 
                         ),
 
@@ -4177,7 +4227,7 @@ void _checkDuplicateNotice() {
 
               onPressed: () async {
 
-                await widget.controller.geminiService.updateServerUrl(textController.text);
+                await widget.controller.geminiService.updateServerUrl(textController.text, manual: true);
 
                 if (ctx.mounted) Navigator.of(ctx).pop();
 

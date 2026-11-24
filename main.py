@@ -26,10 +26,16 @@ get_local_ip = backend_main.get_local_ip
 if __name__ == "__main__":
     import uvicorn
     local_ip = get_local_ip()
+    host = backend_main.get_server_host()
+    port = backend_main.get_server_port()
+    public_url = backend_main.get_public_server_url()
     print("=" * 65)
     print("  OCR to Excel Studio - Server Starting (Root Shim)")
-    print(f"  Web Component (Browser) : http://localhost:8000")
-    print(f"  Network / Phone Access  : http://{local_ip}:8000")
-    print(f"  Download Android APK    : http://{local_ip}:8000/download-apk")
+    print(f"  Bind Host / Port        : {host}:{port}")
+    print(f"  Web Component (Browser) : http://localhost:{port}")
+    print(f"  Network / Phone Access  : http://{local_ip}:{port}")
+    if public_url:
+        print(f"  Public Server URL       : {public_url}")
+    print(f"  Download Android APK    : http://{local_ip}:{port}/download-apk")
     print("=" * 65)
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host=host, port=port, reload=True)

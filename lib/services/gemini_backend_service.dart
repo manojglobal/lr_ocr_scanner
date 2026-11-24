@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'dart:io';
@@ -25,11 +26,55 @@ class GeminiBackendService {
   }
 
   /// Updates and persists the backend server URL.
-  Future<void> updateServerUrl(String newUrl) async {
-    await AppConfigService.instance.updateBaseUrl(newUrl);
+  Future<void> updateServerUrl(String newUrl, {bool manual = false}) async {
+    await AppConfigService.instance.updateBaseUrl(newUrl, manual: manual);
   }
 
+  bool _isNetworkError(Object error) {
+    return error is SocketException ||
+        error is TimeoutException ||
+        error is HandshakeException ||
+        error is http.ClientException;
+  }
 
+  Future<http.Response> _getWithRediscover(
+    String path, {
+    Map<String, String>? headers,
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    Future<http.Response> send() => http
+        .get(Uri.parse('$_currentServerUrl$path'), headers: headers)
+        .timeout(timeout);
+    try {
+      return await send();
+    } catch (e) {
+      if (_isNetworkError(e) &&
+          await AppConfigService.instance.handleConnectionErrorAndRediscover()) {
+        return await send();
+      }
+      rethrow;
+    }
+  }
+
+  Future<http.Response> _postWithRediscover(
+    String path, {
+    Map<String, String>? headers,
+    Object? body,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    Future<http.Response> send() => http
+        .post(Uri.parse('$_currentServerUrl$path'), headers: headers, body: body)
+        .timeout(timeout);
+    try {
+      return await send();
+    } catch (e) {
+      if (_isNetworkError(e) &&
+          await AppConfigService.instance.handleConnectionErrorAndRediscover()) {
+        return await send();
+      }
+      rethrow;
+    }
+  }
 
   /// Tests connectivity to the main.py FastAPI backend.
 
@@ -37,9 +82,7 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/');
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      final response = await _getWithRediscover('/', timeout: const Duration(seconds: 4));
 
       return response.statusCode == 200;
 
@@ -72,6 +115,36 @@ class GeminiBackendService {
     String? userName,
 
     String? sessionToken,
+
+  }) =>
+      _extractHandwritingAttempt(
+        imagePath,
+        originalFileName: originalFileName,
+        customPrompt: customPrompt,
+        userId: userId,
+        userMobile: userMobile,
+        userName: userName,
+        sessionToken: sessionToken,
+        allowRediscover: true,
+      );
+
+  Future<ExtractionResult> _extractHandwritingAttempt(
+
+    String imagePath, {
+
+    String? originalFileName,
+
+    String? customPrompt,
+
+    String? userId,
+
+    String? userMobile,
+
+    String? userName,
+
+    String? sessionToken,
+
+    required bool allowRediscover,
 
   }) async {
 
@@ -166,6 +239,8 @@ class GeminiBackendService {
       request.fields['user_name'] = userName;
 
     }
+
+    request.fields['client_source'] = 'web';
 
     if (sessionToken != null && sessionToken.isNotEmpty) {
 
@@ -327,6 +402,22 @@ class GeminiBackendService {
 
     } catch (e) {
 
+      if (allowRediscover && _isNetworkError(e)) {
+        final recovered = await AppConfigService.instance.handleConnectionErrorAndRediscover();
+        if (recovered) {
+          return _extractHandwritingAttempt(
+            imagePath,
+            originalFileName: originalFileName,
+            customPrompt: customPrompt,
+            userId: userId,
+            userMobile: userMobile,
+            userName: userName,
+            sessionToken: sessionToken,
+            allowRediscover: false,
+          );
+        }
+      }
+
       return ExtractionResult.failure(
 
         errorMessage: 'Connection to "$_currentServerUrl" failed: $e\n'
@@ -347,6 +438,25 @@ class GeminiBackendService {
     String? userMobile,
     String? userName,
     String? sessionToken,
+  }) =>
+      _extractMultipleFilesAttempt(
+        filePaths,
+        customPrompt: customPrompt,
+        userId: userId,
+        userMobile: userMobile,
+        userName: userName,
+        sessionToken: sessionToken,
+        allowRediscover: true,
+      );
+
+  Future<ExtractionResult> _extractMultipleFilesAttempt(
+    List<String> filePaths, {
+    String? customPrompt,
+    String? userId,
+    String? userMobile,
+    String? userName,
+    String? sessionToken,
+    required bool allowRediscover,
   }) async {
     if (filePaths.isEmpty) {
       return ExtractionResult.failure(errorMessage: 'No files provided for extraction.');
@@ -390,6 +500,7 @@ class GeminiBackendService {
     if (userName != null && userName.isNotEmpty) {
       request.fields['user_name'] = userName;
     }
+    request.fields['client_source'] = 'web';
     if (sessionToken != null && sessionToken.isNotEmpty) {
       request.headers['Authorization'] = 'Bearer $sessionToken';
     }
@@ -473,6 +584,20 @@ class GeminiBackendService {
         tableRows: tableInfo.rows,
       );
     } catch (e) {
+      if (allowRediscover && _isNetworkError(e)) {
+        final recovered = await AppConfigService.instance.handleConnectionErrorAndRediscover();
+        if (recovered) {
+          return _extractMultipleFilesAttempt(
+            filePaths,
+            customPrompt: customPrompt,
+            userId: userId,
+            userMobile: userMobile,
+            userName: userName,
+            sessionToken: sessionToken,
+            allowRediscover: false,
+          );
+        }
+      }
       return ExtractionResult.failure(
         errorMessage: 'Network or extraction failure: $e',
       );
@@ -622,17 +747,17 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/api/auth/login');
+      final response = await _postWithRediscover(
 
-      final response = await http.post(
-
-        uri,
+        '/api/auth/login',
 
         headers: {'Content-Type': 'application/json'},
 
         body: jsonEncode({'mobile': targetMobile, 'name': name}),
 
-      ).timeout(const Duration(seconds: 15));
+        timeout: const Duration(seconds: 15),
+
+      );
 
 
 
@@ -680,17 +805,17 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/api/auth/send-otp');
+      final response = await _postWithRediscover(
 
-      final response = await http.post(
-
-        uri,
+        '/api/auth/send-otp',
 
         headers: {'Content-Type': 'application/json'},
 
         body: jsonEncode({'mobile': mobile, 'name': name}),
 
-      ).timeout(const Duration(seconds: 15));
+        timeout: const Duration(seconds: 15),
+
+      );
 
 
 
@@ -732,17 +857,17 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/api/auth/verify-otp');
+      final response = await _postWithRediscover(
 
-      final response = await http.post(
-
-        uri,
+        '/api/auth/verify-otp',
 
         headers: {'Content-Type': 'application/json'},
 
         body: jsonEncode({'mobile': mobile, 'otp': otp, 'name': name}),
 
-      ).timeout(const Duration(seconds: 15));
+        timeout: const Duration(seconds: 15),
+
+      );
 
 
 
@@ -840,11 +965,9 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/api/auth/me');
+      final response = await _getWithRediscover(
 
-      final response = await http.get(
-
-        uri,
+        '/api/auth/me',
 
         headers: {
 
@@ -854,7 +977,9 @@ class GeminiBackendService {
 
         },
 
-      ).timeout(const Duration(seconds: 8));
+        timeout: const Duration(seconds: 8),
+
+      );
 
 
 
@@ -926,11 +1051,9 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/api/export-excel-meta');
+      final response = await _postWithRediscover(
 
-      final response = await http.post(
-
-        uri,
+        '/api/export-excel-meta',
 
         headers: {'Content-Type': 'application/json'},
 
@@ -946,9 +1069,13 @@ class GeminiBackendService {
 
           'session_token': sessionToken,
 
+          'client_source': 'web',
+
         }),
 
-      ).timeout(const Duration(seconds: 45));
+        timeout: const Duration(seconds: 45),
+
+      );
 
 
 
@@ -1091,7 +1218,7 @@ class GeminiBackendService {
 
     try {
 
-      final uri = Uri.parse('$_currentServerUrl/api/export-audit/download-all?mobile=${Uri.encodeComponent(mobile.trim())}');
+      final uri = Uri.parse('$_currentServerUrl/api/export-audit/download-all?mobile=${Uri.encodeComponent(mobile.trim())}&client_source=web');
 
       final headers = <String, String>{};
 
@@ -1117,6 +1244,49 @@ class GeminiBackendService {
 
     }
 
+  }
+
+  /// Fetches parties & GST mapping from GET /api/master/parties.
+  Future<Map<String, dynamic>?> fetchMasterParties() async {
+    try {
+      final response = await _getWithRediscover('/api/master/parties');
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) return decoded;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Fetches vehicle types master list from GET /api/master/vehicle-types.
+  Future<List<String>> fetchMasterVehicleTypes() async {
+    try {
+      final response = await _getWithRediscover('/api/master/vehicle-types');
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['success'] == true) {
+          final raw = decoded['types'] ?? decoded['vehicle_types'] ?? decoded['vehicleTypes'];
+          if (raw is List) {
+            return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+          }
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Fetches active goods list from GET /api/master/goods-master.
+  Future<List<String>> fetchMasterGoods() async {
+    try {
+      final response = await _getWithRediscover('/api/master/goods-master');
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['success'] == true && decoded['goods'] is List) {
+          return (decoded['goods'] as List).map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+        }
+      }
+    } catch (_) {}
+    return [];
   }
 
 }

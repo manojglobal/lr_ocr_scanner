@@ -121,7 +121,7 @@ void main() {
       expect(find.text('Image(s) Uploaded'), findsOneWidget);
       expect(find.text('Reading LR Document'), findsOneWidget);
       expect(find.text('Extracting Consignment Details'), findsOneWidget);
-      expect(find.text('Mapping with BNF 49-Column Format'), findsOneWidget);
+      expect(find.text('Mapping with BNF 52-Column Format'), findsOneWidget);
       expect(find.text('Validating Data & Preserving Blanks'), findsOneWidget);
 
       // Steps 1 & 2 are completed (should have check_circle_rounded)

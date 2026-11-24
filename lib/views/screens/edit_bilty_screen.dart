@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/batch_item.dart';
+import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
 import '../widgets/step_indicator_bar.dart';
@@ -43,6 +44,11 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
   final Map<String, FocusNode> _fieldFocusNodes = {};
   final Map<String, GlobalKey> _fieldGlobalKeys = {};
   late BatchItem _currentItem;
+  String _prevMirrorGrdt = '';
+  String _prevMirrorOrg = '';
+  String _prevMirrorDest = '';
+  final Map<String, String> _prevPartyNames = {};
+  final Map<String, String> _prevAutoFilledGst = {};
 
   // 4 Tabs matching Web Version
   final List<String> _basicKeys = [
@@ -51,6 +57,8 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     'Customer Name *',
     'orgrefcode',
     'destrefcode',
+    'PickupPoint',
+    'DeliveryPoint',
     'Vehicle No *',
     'Vehicle Type *',
     'ewaybilldt',
@@ -109,6 +117,9 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         const prodTypeOptions = {'Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'};
         if (prodTypeOptions.contains(val)) val = '';
       }
+      if (key == 'goods' && val.isNotEmpty && MasterDataService.instance.goodsList.isNotEmpty) {
+        val = MasterDataService.instance.matchValidGoods(val) ?? '';
+      }
       _fieldControllers[key] = TextEditingController(text: val);
       _fieldFocusNodes[key] = FocusNode();
       _fieldGlobalKeys[key] = GlobalKey();
@@ -116,6 +127,19 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         if (mounted) setState(() {});
       });
     }
+
+    _prevMirrorGrdt = (_fieldControllers['grdt *']?.text ?? '').trim();
+    _prevMirrorOrg = (_fieldControllers['orgrefcode']?.text ?? '').trim();
+    _prevMirrorDest = (_fieldControllers['destrefcode']?.text ?? '').trim();
+
+    _bindMirrorDefault('grdt *', 'ewaybilldt', () => _prevMirrorGrdt, (v) => _prevMirrorGrdt = v);
+    _bindMirrorDefault('orgrefcode', 'PickupPoint', () => _prevMirrorOrg, (v) => _prevMirrorOrg = v);
+    _bindMirrorDefault('destrefcode', 'DeliveryPoint', () => _prevMirrorDest, (v) => _prevMirrorDest = v);
+
+    _prevPartyNames['cngr *'] = (_fieldControllers['cngr *']?.text ?? '').trim();
+    _prevPartyNames['cnge *'] = (_fieldControllers['cnge *']?.text ?? '').trim();
+    _fieldControllers['cngr *']?.addListener(() => _autoFillGstFromParty('cngr *', 'cngrgstno *'));
+    _fieldControllers['cnge *']?.addListener(() => _autoFillGstFromParty('cnge *', 'cngegstno *'));
 
     if (widget.initialTargetField != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -164,6 +188,98 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     });
   }
 
+  void _bindMirrorDefault(
+    String sourceKey,
+    String targetKey,
+    String Function() getPrev,
+    void Function(String) setPrev,
+  ) {
+    final srcCtrl = _fieldControllers[sourceKey];
+    final tgtCtrl = _fieldControllers[targetKey];
+    if (srcCtrl == null || tgtCtrl == null) return;
+    srcCtrl.addListener(() {
+      final newSrc = srcCtrl.text.trim();
+      final curTgt = tgtCtrl.text.trim();
+      final prev = getPrev();
+      if (curTgt.isEmpty || curTgt == prev) {
+        if (tgtCtrl.text != srcCtrl.text) {
+          tgtCtrl.text = srcCtrl.text;
+        }
+      }
+      setPrev(newSrc);
+    });
+  }
+
+  void _autoFillGstFromParty(String nameKey, String gstKey) {
+    final nameCtrl = _fieldControllers[nameKey];
+    final gstCtrl = _fieldControllers[gstKey];
+    if (nameCtrl == null || gstCtrl == null) return;
+
+    final newName = nameCtrl.text.trim();
+    final prevName = _prevPartyNames[nameKey] ?? '';
+    if (newName == prevName) return; // Ignore selection/focus-only notifications
+    _prevPartyNames[nameKey] = newName;
+
+    final curGst = gstCtrl.text.trim();
+    final prevAuto = _prevAutoFilledGst[gstKey] ?? '';
+    if (curGst.isNotEmpty && curGst != prevAuto) return;
+
+    if (newName.isEmpty) {
+      if (prevAuto.isNotEmpty && curGst == prevAuto) {
+        gstCtrl.text = '';
+        _prevAutoFilledGst[gstKey] = '';
+      }
+      return;
+    }
+
+    final matched = MasterDataService.instance.matchPartyGst(newName);
+    if (matched != null && matched.isNotEmpty) {
+      if (gstCtrl.text != matched) {
+        gstCtrl.text = matched;
+      }
+      _prevAutoFilledGst[gstKey] = matched;
+    }
+  }
+
+  Future<void> _openMasterPickerForKey(String key, TextEditingController ctrl) async {
+    final master = MasterDataService.instance;
+    List<String> options;
+    String title;
+    if (key == 'Customer Name *') {
+      options = master.getCustomers();
+      title = 'Select Customer (ManiFest)';
+    } else if (key == 'Vehicle Type *') {
+      options = master.vehicleTypes;
+      title = 'Select Vehicle Type (${master.vehicleTypes.length})';
+    } else if (key == 'goods') {
+      options = master.goodsList;
+      title = 'Select Description of Goods (${master.goodsList.length})';
+    } else {
+      return;
+    }
+
+    if (!mounted) return;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => _SearchableMasterPickerSheet(
+        fieldKey: key,
+        title: title,
+        options: options,
+      ),
+    );
+    if (selected != null && mounted) {
+      ctrl.text = selected;
+      if (key == 'Customer Name *') {
+        _autoFillGstFromParty('Customer Name *', 'cngrgstno *');
+      }
+    }
+  }
+
   void _openImageViewer() {
     final list = widget.controller.items.isNotEmpty ? widget.controller.items : [_currentItem];
     final idx = list.indexWhere((i) => i.id == _currentItem.id);
@@ -204,14 +320,37 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
         updated['grdt'] = textVal;
         updated['stockdt'] = textVal;
       } else if (entry.key == 'Customer Name *') {
+        updated['Customer Name *'] = textVal;
+        updated['Customer Name'] = textVal;
+        updated['Customer'] = textVal;
+        updated['customer'] = textVal;
         updated['customer_name'] = textVal;
+      } else if (entry.key == 'PickupPoint') {
+        updated['PickupPoint'] = textVal;
+        updated['pickup_point'] = textVal;
+        updated['pickuppoint'] = textVal;
+      } else if (entry.key == 'DeliveryPoint') {
+        updated['DeliveryPoint'] = textVal;
+        updated['delivery_point'] = textVal;
+        updated['deliverypoint'] = textVal;
+      } else if (entry.key == 'ewaybilldt') {
+        updated['ewaybilldt'] = textVal;
+        updated['EwayBillDate'] = textVal;
+        updated['ewaybilldate'] = textVal;
       } else if (entry.key == 'pmark') {
+        updated['pmark'] = textVal;
         updated['Private Mark'] = textVal;
         updated['seal_no'] = textVal;
+      } else if (entry.key == 'goods') {
+        updated['goods'] = textVal;
+        updated['Goods'] = textVal;
       } else if (entry.key == 'Vehicle No *') {
         updated['vehno'] = textVal;
       } else if (entry.key == 'Vehicle Type *') {
-        updated['Vehicle Category'] = textVal;
+        updated['Vehicle Type *'] = textVal;
+        updated['VehicleTypeName'] = textVal;
+        updated['Vehicle Type'] = textVal;
+        updated['vehtype'] = textVal;
       } else if (entry.key == 'Driver Name *') {
         updated['driver_name'] = textVal;
       } else if (entry.key == 'Mobile no   *') {
@@ -878,7 +1017,8 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                 final isMandatory = BatchItem.mandatoryKeys.contains(key) || key.contains('*');
                 final isKeyDoc = key == 'grno (*)' || key == 'LR No *';
                 final isDate = key == 'Valid Upto' || key == 'invoiedt' || key == 'grdt *' || key == 'Loading Start date *' || key == 'Valid Up to *' || key == 'ewaybilldt';
-                final isSearch = key == 'Customer Name *' || key == 'orgrefcode' || key == 'destrefcode';
+                final isMasterPicker = key == 'Customer Name *' || key == 'Vehicle Type *' || key == 'goods';
+                final isSearch = key == 'orgrefcode' || key == 'destrefcode';
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 14),
@@ -958,11 +1098,18 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                                         final yyyy = picked.year.toString();
                                         ctrl.text = '$dd-$mm-$yyyy';
                                       }
-                                    },
-                                  )
-                                : isSearch
-                                    ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
-                                    : null,
+                                      },
+                                    )
+                                  : (isMasterPicker
+                                      ? IconButton(
+                                          key: Key('picker_btn_$key'),
+                                          icon: const Icon(Icons.arrow_drop_down_circle_outlined, size: 18, color: Color(0xFF0284C7)),
+                                          tooltip: 'Select from master list',
+                                          onPressed: () => _openMasterPickerForKey(key, ctrl),
+                                        )
+                                      : (isSearch
+                                          ? const Icon(Icons.search, size: 18, color: Colors.blueGrey)
+                                          : null)),
                             filled: true,
                             fillColor: isRed ? const Color(0xFFFEF2F2) : const Color(0xFFF8FAFC),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1010,17 +1157,21 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'grdt *':
         return 'DD-MM-YYYY';
       case 'ewaybilldt':
-        return 'DD-MM-YYYY';
+        return 'DD-MM-YYYY (Default: LR Date)';
       case 'Customer Name *':
         return 'Enter Customer Name (e.g. Patanjali)';
       case 'orgrefcode':
         return 'Origin Station / Branch code';
       case 'destrefcode':
         return 'Destination Station / Branch code';
+      case 'PickupPoint':
+        return 'Same as Origin Station';
+      case 'DeliveryPoint':
+        return 'Same as Destination Station';
       case 'Vehicle No *':
         return 'Enter Vehicle No. (e.g. MH12AB1234)';
       case 'Vehicle Type *':
-        return 'Vehicle Category / Type (e.g. MARKET)';
+        return 'Search Vehicle Type (e.g. 32 FT Open, TAURUS)...';
       case 'cngr *':
         return 'Enter Consignor (Sender) Name';
       case 'cnge *':
@@ -1032,7 +1183,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'Depatment Name':
         return 'Enter Department';
       case 'goods':
-        return 'Description of goods';
+        return 'Search Description of Goods (e.g. AUTO PARTS)...';
       case 'bookedpckgs':
         return 'Number of packages (e.g. 10)';
       case 'packing':
@@ -1042,7 +1193,7 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'bookedcweight':
         return 'Charged weight in KG (e.g. 150.00)';
       case 'pmark':
-        return 'Seal No or Private Mark';
+        return 'Leave blank';
       case 'valgoods':
         return 'Declared goods value (₹)';
       case 'productcode':
@@ -1085,6 +1236,8 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
       case 'Customer Name *': return 'Customer Name *';
       case 'orgrefcode': return 'Origin Station';
       case 'destrefcode': return 'Destination Station';
+      case 'PickupPoint': return 'Pickup Point';
+      case 'DeliveryPoint': return 'Delivery Point';
       case 'Vehicle No *': return 'Vehicle No. *';
       case 'Vehicle Type *': return 'Vehicle Type *';
       case 'cngr *': return 'Consignor Name *';
@@ -1176,4 +1329,123 @@ Future<bool> showCancelVerificationConfirmation(BuildContext context) async {
     },
   );
   return result ?? false;
+}
+
+class _SearchableMasterPickerSheet extends StatefulWidget {
+  final String fieldKey;
+  final String title;
+  final List<String> options;
+
+  const _SearchableMasterPickerSheet({
+    required this.fieldKey,
+    required this.title,
+    required this.options,
+  });
+
+  @override
+  State<_SearchableMasterPickerSheet> createState() => _SearchableMasterPickerSheetState();
+}
+
+class _SearchableMasterPickerSheetState extends State<_SearchableMasterPickerSheet> {
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? widget.options.take(100).toList()
+        : widget.options.where((o) => o.toLowerCase().contains(q)).take(100).toList();
+    final mq = MediaQuery.of(context);
+    final sheetHeight = (mq.size.height * 0.65).clamp(260.0, 560.0);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: SizedBox(
+        height: sheetHeight,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                key: Key('picker_search_${widget.fieldKey}'),
+                controller: _searchCtrl,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Search...',
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          widget.options.isEmpty
+                              ? 'No master options loaded yet. Connect to server or type directly.'
+                              : 'No matching entries found',
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      itemBuilder: (_, idx) {
+                        final itemText = filtered[idx];
+                        return ListTile(
+                          dense: true,
+                          title: Text(itemText, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A))),
+                          onTap: () => Navigator.of(context).pop(itemText),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

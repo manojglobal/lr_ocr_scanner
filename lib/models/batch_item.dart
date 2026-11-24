@@ -193,7 +193,11 @@ class BatchItem {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'Customer Name *') {
-      for (final a in ['Customer Name *', 'Customer Name', 'customer_name', 'cngr *', 'cngr', 'consignor']) {
+      for (final a in ['Customer Name *', 'Customer Name', 'Customer', 'customer_name', 'customer']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+      if (record.containsKey('Customer Name *')) return '';
+      for (final a in ['cngr *', 'cngr', 'consignor']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'cngr *' || key == 'cngr') {
@@ -216,8 +220,27 @@ class BatchItem {
       for (final a in ['Vehicle No *', 'Vehicle No', 'vehno', 'vehicle_no', 'Tempo/Truck No', 'tempo/truck no', 'tempo truck no', 'truck no']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
-    } else if (key == 'Vehicle Type *' || key == 'Vehicle Category') {
-      for (final a in ['Vehicle Type *', 'Vehicle Type', 'Vehicle Category', 'vehicle_category']) {
+    } else if (key == 'Vehicle Type *' || key == 'VehicleTypeName' || key == 'Vehicle Type') {
+      for (final a in ['Vehicle Type *', 'VehicleTypeName', 'Vehicle Type', 'vehtype', 'vehicle_type']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'Vehicle Category' || key == 'VehicleCategory') {
+      for (final a in ['Vehicle Category', 'VehicleCategory', 'Vehicle Category *', 'vehicle_category']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'PickupPoint' || key == 'pickuppoint' || key == 'pickup_point') {
+      if (record.containsKey('PickupPoint')) return record['PickupPoint']!.trim();
+      for (final a in ['pickup_point', 'pickuppoint', 'Origen', 'orgrefcode', 'from', 'origin']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'DeliveryPoint' || key == 'deliverypoint' || key == 'delivery_point') {
+      if (record.containsKey('DeliveryPoint')) return record['DeliveryPoint']!.trim();
+      for (final a in ['delivery_point', 'deliverypoint', 'Destination', 'destrefcode', 'to', 'destination']) {
+        if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
+      }
+    } else if (key == 'ewaybilldt' || key == 'EwayBillDate' || key == 'ewaybilldate') {
+      if (record.containsKey('ewaybilldt')) return record['ewaybilldt']!.trim();
+      for (final a in ['EwayBillDate', 'ewaybilldate', 'eway_bill_date', 'E-Way Bill Date', 'grdt *', 'grdt', 'stockdt']) {
         if (record.containsKey(a) && record[a] != null && record[a]!.trim().isNotEmpty) return record[a]!.trim();
       }
     } else if (key == 'Driver Name *' || key == 'Driver Name') {
