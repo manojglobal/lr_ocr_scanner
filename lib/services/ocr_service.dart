@@ -26,6 +26,29 @@ class OcrService {
   TextRecognizer get _devanagari =>
       _devanagariRecognizer ??= TextRecognizer(script: TextRecognitionScript.devanagiri);
 
+  /// Performs a fast single-pass ML Kit recognition on the raw image (no resize/sharpening),
+  /// returning null safely when native ML Kit is unavailable (e.g., headless unit tests).
+  Future<RecognizedText?> recognizeTextQuick(String imagePath) async {
+    if (_isDisposed) return null;
+    final file = File(imagePath);
+    if (!await file.exists()) return null;
+
+    _activeInferences++;
+    try {
+      final inputImage = InputImage.fromFilePath(imagePath);
+      return await _latinRecognizer.processImage(inputImage);
+    } catch (_) {
+      return null;
+    } finally {
+      _activeInferences--;
+      if (_activeInferences <= 0 &&
+          _inferenceCompleter != null &&
+          !_inferenceCompleter!.isCompleted) {
+        _inferenceCompleter!.complete();
+      }
+    }
+  }
+
   /// Performs high-accuracy text recognition on the given image file path.
   /// Backward-compatible with existing callers.
   Future<RecognizedText> recognizeTextFromPath(String imagePath) async {

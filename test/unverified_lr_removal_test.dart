@@ -47,12 +47,12 @@ void main() {
       expect(controller.items.length, 1);
       expect(controller.items.first.isVerified, isFalse);
 
-      // Confirm duplicate check would block re-upload while it is currently active
+      // Confirm duplicate check allows re-upload while LR is unverified (Web parity)
       final isDupBefore = controller.isDuplicate(
         lrNo: '33118',
         fileName: 'lr_33118.pdf',
       );
-      expect(isDupBefore, isTrue);
+      expect(isDupBefore, isFalse, reason: 'Unverified LRs must NOT trigger duplicate error on re-upload');
 
       // 2. Remove unverified item (simulate user removing from Previously Uploaded LRs)
       final removed = controller.removeUnverifiedItem(

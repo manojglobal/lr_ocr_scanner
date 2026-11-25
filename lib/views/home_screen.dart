@@ -14,7 +14,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_config_service.dart';
 import '../services/user_cloud_service.dart';
-import '../services/pdf_assembler_service.dart';
 
 import '../models/batch_item.dart';
 
@@ -32,7 +31,7 @@ import 'screens/camera_scan_screen.dart';
 
 import 'widgets/billing_image_viewer.dart';
 
-import 'widgets/ocr_processing_dialog.dart';
+import 'widgets/lr_notice_dialogs.dart';
 
 import 'widgets/permission_dialog.dart';
 
@@ -75,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isShowingInvalidLrDialog = false;
   bool _isShowingMultipleLrsDialog = false;
   bool _isShowingPageLimitDialog = false;
+  bool _isOcrDialogOpen = false;
 
 
 
@@ -271,82 +271,69 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _checkPageLimitNotice() {
-    if (!mounted) return;
+  bool get _canHandleNotices =>
+      mounted && !_isOcrDialogOpen && (ModalRoute.of(context)?.isCurrent ?? true);
+
+  void _drainPendingNotices() {
+    if (!_canHandleNotices) return;
+    _checkPageLimitNotice(immediate: true);
+    _checkMultipleLrsNotice(immediate: true);
+    _checkInvalidLrNotice(immediate: true);
+    _checkDuplicateNotice(immediate: true);
+    _checkConnectionErrorNotice(immediate: true);
+    _checkFallbackNotice(immediate: true);
+  }
+
+  void _checkPageLimitNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
     if (widget.controller.pageLimitNoticePending) {
       final msg = widget.controller.pageLimitNoticeMessage ??
-          'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
+          defaultPageLimitMessage;
       widget.controller.acknowledgePageLimitNotice();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showPageLimitExceededDialog(msg);
-      });
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) return;
+          _showPageLimitExceededDialog(msg);
+        },
+      );
     }
   }
 
 
 
-  void _checkMultipleLrsNotice() {
-    if (!mounted) return;
+  void _checkMultipleLrsNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
     if (widget.controller.multipleLrsNoticePending) {
       final msg = widget.controller.multipleLrsNoticeMessage ??
-          'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
+          defaultMultipleLrsMessage;
       widget.controller.acknowledgeMultipleLrsNotice();
 
       if (_isShowingMultipleLrsDialog) return;
       _isShowingMultipleLrsDialog = true;
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          _isShowingMultipleLrsDialog = false;
-          return;
-        }
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Multiple LRs Not Allowed',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            content: Text(
-              msg,
-              style: const TextStyle(fontSize: 13, height: 1.4),
-            ),
-            actions: [
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0284C7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () {
-                  _isShowingMultipleLrsDialog = false;
-                  Navigator.of(ctx).pop();
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        ).then((_) {
-          _isShowingMultipleLrsDialog = false;
-        }).catchError((_) {
-          _isShowingMultipleLrsDialog = false;
-        });
-      });
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) {
+            _isShowingMultipleLrsDialog = false;
+            return;
+          }
+          showMultipleLrsNotAllowedDialog(
+            context,
+            message: msg,
+            onDismissed: () {
+              _isShowingMultipleLrsDialog = false;
+            },
+          );
+        },
+      );
     }
   }
 
-  void _checkInvalidLrNotice() {
-    if (!mounted) return;
+  void _checkInvalidLrNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
     if (widget.controller.invalidLrNoticePending) {
       final msg = widget.controller.invalidLrNoticeMessage ??
           'Invalid LR – Please upload a valid LR document.';
@@ -379,101 +366,107 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_isShowingInvalidLrDialog) return;
       _isShowingInvalidLrDialog = true;
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          _isShowingInvalidLrDialog = false;
-          return;
-        }
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Invalid LR',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) {
+            _isShowingInvalidLrDialog = false;
+            return;
+          }
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Invalid LR',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
                   ),
+                ],
+              ),
+              content: Text(
+                msg,
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
+                  onPressed: () {
+                    _isShowingInvalidLrDialog = false;
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('OK'),
                 ),
               ],
             ),
-            content: Text(
-              msg,
-              style: const TextStyle(fontSize: 13, height: 1.4),
-            ),
-            actions: [
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0284C7),
-                ),
-                onPressed: () {
-                  _isShowingInvalidLrDialog = false;
-                  Navigator.of(ctx).pop();
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        ).then((_) {
-          _isShowingInvalidLrDialog = false;
-        }).catchError((_) {
-          _isShowingInvalidLrDialog = false;
-        });
-      });
+          ).then((_) {
+            _isShowingInvalidLrDialog = false;
+          }).catchError((_) {
+            _isShowingInvalidLrDialog = false;
+          });
+        },
+      );
     }
   }
 
-  void _checkConnectionErrorNotice() {
-    if (!mounted) return;
+  void _checkConnectionErrorNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
     if (widget.controller.connectionErrorNoticePending) {
       final msg = widget.controller.connectionErrorNoticeMessage ??
           'Unable to reach the validation server. Please check your network connection and try again.';
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        widget.controller.acknowledgeConnectionErrorNotice();
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.wifi_off_rounded, color: Colors.redAccent, size: 28),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Connection Notice',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) return;
+          widget.controller.acknowledgeConnectionErrorNotice();
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.wifi_off_rounded, color: Colors.redAccent, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Connection Notice',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
                   ),
+                ],
+              ),
+              content: Text(
+                msg,
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('OK'),
                 ),
               ],
             ),
-            content: Text(
-              msg,
-              style: const TextStyle(fontSize: 13, height: 1.4),
-            ),
-            actions: [
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0284C7),
-                ),
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      });
+          );
+        },
+      );
     }
   }
 
-void _checkDuplicateNotice() {
+void _checkDuplicateNotice({bool immediate = false}) {
 
-    if (!mounted) return;
+    if (!_canHandleNotices) return;
 
     if (widget.controller.duplicateNoticePending) {
 
@@ -483,7 +476,9 @@ void _checkDuplicateNotice() {
 
 
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
 
         if (!mounted) return;
 
@@ -551,7 +546,8 @@ void _checkDuplicateNotice() {
 
         );
 
-      });
+        },
+      );
 
     }
 
@@ -559,9 +555,9 @@ void _checkDuplicateNotice() {
 
 
 
-  void _checkFallbackNotice() {
+  void _checkFallbackNotice({bool immediate = false}) {
 
-    if (!mounted) return;
+    if (!_canHandleNotices) return;
 
     if (widget.controller.fallbackNotificationPending) {
 
@@ -573,7 +569,9 @@ void _checkDuplicateNotice() {
 
 
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
 
         if (!mounted) return;
 
@@ -665,7 +663,8 @@ void _checkDuplicateNotice() {
 
         );
 
-      });
+        },
+      );
 
     }
 
@@ -1102,31 +1101,37 @@ void _checkDuplicateNotice() {
 
     }
 
-    if (itmData['isVerified'] == true) return true;
-
-    final status = (itmData['status'] ?? '').toString().toLowerCase();
-
-    if (status == 'completed' || status == 'verified') {
-
-      final rawRec = itmData['record'] ?? itmData['data'];
-
-      if (rawRec is Map && rawRec.isNotEmpty) {
-
-        final recMap = rawRec.map((k, v) => MapEntry(k.toString(), v.toString()));
-
-        return BatchItem(id: 'temp', imagePath: '', fileName: '', createdAt: DateTime.now(), record: recMap).isVerified;
-
-      }
-
-      return true;
-
+    if (itmData['is_cancelled'] == true ||
+        itmData['is_cancelled']?.toString().toLowerCase() == 'true' ||
+        itmData['pending_verification'] == true ||
+        itmData['pending_verification']?.toString().toLowerCase() == 'true' ||
+        itmData['isVerified'] == false ||
+        itmData['is_verified'] == false ||
+        itmData['is_verified']?.toString().toLowerCase() == 'false') {
+      return false;
     }
 
     final rawRec = itmData['record'] ?? itmData['data'];
+    if (rawRec is Map) {
+      if (rawRec['pending_verification']?.toString() == 'true' ||
+          rawRec['is_cancelled']?.toString() == 'true' ||
+          rawRec['is_verified']?.toString() == 'false') {
+        return false;
+      }
+      if (rawRec['is_verified']?.toString() == 'true') {
+        return true;
+      }
+    }
+
+    if (itmData['isVerified'] == true ||
+        itmData['is_verified'] == true ||
+        itmData['is_verified']?.toString().toLowerCase() == 'true') {
+      return true;
+    }
 
     if (rawRec is Map && rawRec.isNotEmpty) {
 
-      final recMap = rawRec.map((k, v) => MapEntry(k.toString(), v.toString()));
+      final recMap = rawRec.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
 
       return BatchItem(id: 'temp', imagePath: '', fileName: '', createdAt: DateTime.now(), record: recMap).isVerified;
 
@@ -1317,15 +1322,19 @@ void _checkDuplicateNotice() {
 
         // 3. Status & verified state preservation
 
-        final existingVerified = existing['isVerified'] == true || existing['status'] == 'completed';
+        final existingVerified = _isItemVerified(existing);
 
-        final itemVerified = item['isVerified'] == true || item['status'] == 'completed';
+        final itemVerified = _isItemVerified(item);
 
         if (itemVerified || existingVerified) {
 
           existing['status'] = 'completed';
 
           existing['isVerified'] = true;
+
+        } else {
+
+          existing['isVerified'] = false;
 
         }
 
@@ -1468,6 +1477,16 @@ void _checkDuplicateNotice() {
 
         if (dismissed != null && (dismissed.contains(id) || dismissed.contains(fn))) continue;
 
+        final srvRecord = srv['data'] ?? srv['record'] ?? {};
+        final srvVerified = _isItemVerified({
+          'isVerified': srv['isVerified'] == true ||
+              srv['is_verified'] == true ||
+              srv['is_verified']?.toString().toLowerCase() == 'true',
+          'is_cancelled': srv['is_cancelled'],
+          'pending_verification': srv['pending_verification'],
+          'record': srvRecord,
+        });
+
         list.add({
 
           'id': id,
@@ -1486,7 +1505,7 @@ void _checkDuplicateNotice() {
 
           'status': srv['status'] ?? 'completed',
 
-          'isVerified': srv['isVerified'] == true || (srv['status'] ?? '') == 'completed',
+          'isVerified': srvVerified,
 
           'preview_url': srv['preview_url'] ?? '',
 
@@ -1494,7 +1513,7 @@ void _checkDuplicateNotice() {
 
           'preview_image': srv['preview_image'] ?? '',
 
-          'record': srv['data'] ?? srv['record'] ?? {},
+          'record': srvRecord,
 
         });
 
@@ -1790,7 +1809,7 @@ void _checkDuplicateNotice() {
 
         final isPerm = await widget.controller.permissionService.isCameraPermanentlyDenied();
 
-        if (isPerm) {
+        if (isPerm && mounted) {
 
           PermissionRationaleDialog.show(
 
@@ -1842,389 +1861,207 @@ void _checkDuplicateNotice() {
 
     final countBefore = widget.controller.items.length;
 
-    BuildContext? processingDialogContext;
-    if (mounted) {
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dCtx) {
-          processingDialogContext = dCtx;
-          return OcrProcessingDialog(controller: widget.controller);
-        },
-      );
-    }
-
     bool success = false;
+    _isOcrDialogOpen = true;
     try {
-      success = await widget.controller.addMultiPageScan(capturedPages);
-    } finally {
-      if (processingDialogContext != null && Navigator.of(processingDialogContext!).canPop()) {
-        Navigator.of(processingDialogContext!).pop();
-      } else if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+      if (mounted) {
+        success = await runWithOcrProcessingRoute<bool>(
+          context: context,
+          controller: widget.controller,
+          action: () => widget.controller.addMultiPageScan(capturedPages),
+        );
       }
+    } finally {
+      _isOcrDialogOpen = false;
+      _drainPendingNotices();
     }
-
-
 
     if (!success) {
-
       return;
-
     }
 
-
-
-    // If new item was added, automatically open Screen 4: Edit View
-
-    if (mounted && widget.controller.items.length > countBefore) {
-
+    // If new item was added (including replacing a stale unverified LR), automatically open Step 2: Edit View
+    final newItem = widget.controller.lastUploadedItem ??
+        (widget.controller.items.length > countBefore
+            ? widget.controller.items.last
+            : null);
+    if (mounted && newItem != null) {
       final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-
       if (!isCurrent) return;
-
-      final newItem = widget.controller.items.last;
-
       Navigator.of(context).push(
-
         MaterialPageRoute(
-
           builder: (_) => EditBiltyScreen(
-
             item: newItem,
-
             controller: widget.controller,
-
           ),
-
         ),
-
       );
-
     }
 
   }
 
 
 
-  Future<String?> _resolvePlatformFilePath(PlatformFile file) async {
+  Future<void> _processSelectedUploadPaths(List<String> paths) async {
+    if (paths.isEmpty || !mounted) return;
+    if (!await validatePathFileSizes(context, paths)) return;
 
-    if (file.path != null && file.path!.isNotEmpty && File(file.path!).existsSync()) {
-
-      return file.path!;
-
+    final totalPages = await countTotalUploadPages(paths);
+    if (totalPages > 15) {
+      if (mounted) _showPageLimitExceededDialog();
+      return;
     }
 
+    final countBefore = widget.controller.items.length;
+    bool added = false;
+    _isOcrDialogOpen = true;
     try {
-
-      if (file.xFile.path.isNotEmpty && File(file.xFile.path).existsSync()) {
-
-        return file.xFile.path;
-
+      if (mounted) {
+        added = await runWithOcrProcessingRoute<bool>(
+          context: context,
+          controller: widget.controller,
+          action: () => paths.length > 1
+              ? widget.controller.addMultipleFilesAsSingleLr(paths)
+              : widget.controller.addFilePaths([paths.first]),
+        );
       }
+    } finally {
+      _isOcrDialogOpen = false;
+      _drainPendingNotices();
+    }
 
-    } catch (_) {}
+    if (!added) return;
 
-    try {
-
-      final bytes = await file.readAsBytes();
-
-      if (bytes.isNotEmpty) {
-
-        final tmp = await getTemporaryDirectory();
-
-        final safeName = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
-
-        final localFile = File('${tmp.path}/$safeName');
-
-        await localFile.writeAsBytes(bytes, flush: true);
-
-        return localFile.path;
-
-      }
-
-    } catch (_) {}
-
-    try {
-
-      final bytes = await file.xFile.readAsBytes();
-
-      if (bytes.isNotEmpty) {
-
-        final tmp = await getTemporaryDirectory();
-
-        final safeName = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
-
-        final localFile = File('${tmp.path}/$safeName');
-
-        await localFile.writeAsBytes(bytes, flush: true);
-
-        return localFile.path;
-
-      }
-
-    } catch (_) {}
-
-    return null;
-
+    final newItem = widget.controller.lastUploadedItem ??
+        (widget.controller.items.length > countBefore
+            ? widget.controller.items.last
+            : null);
+    if (mounted && newItem != null) {
+      final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+      if (!isCurrent) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EditBiltyScreen(
+            item: newItem,
+            controller: widget.controller,
+          ),
+        ),
+      );
+    }
   }
 
+  Future<void> _pickGalleryMultiImages() async {
+    final paths = await widget.controller.imageService.pickMultipleImages();
+    if (paths.isEmpty) {
+      if (mounted) {
+        final isPerm = await widget.controller.permissionService.isGalleryPermanentlyDenied();
+        if (isPerm && mounted) {
+          PermissionRationaleDialog.show(
+            context: context,
+            title: 'Photo Access Needed',
+            message: 'Gallery access is required to select image for text recognition.',
+            icon: Icons.photo_library,
+            isPermanent: true,
+            onRetryOrSettings: () => widget.controller.permissionService.openSettings(),
+          );
+        }
+      }
+      return;
+    }
+    await _processSelectedUploadPaths(paths);
+  }
 
-
-  Future<void> _handleGalleryUpload() async {
+  Future<void> _pickDocumentFiles() async {
     try {
       final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
       );
-
       if (files.isEmpty) return;
 
-      // Validate maximum size of 10 MB per file
-      for (final f in files) {
-        final fSize = f.lengthSync() ?? (await f.length()) ?? (f.path != null && File(f.path!).existsSync() ? File(f.path!).lengthSync() : 0);
-        if (fSize > 10 * 1024 * 1024) {
-          if (mounted) {
-            final sizeMb = (fSize / (1024 * 1024)).toStringAsFixed(2);
-            showDialog<void>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: const Row(
-                  children: [
-                    Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
-                    SizedBox(width: 8),
-                    Text('File Size Validation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ],
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Limit Exceeded', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
-                    const SizedBox(height: 8),
-                    Text('File "' + f.name + '" (' + sizeMb + ' MB) exceeds the allowed limit of 10 MB per file. Please choose files smaller than 10 MB.', style: const TextStyle(fontSize: 13)),
-                  ],
-                ),
-                actions: [
-                  FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A)),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            );
-          }
-          return;
-        }
+      if (mounted && !await validatePickedFileSizes(context, files)) {
+        return;
       }
 
-      // Resolve platform file paths
       final paths = <String>[];
-      for (final f in files) {
-        final p = await _resolvePlatformFilePath(f);
+      for (int i = 0; i < files.length; i++) {
+        final p = await resolvePickedPlatformFilePath(files[i], index: i);
         if (p != null && p.isNotEmpty) {
           paths.add(p);
         }
       }
-
-      if (paths.isEmpty) return;
-
-      // Validate total page count across all selected files (max 15 pages)
-      int totalPages = 0;
-      for (final p in paths) {
-        final ext = p.split('.').last.toLowerCase();
-        if (ext == 'pdf') {
-          final count = await PdfAssemblerService.countPdfPages(p);
-          totalPages += (count > 0 ? count : 1);
-        } else {
-          totalPages += 1; // Each image counts as 1 page
-        }
-      }
-
-      if (totalPages > 15) {
-        if (mounted) {
-          _showPageLimitExceededDialog();
-        }
-        return;
-      }
-
-      final countBefore = widget.controller.items.length;
-      BuildContext? processingDialogContext;
-      if (mounted) {
-        showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dCtx) {
-            processingDialogContext = dCtx;
-            return OcrProcessingDialog(controller: widget.controller);
-          },
-        );
-      }
-
-      try {
-        if (paths.length > 1) {
-          await widget.controller.addMultipleFilesAsSingleLr(paths);
-        } else {
-          await widget.controller.addFilePaths([paths.first]);
-        }
-      } finally {
-        if (processingDialogContext != null && Navigator.of(processingDialogContext!).canPop()) {
-          Navigator.of(processingDialogContext!).pop();
-        } else if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      }
-
-      if (widget.controller.pageLimitNoticePending) {
-        final msg = widget.controller.pageLimitNoticeMessage ??
-            'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
-        widget.controller.acknowledgePageLimitNotice();
-        if (mounted) {
-          _showPageLimitExceededDialog(msg);
-        }
-        return;
-      }
-
-      if (widget.controller.multipleLrsNoticePending) {
-        final msg = widget.controller.multipleLrsNoticeMessage ??
-            'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
-        widget.controller.acknowledgeMultipleLrsNotice();
-        if (mounted) {
-          showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text('Multiple LRs Not Allowed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              content: Text(msg, style: const TextStyle(fontSize: 13, height: 1.4)),
-              actions: [
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-        return;
-      }
-
-      if (mounted && widget.controller.items.length > countBefore) {
-        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-        if (!isCurrent) return;
-        final newItem = widget.controller.items.last;
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => EditBiltyScreen(
-              item: newItem,
-              controller: widget.controller,
-            ),
-          ),
-        );
-      }
+      await _processSelectedUploadPaths(paths);
     } catch (_) {
-
-      // Fallback to ImagePicker single gallery
-
-      final countBefore = widget.controller.items.length;
-
-      BuildContext? processingDialogContext;
-      if (mounted) {
-        showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dCtx) {
-            processingDialogContext = dCtx;
-            return OcrProcessingDialog(controller: widget.controller);
-          },
-        );
-      }
-
-      bool success = false;
-      try {
-        success = await widget.controller.addFromGallerySingle();
-      } finally {
-        if (processingDialogContext != null && Navigator.of(processingDialogContext!).canPop()) {
-          Navigator.of(processingDialogContext!).pop();
-        } else if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      }
-
-
-
-      if (!success && mounted) {
-
-        final isPerm = await widget.controller.permissionService.isGalleryPermanentlyDenied();
-
-        if (isPerm) {
-
-          PermissionRationaleDialog.show(
-
-            context: context,
-
-            title: 'Photo Access Needed',
-
-            message: 'Gallery access is required to select image for text recognition.',
-
-            icon: Icons.photo_library,
-
-            isPermanent: true,
-
-            onRetryOrSettings: () => widget.controller.permissionService.openSettings(),
-
-          );
-
-        }
-
-        return;
-
-      }
-
-
-
-      if (mounted && widget.controller.items.length > countBefore) {
-
-        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-
-        if (!isCurrent) return;
-
-        final newItem = widget.controller.items[countBefore];
-
-        Navigator.of(context).push(
-
-          MaterialPageRoute(
-
-            builder: (_) => EditBiltyScreen(
-
-              item: newItem,
-
-              controller: widget.controller,
-
-            ),
-
-          ),
-
-        );
-
-      }
-
+      // Fallback to multi-image gallery picker without truncating multi-selections
+      await _pickGalleryMultiImages();
     }
+  }
 
+  Future<void> _handleGalleryUpload() async {
+    if (!mounted) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Select LR Files',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'All selected files in one upload are combined & checked as a single LR.',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFEF3C7),
+                  child: Icon(Icons.photo_library, color: Color(0xFFD97706)),
+                ),
+                title: const Text(
+                  'Photos from Gallery',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Tap to select one or multiple LR images',
+                  style: TextStyle(fontSize: 11),
+                ),
+                onTap: () => Navigator.of(ctx).pop('gallery'),
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFEE2E2),
+                  child: Icon(Icons.picture_as_pdf, color: Color(0xFFDC2626)),
+                ),
+                title: const Text(
+                  'PDF or Document Files',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Select PDF or image files (long-press to select multiple)',
+                  style: TextStyle(fontSize: 11),
+                ),
+                onTap: () => Navigator.of(ctx).pop('files'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'gallery') {
+      await _pickGalleryMultiImages();
+    } else if (choice == 'files') {
+      await _pickDocumentFiles();
+    }
   }
 
 

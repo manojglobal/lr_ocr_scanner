@@ -51,8 +51,8 @@ class StepIndicatorBar extends StatelessWidget {
         );
         break;
       case 2:
-        final pendingItem = ctrl.items.where((i) => !i.isDeleted && !i.isVerified).firstOrNull ??
-            ctrl.items.where((i) => !i.isDeleted).firstOrNull;
+        final pendingItem = ctrl.items.where((i) => !i.isDeleted && !i.isVerified).lastOrNull ??
+            ctrl.items.where((i) => !i.isDeleted).lastOrNull;
         if (pendingItem != null) {
           Navigator.of(context).push(
             MaterialPageRoute(

@@ -25,17 +25,32 @@ void main() {
   });
 
   group('AppConfigService & Centralized Server URL Tests', () {
-    test('1. Default base URL is production fallback when no server is configured and Auto mode is off by default', () async {
+    test('1. Default base URL is http://192.168.1.3:8000 when no backend replies on Wi-Fi and Auto mode is on by default', () async {
       final config = AppConfigService.instance;
       config.allowDiscoveryInTests = true;
-      config.udpDiscoverOverride = (_) async => 'http://192.168.50.10:8000';
+      config.udpDiscoverOverride = (_) async => null;
+      config.probeCandidateOverride = (_, _) async => null;
+      config.localIpv4ListOverride = () async => [];
       await config.initialize();
 
-      expect(AppConfigService.defaultServerUrl, equals('http://122.179.131.232:9015'));
-      expect(AppConfigService.isPrivateLanUrl(AppConfigService.defaultServerUrl), isFalse);
-      expect(config.isAutoMode, isFalse);
-      expect(config.baseUrl, equals(AppConfigService.defaultServerUrl));
-      expect(config.wsUrl, equals('ws://122.179.131.232:9015/ws'));
+      expect(AppConfigService.defaultServerUrl, equals('http://192.168.1.3:8000'));
+      expect(AppConfigService.isPrivateLanUrl(AppConfigService.defaultServerUrl), isTrue);
+      expect(config.isAutoMode, isTrue);
+      expect(config.baseUrl, equals('http://192.168.1.3:8000'));
+      expect(config.wsUrl, equals('ws://192.168.1.3:8000/ws'));
+    });
+
+    test('1b. Fresh startup auto-discovers and connects to same-Wi-Fi backend automatically', () async {
+      final config = AppConfigService.instance;
+      config.allowDiscoveryInTests = true;
+      config.probeCandidateOverride = (_, _) async => null;
+      config.udpDiscoverOverride = (_) async => 'http://192.168.1.44:8000';
+      await config.initialize();
+
+      expect(config.isAutoMode, isTrue);
+      expect(config.isLocalLanActive, isTrue);
+      expect(config.baseUrl, equals('http://192.168.1.44:8000'));
+      expect(config.wsUrl, equals('ws://192.168.1.44:8000/ws'));
     });
 
     test('2. Hydrates custom saved URL from SharedPreferences and locks manual priority', () async {

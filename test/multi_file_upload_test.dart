@@ -5,6 +5,7 @@ import 'package:ocr_to_excel/models/extraction_result.dart';
 import 'package:ocr_to_excel/services/gemini_backend_service.dart';
 import 'package:ocr_to_excel/state/batch_controller.dart';
 import 'package:ocr_to_excel/views/home_screen.dart';
+import 'package:ocr_to_excel/views/screens/batch_queue_screen.dart';
 
 class MockGeminiBackendService extends GeminiBackendService {
   ExtractionResult? stubResult;
@@ -210,8 +211,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Verify the dialog title and body text match requirements exactly
+      // Verify the dialog title, subtitle, and body text match Web requirements
       expect(find.text('Multiple LRs Not Allowed'), findsOneWidget);
+      expect(find.text('Document Validation'), findsOneWidget);
       expect(
         find.text('Multiple LR documents detected. Please upload documents belonging to only one LR at a time.'),
         findsOneWidget,
@@ -222,6 +224,34 @@ void main() {
       await tester.pumpAndSettle();
 
       // Notice should now be acknowledged and dialog dismissed
+      expect(find.text('Multiple LRs Not Allowed'), findsNothing);
+      expect(controller.multipleLrsNoticePending, isFalse);
+    });
+
+    testWidgets('Scenario 4b: BatchQueueScreen displays "Multiple LRs Not Allowed" dialog on notice trigger', (tester) async {
+      final controller = BatchProcessingController(useGeminiBackend: false);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BatchQueueScreen(controller: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      controller.triggerMultipleLrsNotice();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('Multiple LRs Not Allowed'), findsOneWidget);
+      expect(find.text('Document Validation'), findsOneWidget);
+      expect(
+        find.text('Multiple LR documents detected. Please upload documents belonging to only one LR at a time.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Multiple LRs Not Allowed'), findsNothing);
       expect(controller.multipleLrsNoticePending, isFalse);
     });

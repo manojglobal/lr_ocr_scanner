@@ -15,6 +15,7 @@ import '../services/format_parser.dart';
 import '../services/gemini_backend_service.dart';
 import '../services/image_service.dart';
 import '../services/image_preprocessor.dart';
+import '../services/lr_multi_page_validator.dart';
 import '../services/ocr_service.dart';
 import '../services/permission_service.dart';
 import '../services/file_lifecycle_service.dart';
@@ -278,6 +279,7 @@ bool _duplicateNoticePending = false;
   int _processingFileIndex = 1;
   int _processingTotalFiles = 1;
   bool _isProcessingMultiPage = false;
+  BatchItem? _lastUploadedItem;
 
   // Getters
   List<BatchItem> get items => List.unmodifiable(_items);
@@ -285,6 +287,7 @@ bool _duplicateNoticePending = false;
   List<Map<String, dynamic>> get previousUploadsCache => List.unmodifiable(_previousUploadsCache);
   bool get isProcessing => _isProcessing;
   bool get isProcessingMultiPage => _isProcessingMultiPage;
+  BatchItem? get lastUploadedItem => _lastUploadedItem;
   bool get useGeminiBackend => _useGeminiBackend;
   bool get fallbackNotificationPending => _fallbackNotificationPending;
   String? get fallbackNoticeMessage => _fallbackNoticeMessage;
@@ -380,8 +383,162 @@ bool _duplicateNoticePending = false;
     return '';
   }
 
+  static bool _isGenericFileName(String fn) {
+    final lower = fn.trim().toLowerCase();
+    if (lower.isEmpty) return true;
+    if (lower.startsWith('image_picker') || lower.startsWith('scaled_')) {
+      return true;
+    }
+    const genericNames = {
+      'lr document',
+      'document',
+      'item',
+      'image',
+      'photo',
+      'camera',
+      'upload',
+      'null',
+      'none',
+      'undefined',
+    };
+    return genericNames.contains(lower);
+  }
+
+  /// Determines whether a cached upload entry represents an explicitly verified LR.
+  /// Unverified, pending, cancelled, or incomplete entries return false (Web parity).
+  bool _isPreviousUploadVerified(Map<String, dynamic> prev) {
+    if (prev['is_deleted'] == true || prev['isDeleted'] == true) return false;
+    final status = (prev['status'] ?? '').toString().trim().toLowerCase();
+    if (status == 'pending' || status == 'failed' || status == 'error') {
+      return false;
+    }
+    if (prev['is_cancelled'] == true ||
+        prev['is_cancelled']?.toString().toLowerCase() == 'true' ||
+        prev['pending_verification'] == true ||
+        prev['pending_verification']?.toString().toLowerCase() == 'true' ||
+        prev['isVerified'] == false ||
+        prev['is_verified'] == false ||
+        prev['is_verified']?.toString().toLowerCase() == 'false') {
+      return false;
+    }
+
+    final prevId = (prev['id'] ?? prev['file_id'] ?? '').toString().trim();
+    final prevSaved = (prev['saved_filename'] ??
+            (prev['record'] is Map ? prev['record']['saved_filename'] : null) ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final prevFn = (prev['fileName'] ?? prev['filename'] ?? '').toString().trim().toLowerCase();
+    final prevLr = normalizeLrNo(
+      (prev['lrNo'] ??
+              prev['lr_no'] ??
+              prev['grno'] ??
+              (prev['record'] is Map
+                  ? (prev['record']['LR No *'] ?? prev['record']['grno'] ?? '')
+                  : '') ??
+              (prev['data'] is Map
+                  ? (prev['data']['LR No *'] ?? prev['data']['grno'] ?? '')
+                  : ''))
+          .toString(),
+    );
+
+    // Cross-check active batch items: if present in _items, trust live verification state.
+    for (final item in _items) {
+      if (item.isDeleted) continue;
+      final itemSaved = (item.record['saved_filename'] ?? '').trim().toLowerCase();
+      final itemFn = item.fileName.trim().toLowerCase();
+      final itemLr = normalizeLrNo(extractLrNoFromRecord(item.record));
+      final matches = (prevId.isNotEmpty && item.id == prevId) ||
+          (prevSaved.isNotEmpty && itemSaved.isNotEmpty && prevSaved == itemSaved) ||
+          (prevFn.isNotEmpty && !_isGenericFileName(prevFn) && prevFn == itemFn) ||
+          (prevLr.isNotEmpty && prevLr != '0' && itemLr.isNotEmpty && prevLr == itemLr);
+      if (matches) {
+        return item.isVerified;
+      }
+    }
+
+    final rawRec = prev['record'] is Map
+        ? prev['record'] as Map
+        : (prev['data'] is Map ? prev['data'] as Map : null);
+    final explicitVerifiedFlag = prev['isVerified'] == true ||
+        prev['is_verified'] == true ||
+        prev['is_verified']?.toString().toLowerCase() == 'true';
+
+    if (rawRec != null && rawRec.isNotEmpty) {
+      final recMap = rawRec.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+      if (recMap['pending_verification'] == 'true' ||
+          recMap['is_verified'] == 'false' ||
+          recMap['is_cancelled'] == 'true') {
+        return false;
+      }
+      if (recMap['is_verified'] == 'true' || explicitVerifiedFlag) {
+        return true;
+      }
+      return BatchItem(
+        id: prevId.isNotEmpty ? prevId : 'prev_check',
+        imagePath: '',
+        fileName: '',
+        createdAt: DateTime.now(),
+        record: recMap,
+      ).isVerified;
+    }
+
+    return explicitVerifiedFlag;
+  }
+
+  /// Removes stale matching UNVERIFIED items when the same unverified LR is re-uploaded.
+  /// Strictly preserves all verified items.
+  void _removeMatchingUnverifiedItems({
+    String? excludeItemId,
+    String? lrNo,
+    String? imagePath,
+    String? imageHash,
+    String? fileName,
+    String? savedFilename,
+  }) {
+    final normLr = normalizeLrNo(lrNo);
+    final cleanLr = normLr == '0' ? '' : normLr;
+    final cleanHash = (imageHash ?? '').trim();
+    final cleanFn = (fileName ?? '').trim().toLowerCase();
+    final cleanSaved = (savedFilename ?? '').trim().toLowerCase();
+    final cleanPath = (imagePath ?? '').trim();
+
+    _items.removeWhere((item) {
+      if (excludeItemId != null && item.id == excludeItemId) return false;
+      if (item.isVerified) return false;
+
+      if (cleanLr.isNotEmpty) {
+        final itemLr = normalizeLrNo(extractLrNoFromRecord(item.record));
+        if (itemLr.isNotEmpty && itemLr != '0' && itemLr == cleanLr) {
+          return true;
+        }
+      }
+      if (cleanHash.isNotEmpty) {
+        final itemHash = item.imageHash ?? computeImageHash(item.imagePath);
+        if (itemHash.isNotEmpty && itemHash == cleanHash) {
+          return true;
+        }
+      }
+      final itemSaved = (item.record['saved_filename'] ?? '').trim().toLowerCase();
+      if (cleanSaved.isNotEmpty && itemSaved.isNotEmpty && cleanSaved == itemSaved) {
+        return true;
+      }
+      if (cleanFn.isNotEmpty && !_isGenericFileName(cleanFn)) {
+        final itemFn = item.fileName.trim().toLowerCase();
+        if (itemFn == cleanFn || (itemSaved.isNotEmpty && itemSaved == cleanFn)) {
+          return true;
+        }
+      }
+      if (cleanPath.isNotEmpty && item.imagePath == cleanPath) {
+        return true;
+      }
+      return false;
+    });
+  }
+
   /// Checks whether a given LR number, image hash, or core details already exists
-  /// in the active batch items or previously uploaded LRs.
+  /// among verified LRs in the active batch or previously uploaded verified LRs (Web parity).
   bool isDuplicate({
     String? lrNo,
     String? imagePath,
@@ -390,8 +547,9 @@ bool _duplicateNoticePending = false;
     Map<String, String>? record,
     String? excludeItemId,
   }) {
-    // 1. Resolve candidate LR No.
-    final candidateLr = normalizeLrNo(lrNo ?? extractLrNoFromRecord(record));
+    // 1. Resolve candidate LR No (exclude '0' so unnumbered LRs do not block each other).
+    final rawCandidateLr = normalizeLrNo(lrNo ?? extractLrNoFromRecord(record));
+    final candidateLr = rawCandidateLr == '0' ? '' : rawCandidateLr;
 
     // 2. Resolve candidate image hash
     final candidateHash = imageHash ?? (imagePath != null ? computeImageHash(imagePath) : '');
@@ -404,15 +562,16 @@ bool _duplicateNoticePending = false;
     final candidateCnge = (record?['cnge *'] ?? '').trim().toLowerCase();
     final candidateVeh = (record?['Vehicle No *'] ?? '').trim().replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
 
-    // A. Check active batch items
+    // A. Check active batch items (skip deleted, self, and unverified/pending/cancelled items)
     for (final item in _items) {
       if (item.isDeleted) continue;
       if (excludeItemId != null && item.id == excludeItemId) continue;
+      if (!item.isVerified) continue;
 
       // Tier 1: Check normalized LR number (most reliable)
       if (candidateLr.isNotEmpty) {
         final existingLr = normalizeLrNo(extractLrNoFromRecord(item.record));
-        if (existingLr.isNotEmpty && existingLr == candidateLr) {
+        if (existingLr.isNotEmpty && existingLr != '0' && existingLr == candidateLr) {
           return true;
         }
       }
@@ -426,7 +585,7 @@ bool _duplicateNoticePending = false;
       }
 
       // Tier 3: Check identical file name or path
-      if (candidateFileName.isNotEmpty && !candidateFileName.startsWith('image_picker') && !candidateFileName.startsWith('scaled_')) {
+      if (candidateFileName.isNotEmpty && !_isGenericFileName(candidateFileName)) {
         final existingFn = item.fileName.toLowerCase();
         final existingSaved = (item.record['saved_filename'] ?? '').toLowerCase();
         if (existingFn == candidateFileName || (existingSaved.isNotEmpty && existingSaved == candidateFileName)) {
@@ -453,7 +612,7 @@ bool _duplicateNoticePending = false;
       }
     }
 
-    // B. Check previous uploads cache (so duplicate documents are caught on FIRST upload attempt)
+    // B. Check verified entries in previous uploads cache
     BatchItem? excludedItem;
     if (excludeItemId != null) {
       for (final i in _items) {
@@ -478,18 +637,18 @@ bool _duplicateNoticePending = false;
           continue;
         }
       }
-      if (prev['is_deleted'] == true || prev['isDeleted'] == true) continue;
+      if (!_isPreviousUploadVerified(prev)) continue;
 
       // Tier 1: Check LR number
       if (candidateLr.isNotEmpty) {
         final prevLr = normalizeLrNo((prev['lrNo'] ?? prev['lr_no'] ?? prev['grno'] ?? (prev['record'] is Map ? (prev['record']['LR No *'] ?? prev['record']['grno'] ?? '') : '')).toString());
-        if (prevLr.isNotEmpty && prevLr == candidateLr) {
+        if (prevLr.isNotEmpty && prevLr != '0' && prevLr == candidateLr) {
           return true;
         }
       }
 
       // Tier 2: Check file name / saved filename / basename
-      if (candidateFileName.isNotEmpty && !candidateFileName.startsWith('image_picker') && !candidateFileName.startsWith('scaled_')) {
+      if (candidateFileName.isNotEmpty && !_isGenericFileName(candidateFileName)) {
         final prevFn = (prev['fileName'] ?? prev['filename'] ?? '').toString().toLowerCase();
         final prevSaved = (prev['saved_filename'] ?? (prev['record'] is Map ? prev['record']['saved_filename'] : '') ?? '').toString().toLowerCase();
         final prevPath = (prev['imagePath'] ?? prev['file_path'] ?? '').toString();
@@ -497,7 +656,7 @@ bool _duplicateNoticePending = false;
         if (prevFn.isNotEmpty && (prevFn == candidateFileName || (prevSaved.isNotEmpty && prevSaved == candidateFileName))) {
           return true;
         }
-        if (prevBase.isNotEmpty && !prevBase.startsWith('image_picker') && !prevBase.startsWith('scaled_') && prevBase == candidateFileName) {
+        if (prevBase.isNotEmpty && !_isGenericFileName(prevBase) && prevBase == candidateFileName) {
           return true;
         }
       }
@@ -1179,7 +1338,8 @@ bool _duplicateNoticePending = false;
 
   /// Safely persists camera/gallery/picker files into the permanent app documents directory.
   /// Prevents Android OS cache cleanups from removing LR images across app restarts.
-  Future<String> _ensurePermanentFile(String originalPath) async {
+  /// Pass [uniqueSubdir] for multi-file batches so distinct files with matching basenames never collide.
+  Future<String> _ensurePermanentFile(String originalPath, {String? uniqueSubdir}) async {
     try {
       final srcFile = File(originalPath);
       if (!await srcFile.exists()) return originalPath;
@@ -1191,7 +1351,10 @@ bool _duplicateNoticePending = false;
         return originalPath; // Headless unit test fallback
       }
 
-      final targetDir = Directory('${docsDir.path}/lr_documents');
+      final baseSub = (uniqueSubdir != null && uniqueSubdir.isNotEmpty)
+          ? 'lr_documents/$uniqueSubdir'
+          : 'lr_documents';
+      final targetDir = Directory('${docsDir.path}/$baseSub');
       if (!await targetDir.exists()) {
         await targetDir.create(recursive: true);
       }
@@ -1238,13 +1401,21 @@ bool _duplicateNoticePending = false;
       return false;
     }
 
+    _lastUploadedItem = null;
     _isProcessingMultiPage = paths.length > 1;
     notifyListeners();
 
-    // Ensure permanent copies of each captured page
+    // Ensure permanent copies of each captured page without filename collisions
+    final scanTag = DateTime.now().microsecondsSinceEpoch;
     final permanentPaths = <String>[];
-    for (final p in paths) {
-      permanentPaths.add(await _ensurePermanentFile(p));
+    for (int i = 0; i < paths.length; i++) {
+      final subdir = paths.length > 1 ? 'scan_${scanTag}_$i' : null;
+      permanentPaths.add(await _ensurePermanentFile(paths[i], uniqueSubdir: subdir));
+    }
+
+    final auditedPaths = await _orientAndAuditImagesForMultiLr(permanentPaths);
+    if (auditedPaths == null) {
+      return false;
     }
 
     String submissionFilePath;
@@ -1268,7 +1439,7 @@ bool _duplicateNoticePending = false;
       final docId = _uuid.v4();
       final pdfPath = '${scansDir.path}/lr_scan_$docId.pdf';
       final pdfFile = await PdfAssemblerService.assembleImagesToPdf(
-        imagePaths: permanentPaths,
+        imagePaths: auditedPaths,
         outputPath: pdfPath,
       );
       submissionFilePath = pdfFile.path;
@@ -1276,17 +1447,27 @@ bool _duplicateNoticePending = false;
       imageHash = computeImageHash(submissionFilePath);
     } catch (e) {
       debugPrint('[BatchController] PDF assembly notice: $e');
-      submissionFilePath = permanentPaths.first;
+      if (auditedPaths.length > 1) {
+        // Web parity: send all captured images directly to /extract-handwriting if PDF assembly fails
+        return await addMultipleFilesAsSingleLr(auditedPaths);
+      }
+      submissionFilePath = auditedPaths.first;
       submissionFileName = submissionFilePath.split(RegExp(r'[/\\]')).last;
       imageHash = computeImageHash(submissionFilePath);
     }
 
-    // Pre-OCR duplicate check
+    // Pre-OCR duplicate check (verified LRs only)
     if (isDuplicate(imagePath: submissionFilePath, imageHash: imageHash, fileName: submissionFileName)) {
       _isProcessingMultiPage = false;
       triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
       return false;
     }
+
+    _removeMatchingUnverifiedItems(
+      imagePath: submissionFilePath,
+      imageHash: imageHash,
+      fileName: submissionFileName,
+    );
 
     final docId = _uuid.v4();
     final item = BatchItem(
@@ -1306,10 +1487,10 @@ bool _duplicateNoticePending = false;
     notifyListeners();
 
     await _processQueue();
-    return true;
+    return _items.any((i) => i.id == docId);
   }
 
-  /// Adds multiple selected photos from the gallery to the queue and starts processing.
+  /// Adds selected photos from the gallery; multi-photo selections are validated as one LR (Web parity).
   Future<bool> addFromGallery() async {
     final hasPermission = await _permissionService.requestGalleryPermission();
     if (!hasPermission) {
@@ -1320,18 +1501,47 @@ bool _duplicateNoticePending = false;
 
     final paths = await _imageService.pickMultipleImages();
     if (paths.isEmpty) return false;
+    if (paths.length > 1) {
+      return addMultipleFilesAsSingleLr(paths);
+    }
+    return addFilePaths([paths.first]);
+  }
 
-    bool anyAdded = false;
-    for (final path in paths) {
-      final permanentPath = await _ensurePermanentFile(path);
-      if (_addItemFromPath(permanentPath)) {
-        anyAdded = true;
+  /// Performs on-device upright orientation normalization and consignment-note multi-LR check.
+  /// Returns upright file paths if valid, or null after triggering [triggerMultipleLrsNotice].
+  Future<List<String>?> _orientAndAuditImagesForMultiLr(List<String> paths) async {
+    final orientedPaths = <String>[];
+    final analyses = <ConsignmentPageAnalysis>[];
+
+    for (final p in paths) {
+      if (p.toLowerCase().endsWith('.pdf')) {
+        orientedPaths.add(p);
+        continue;
+      }
+
+      final recognized = await _ocrService.recognizeTextQuick(p);
+      if (recognized != null) {
+        analyses.add(LrMultiPageValidator.analyzeRecognizedText(recognized));
+        final cwRot = LrMultiPageValidator.detectClockwiseRotationDegrees(recognized);
+        if (cwRot != 0) {
+          orientedPaths.add(await ImagePreprocessor.orientImageUprightIfNeeded(p, cwRot));
+        } else {
+          orientedPaths.add(p);
+        }
+      } else {
+        orientedPaths.add(p);
       }
     }
-    if (anyAdded) {
-      await _processQueue();
+
+    final outcome = LrMultiPageValidator.evaluatePageAnalyses(analyses);
+    if (outcome.hasMultipleLrs) {
+      _isProcessing = false;
+      _isProcessingMultiPage = false;
+      triggerMultipleLrsNotice(outcome.message);
+      return null;
     }
-    return anyAdded;
+
+    return orientedPaths;
   }
 
   /// Unified Web-parity post-OCR enrichment for both single-file and multi-file uploads.
@@ -1537,6 +1747,7 @@ bool _duplicateNoticePending = false;
 
   Future<bool> addMultipleFilesAsSingleLr(List<String> paths) async {
     if (paths.isEmpty) return false;
+    _lastUploadedItem = null;
 
     // Check maximum 15 pages limit across all combined files
     int totalPages = 0;
@@ -1552,29 +1763,25 @@ bool _duplicateNoticePending = false;
       return false;
     }
 
-    // Check pre-OCR duplicate by filename/path before sending
-    for (final p in paths) {
-      final fn = p.split(RegExp(r'[/\\]')).last;
-      final hash = computeImageHash(p);
-      if (isDuplicate(imagePath: p, imageHash: hash, fileName: fn)) {
-        triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
-        return false;
-      }
-    }
-
     _isProcessing = true;
     _isProcessingMultiPage = totalPages > 1 || paths.length > 1;
     _statusMessage = 'Reading Consignment (${paths.length} files)...';
     notifyListeners();
 
     try {
+      final batchTag = DateTime.now().microsecondsSinceEpoch;
       final permanentPaths = <String>[];
-      for (final p in paths) {
-        permanentPaths.add(await _ensurePermanentFile(p));
+      for (int i = 0; i < paths.length; i++) {
+        permanentPaths.add(await _ensurePermanentFile(paths[i], uniqueSubdir: 'batch_${batchTag}_$i'));
+      }
+
+      final auditedPaths = await _orientAndAuditImagesForMultiLr(permanentPaths);
+      if (auditedPaths == null) {
+        return false;
       }
 
       final result = await _geminiService.extractMultipleFiles(
-        permanentPaths,
+        auditedPaths,
         userMobile: _activeUserMobile,
         userName: _activeUserName,
         sessionToken: _activeSessionToken,
@@ -1582,18 +1789,21 @@ bool _duplicateNoticePending = false;
 
       if (result.isPageLimitExceeded || result.errorCode == 'PAGE_LIMIT_EXCEEDED') {
         _isProcessing = false;
+        _isProcessingMultiPage = false;
         triggerPageLimitNotice(result.message);
         return false;
       }
 
       if (result.isMultipleLrs || result.errorCode == 'MULTIPLE_LRS') {
         _isProcessing = false;
+        _isProcessingMultiPage = false;
         triggerMultipleLrsNotice(result.message);
         return false;
       }
 
       if (result.isInvalidLr || result.status == ExtractionStatus.failed) {
         _isProcessing = false;
+        _isProcessingMultiPage = false;
         if (result.isInvalidLr) {
           triggerInvalidLrNotice('Invalid LR – Please upload a valid LR document.');
         } else {
@@ -1602,10 +1812,18 @@ bool _duplicateNoticePending = false;
         return false;
       }
 
-      // Check post-OCR duplicate against extracted LR number
-      final candidateLr = normalizeLrNo(extractLrNoFromRecord(result.data));
-      if (candidateLr.isNotEmpty && isDuplicate(lrNo: candidateLr)) {
+      // Check post-OCR duplicate against verified LRs only (exclude '0' and unverified LRs)
+      final rawCandidateLr = normalizeLrNo(extractLrNoFromRecord(result.data));
+      final candidateLr = rawCandidateLr == '0' ? '' : rawCandidateLr;
+      final primaryHash = computeImageHash(permanentPaths.first);
+      if (isDuplicate(
+        lrNo: candidateLr.isNotEmpty ? candidateLr : null,
+        imagePath: permanentPaths.first,
+        imageHash: primaryHash,
+        record: result.data,
+      )) {
         _isProcessing = false;
+        _isProcessingMultiPage = false;
         triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
         return false;
       }
@@ -1616,6 +1834,22 @@ bool _duplicateNoticePending = false;
       final docId = _uuid.v4();
       final primaryFn = permanentPaths.first.split(RegExp(r'[/\\]')).last;
       final displayName = '$primaryFn (+${permanentPaths.length - 1} files)';
+
+      // Replace any matching stale unverified items cleanly before inserting
+      _removeMatchingUnverifiedItems(
+        lrNo: extractLrNoFromRecord(rec),
+        imagePath: permanentPaths.first,
+        imageHash: primaryHash,
+        fileName: displayName,
+        savedFilename: rec['saved_filename']?.toString(),
+      );
+      for (final p in permanentPaths) {
+        _removeMatchingUnverifiedItems(
+          imagePath: p,
+          imageHash: computeImageHash(p),
+          fileName: p.split(RegExp(r'[/\\]')).last,
+        );
+      }
 
       final now = DateTime.now();
       final detailsLabel = 'Consignment added (${permanentPaths.length} files combined)';
@@ -1651,7 +1885,7 @@ bool _duplicateNoticePending = false;
         status: BatchItemStatus.completed,
         createdAt: now,
         processedAt: now,
-        imageHash: computeImageHash(permanentPaths.first),
+        imageHash: primaryHash,
         record: rec,
         versions: initialVersions,
         editHistory: initialHistory,
@@ -1661,6 +1895,7 @@ bool _duplicateNoticePending = false;
       );
 
       _items.add(item);
+      _lastUploadedItem = item;
 
       _isProcessing = false;
       _isProcessingMultiPage = false;
@@ -1693,15 +1928,13 @@ bool _duplicateNoticePending = false;
     String? path = single;
     if (path == null || path.isEmpty) {
       final paths = await _imageService.pickMultipleImages();
+      if (paths.length > 1) {
+        return addMultipleFilesAsSingleLr(paths);
+      }
       if (paths.isNotEmpty) path = paths.first;
     }
     if (path == null || path.isEmpty) return false;
-
-    final permanentPath = await _ensurePermanentFile(path);
-    final added = _addItemFromPath(permanentPath);
-    if (!added) return false;
-    await _processQueue();
-    return true;
+    return addFilePaths([path]);
   }
 
   /// Direct item ingestion helper (useful for testing or state recovery).
@@ -1727,9 +1960,13 @@ bool _duplicateNoticePending = false;
     });
   }
 
-  /// Ingests multiple files (images, PDFs) and processes them sequentially.
+  /// Ingests files (images, PDFs). Multi-file selections are validated as a single LR dossier (Web parity).
   Future<bool> addFilePaths(List<String> paths) async {
     if (paths.isEmpty) return false;
+    _lastUploadedItem = null;
+    if (paths.length > 1) {
+      return addMultipleFilesAsSingleLr(paths);
+    }
     int totalPages = 0;
     for (final p in paths) {
       if (p.toLowerCase().endsWith('.pdf')) {
@@ -1744,14 +1981,22 @@ bool _duplicateNoticePending = false;
     }
 
     bool anyAdded = false;
+    final permanentPaths = <String>[];
     for (final path in paths) {
-      final permanentPath = await _ensurePermanentFile(path);
-      if (_addItemFromPath(permanentPath)) {
+      permanentPaths.add(await _ensurePermanentFile(path));
+    }
+    final auditedPaths = await _orientAndAuditImagesForMultiLr(permanentPaths);
+    if (auditedPaths == null) {
+      return false;
+    }
+    for (final path in auditedPaths) {
+      if (_addItemFromPath(path)) {
         anyAdded = true;
       }
     }
     if (anyAdded) {
       await _processQueue();
+      return _items.any((i) => i.status == BatchItemStatus.completed && i.id == _lastUploadedItem?.id);
     }
     return anyAdded;
   }
@@ -1776,6 +2021,11 @@ bool _duplicateNoticePending = false;
       triggerDuplicateNotice('This LR already exists. You cannot add the same LR multiple times.');
       return false;
     }
+    _removeMatchingUnverifiedItems(
+      imagePath: path,
+      imageHash: imageHash,
+      fileName: fileName,
+    );
     final file = File(path);
     if (file.existsSync() && file.lengthSync() > 10 * 1024 * 1024) {
       final sizeMb = (file.lengthSync() / (1024 * 1024)).toStringAsFixed(2);
@@ -1829,8 +2079,9 @@ bool _duplicateNoticePending = false;
             itemPages = await PdfAssemblerService.countPdfPages(item.imagePath);
           } catch (_) {}
         }
-        if (itemPages <= 1 && item.record != null && item.record!['page_count'] != null) {
-          itemPages = int.tryParse(item.record!['page_count'] ?? '1') ?? 1;
+        final pageCountStr = item.record['page_count'];
+        if (itemPages <= 1 && pageCountStr != null) {
+          itemPages = int.tryParse(pageCountStr) ?? 1;
         }
         _isProcessingMultiPage = itemPages > 1;
         _currentOcrStep = 1; // Step 1: Image(s) Uploaded
@@ -1871,7 +2122,7 @@ bool _duplicateNoticePending = false;
                     userName: _activeUserName,
                     sessionToken: _activeSessionToken,
                   )
-                  .timeout(const Duration(seconds: 90));
+                  .timeout(const Duration(seconds: 240));
 
                 if (serverResult.status != ExtractionStatus.failed) {
                 parseResult = serverResult;
@@ -2033,6 +2284,15 @@ bool _duplicateNoticePending = false;
             rawText: rawOcrText,
           );
 
+          _removeMatchingUnverifiedItems(
+            excludeItemId: item.id,
+            lrNo: extractLrNoFromRecord(parseResult.data),
+            imagePath: item.imagePath,
+            imageHash: item.imageHash,
+            fileName: item.fileName,
+            savedFilename: parseResult.data['saved_filename'],
+          );
+
           // Find current index after asynchronous gap
           final currentIndex = _items.indexWhere((i) => i.id == item.id);
           if (currentIndex != -1) {
@@ -2066,7 +2326,7 @@ bool _duplicateNoticePending = false;
               }
             ];
 
-            _items[currentIndex] = _items[currentIndex].copyWith(
+            final completedItem = _items[currentIndex].copyWith(
               status: BatchItemStatus.completed,
               processedAt: now,
               record: parseResult.data,
@@ -2080,9 +2340,11 @@ bool _duplicateNoticePending = false;
               versions: initialVersions,
               editHistory: initialHistory,
             );
+            _items[currentIndex] = completedItem;
+            _lastUploadedItem = completedItem;
 
             // Record completed LR into user-scoped history cache & cloud sync immediately
-            await _recordUploadInRecentHistory(_items[currentIndex]);
+            await _recordUploadInRecentHistory(completedItem);
             await _persistActiveBatchCache();
           }
         } catch (e) {
@@ -2311,6 +2573,29 @@ bool _duplicateNoticePending = false;
       }
 
       _items[index] = normalized;
+      if (normalized.status == BatchItemStatus.completed) {
+        final cacheIdx = _previousUploadsCache.indexWhere((r) {
+          final rId = (r['id'] ?? r['file_id'] ?? '').toString().trim();
+          final rSv = (r['saved_filename'] ?? '').toString().trim().toLowerCase();
+          final itemSv = (normalized.record['saved_filename'] ?? '').trim().toLowerCase();
+          if (rId.isNotEmpty && rId == normalized.id) return true;
+          if (itemSv.isNotEmpty && rSv.isNotEmpty && itemSv == rSv) return true;
+          return false;
+        });
+        if (cacheIdx != -1) {
+          _previousUploadsCache[cacheIdx] = {
+            ..._previousUploadsCache[cacheIdx],
+            'lrNo': extractLrNoFromRecord(normalized.record),
+            'isVerified': normalized.isVerified,
+            'editedAt': normalized.editedAt?.toIso8601String(),
+            'is_exported': normalized.isExported,
+            'exportedAt': normalized.exportedAt?.toIso8601String(),
+            'record': _cleanDocForStorage(normalized.record),
+          };
+        } else if (normalized.isVerified) {
+          _recordUploadInRecentHistory(normalized);
+        }
+      }
       notifyListeners();
       _persistActiveBatchCache();
       triggerCloudSync();

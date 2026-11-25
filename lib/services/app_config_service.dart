@@ -23,8 +23,8 @@ class AppConfigService extends ChangeNotifier {
   /// - 'prod' : Uses production server URL directly (zero LAN discovery).
   static const String envMode = String.fromEnvironment('ENV_MODE', defaultValue: 'auto');
 
-  /// Production fallback/default server URL (no local LAN IP is hardcoded).
-  static const String defaultServerUrl = 'http://122.179.131.232:9015';
+  /// Default server URL (local Wi-Fi backend at 192.168.1.3:8000 unless overridden or auto-discovered).
+  static const String defaultServerUrl = 'http://192.168.1.3:8000';
 
   static const int discoveryUdpPort = 8001;
   static const int defaultLocalHttpPort = 8000;
@@ -36,12 +36,12 @@ class AppConfigService extends ChangeNotifier {
   ];
 
   String _baseUrl = defaultServerUrl;
-  String _wsUrl = 'ws://122.179.131.232:9015/ws';
+  String _wsUrl = 'ws://192.168.1.3:8000/ws';
   bool _isInitialized = false;
   bool _isFetchingRemote = false;
-  bool _isLocalLanActive = false;
+  bool _isLocalLanActive = true;
   bool _manualOverride = false;
-  bool _autoModeEnabled = false;
+  bool _autoModeEnabled = envMode != 'prod';
   int _configEpoch = 0;
   Future<void>? _inFlightInitialize;
   Future<String?>? _inFlightDiscovery;
@@ -118,15 +118,15 @@ class AppConfigService extends ChangeNotifier {
               await prefs.setString(prefKeyServerMode, 'manual');
             } else {
               _manualOverride = false;
-              _autoModeEnabled = false;
+              _autoModeEnabled = envMode != 'prod';
             }
           }
         } else {
           _baseUrl = defaultServerUrl;
           _wsUrl = _deriveWsUrl(defaultServerUrl);
-          _isLocalLanActive = false;
+          _isLocalLanActive = isPrivateLanUrl(defaultServerUrl);
           _manualOverride = savedManual ?? false;
-          _autoModeEnabled = !_manualOverride && savedMode == 'auto';
+          _autoModeEnabled = !_manualOverride && savedMode != 'manual' && envMode != 'prod';
         }
       }
     } catch (e) {
@@ -134,9 +134,9 @@ class AppConfigService extends ChangeNotifier {
       if (_configEpoch == startEpoch) {
         _baseUrl = defaultServerUrl;
         _wsUrl = _deriveWsUrl(defaultServerUrl);
-        _isLocalLanActive = false;
+        _isLocalLanActive = isPrivateLanUrl(defaultServerUrl);
         _manualOverride = false;
-        _autoModeEnabled = false;
+        _autoModeEnabled = envMode != 'prod';
       }
     }
 
@@ -261,7 +261,7 @@ class AppConfigService extends ChangeNotifier {
   }) async {
     // Tier 1: Fast verify last known LAN URL
     if (!forceScan && cachedLanUrl != null && isPrivateLanUrl(cachedLanUrl)) {
-      final verified = await _probeCandidate(cachedLanUrl, const Duration(milliseconds: 1000));
+      final verified = await _probeCandidate(cachedLanUrl, const Duration(milliseconds: 700));
       if (verified != null) return verified;
     }
 
@@ -270,7 +270,7 @@ class AppConfigService extends ChangeNotifier {
     if (udpFound != null) return udpFound;
 
     // Tier 3: Asynchronous /24 subnet HTTP fallback when UDP broadcast is filtered
-    final subnetFound = await _discoverViaSubnetProbe(const Duration(milliseconds: 850));
+    final subnetFound = await _discoverViaSubnetProbe(const Duration(milliseconds: 500));
     if (subnetFound != null) return subnetFound;
 
     return null;
@@ -512,7 +512,7 @@ class AppConfigService extends ChangeNotifier {
         if (!selfIps.contains(ip)) hosts.add(ip);
       }
 
-      const batchSize = 32;
+      const batchSize = 64;
       for (var i = 0; i < hosts.length; i += batchSize) {
         final end = (i + batchSize < hosts.length) ? i + batchSize : hosts.length;
         final batch = hosts.sublist(i, end);
@@ -687,9 +687,9 @@ class AppConfigService extends ChangeNotifier {
   void resetForTesting() {
     _isInitialized = false;
     _isFetchingRemote = false;
-    _isLocalLanActive = false;
+    _isLocalLanActive = isPrivateLanUrl(defaultServerUrl);
     _manualOverride = false;
-    _autoModeEnabled = false;
+    _autoModeEnabled = envMode != 'prod';
     _configEpoch = 0;
     _inFlightInitialize = null;
     _inFlightDiscovery = null;

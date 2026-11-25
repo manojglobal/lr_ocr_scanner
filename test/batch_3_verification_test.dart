@@ -84,13 +84,21 @@ void main() {
 
   group('Batch 3: LR Upload, Duplicate Detection & Verification Status', () {
     test('Item 1: Duplicate LR detection catches duplicates on FIRST upload attempt via previous cache', () {
-      // Set previous uploads cache (simulating prior uploads/sessions from cloud or storage)
+      // Set previous uploads cache with a verified LR (simulating prior verified uploads/sessions)
       controller.setPreviousUploadsCache([
         {
           'id': 'cloud-rec-001',
           'lrNo': 'BNF-9999',
           'fileName': 'previous_consign.jpg',
           'imagePath': '/storage/emulated/0/previous_consign.jpg',
+          'isVerified': true,
+        },
+        {
+          'id': 'cloud-rec-unverified',
+          'lrNo': 'BNF-UNV-888',
+          'fileName': 'unverified_prev.jpg',
+          'imagePath': '/storage/emulated/0/unverified_prev.jpg',
+          'isVerified': false,
         },
       ]);
 
@@ -99,21 +107,29 @@ void main() {
         lrNo: 'BNF-9999',
         fileName: 'new_random_filename.jpg',
       );
-      expect(isDupByLr, isTrue, reason: 'Duplicate document with matching LR number must be caught on 1st attempt');
+      expect(isDupByLr, isTrue, reason: 'Duplicate document with matching verified LR number must be caught on 1st attempt');
 
       // 2. Attempting to upload duplicate by fileName on FIRST attempt
       final isDupByFileName = controller.isDuplicate(
         fileName: 'previous_consign.jpg',
       );
-      expect(isDupByFileName, isTrue, reason: 'Duplicate document with matching fileName must be caught on 1st attempt');
+      expect(isDupByFileName, isTrue, reason: 'Duplicate document with matching verified fileName must be caught on 1st attempt');
 
       // 3. Attempting to upload duplicate by image path on FIRST attempt
       final isDupByPath = controller.isDuplicate(
         imagePath: '/storage/emulated/0/previous_consign.jpg',
       );
-      expect(isDupByPath, isTrue, reason: 'Duplicate document with matching path must be caught on 1st attempt');
+      expect(isDupByPath, isTrue, reason: 'Duplicate document with matching verified path must be caught on 1st attempt');
 
-      // 4. A completely new distinct document must NOT be flagged as duplicate
+      // 4. An unverified previous upload must NOT be flagged as duplicate (Web parity)
+      final isUnverifiedDup = controller.isDuplicate(
+        lrNo: 'BNF-UNV-888',
+        fileName: 'unverified_prev.jpg',
+        imagePath: '/storage/emulated/0/unverified_prev.jpg',
+      );
+      expect(isUnverifiedDup, isFalse, reason: 'Unverified previous LR must be allowed to re-upload without Duplicate LR error');
+
+      // 5. A completely new distinct document must NOT be flagged as duplicate
       final isNotDup = controller.isDuplicate(
         lrNo: 'BNF-NEW-1234',
         fileName: 'brand_new_doc.jpg',

@@ -1,12 +1,8 @@
 import '../../services/excel_service.dart';
-import '../../services/pdf_assembler_service.dart';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
-
-import 'package:path_provider/path_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,7 +13,7 @@ import '../../models/batch_item.dart';
 import '../../state/batch_controller.dart';
 
 import '../home_screen.dart';
-import '../widgets/ocr_processing_dialog.dart';
+import '../widgets/lr_notice_dialogs.dart';
 
 import '../widgets/step_indicator_bar.dart';
 
@@ -67,6 +63,11 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
   bool _showFilters = false;
   bool _isShowingPageLimitDialog = false;
+  bool _isShowingMultipleLrsDialog = false;
+  bool _isShowingInvalidLrDialog = false;
+  bool _isShowingConnectionErrorDialog = false;
+  bool _isShowingDuplicateDialog = false;
+  bool _isOcrDialogOpen = false;
 
   @override
   void initState() {
@@ -74,6 +75,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
     widget.controller.addListener(_checkDuplicateNotice);
     widget.controller.addListener(_checkPageLimitNotice);
+    widget.controller.addListener(_checkMultipleLrsNotice);
+    widget.controller.addListener(_checkInvalidLrNotice);
+    widget.controller.addListener(_checkConnectionErrorNotice);
 
     if (widget.autoOpenAddMore) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -86,6 +90,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
   void dispose() {
     widget.controller.removeListener(_checkDuplicateNotice);
     widget.controller.removeListener(_checkPageLimitNotice);
+    widget.controller.removeListener(_checkMultipleLrsNotice);
+    widget.controller.removeListener(_checkInvalidLrNotice);
+    widget.controller.removeListener(_checkConnectionErrorNotice);
 
     _searchController.dispose();
 
@@ -145,16 +152,178 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
     });
   }
 
-  void _checkPageLimitNotice() {
-    if (!mounted) return;
+  bool get _canHandleNotices =>
+      mounted && !_isOcrDialogOpen && (ModalRoute.of(context)?.isCurrent ?? true);
+
+  void _drainPendingNotices() {
+    if (!_canHandleNotices) return;
+    _checkPageLimitNotice(immediate: true);
+    _checkMultipleLrsNotice(immediate: true);
+    _checkInvalidLrNotice(immediate: true);
+    _checkDuplicateNotice(immediate: true);
+    _checkConnectionErrorNotice(immediate: true);
+  }
+
+  void _checkPageLimitNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
     if (widget.controller.pageLimitNoticePending) {
       final msg = widget.controller.pageLimitNoticeMessage ??
-          'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.';
+          defaultPageLimitMessage;
       widget.controller.acknowledgePageLimitNotice();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showPageLimitExceededDialog(msg);
-      });
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) return;
+          _showPageLimitExceededDialog(msg);
+        },
+      );
+    }
+  }
+
+  void _checkMultipleLrsNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
+    if (widget.controller.multipleLrsNoticePending) {
+      final msg = widget.controller.multipleLrsNoticeMessage ??
+          defaultMultipleLrsMessage;
+      widget.controller.acknowledgeMultipleLrsNotice();
+
+      if (_isShowingMultipleLrsDialog) return;
+      _isShowingMultipleLrsDialog = true;
+
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) {
+            _isShowingMultipleLrsDialog = false;
+            return;
+          }
+          showMultipleLrsNotAllowedDialog(
+            context,
+            message: msg,
+            onDismissed: () {
+              _isShowingMultipleLrsDialog = false;
+            },
+          );
+        },
+      );
+    }
+  }
+
+  void _checkInvalidLrNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
+    if (widget.controller.invalidLrNoticePending) {
+      final msg = widget.controller.invalidLrNoticeMessage ??
+          defaultInvalidLrMessage;
+      widget.controller.acknowledgeInvalidLrNotice();
+
+      if (_isShowingInvalidLrDialog) return;
+      _isShowingInvalidLrDialog = true;
+
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) {
+            _isShowingInvalidLrDialog = false;
+            return;
+          }
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Invalid LR',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                msg,
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
+                  onPressed: () {
+                    _isShowingInvalidLrDialog = false;
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          ).whenComplete(() {
+            _isShowingInvalidLrDialog = false;
+          });
+        },
+      );
+    }
+  }
+
+  void _checkConnectionErrorNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
+    if (widget.controller.connectionErrorNoticePending) {
+      final msg = widget.controller.connectionErrorNoticeMessage ??
+          'Unable to reach the validation server. Please check your network connection and try again.';
+      widget.controller.acknowledgeConnectionErrorNotice();
+
+      if (_isShowingConnectionErrorDialog) return;
+      _isShowingConnectionErrorDialog = true;
+
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) {
+            _isShowingConnectionErrorDialog = false;
+            return;
+          }
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.wifi_off_rounded, color: Colors.redAccent, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Connection Notice',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                msg,
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
+                  onPressed: () {
+                    _isShowingConnectionErrorDialog = false;
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          ).whenComplete(() {
+            _isShowingConnectionErrorDialog = false;
+          });
+        },
+      );
     }
   }
 
@@ -217,66 +386,70 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
     return DateTime.tryParse(clean);
   }
 
-  void _checkDuplicateNotice() {
-    if (!mounted) return;
+  void _checkDuplicateNotice({bool immediate = false}) {
+    if (!_canHandleNotices) return;
 
     if (widget.controller.duplicateNoticePending) {
       final msg =
           widget.controller.duplicateNoticeMessage ??
           'This LR already exists. You cannot add the same LR multiple times.';
+      widget.controller.acknowledgeDuplicateNotice();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        widget.controller.acknowledgeDuplicateNotice();
+      if (_isShowingDuplicateDialog) return;
+      _isShowingDuplicateDialog = true;
 
-        showDialog(
-          context: context,
+      presentNoticeDialog(
+        immediate: immediate,
+        show: () {
+          if (!mounted) {
+            _isShowingDuplicateDialog = false;
+            return;
+          }
 
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-
-            title: Row(
-              children: const [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.amber,
-                  size: 28,
-                ),
-
-                SizedBox(width: 8),
-
-                Expanded(
-                  child: Text(
-                    'Duplicate LR',
-
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: const [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.amber,
+                    size: 28,
                   ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Duplicate LR',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                msg,
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                  ),
+                  onPressed: () {
+                    _isShowingDuplicateDialog = false;
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('OK'),
                 ),
               ],
             ),
-
-            content: Text(
-              msg,
-
-              style: const TextStyle(fontSize: 13, height: 1.4),
-            ),
-
-            actions: [
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0284C7),
-                ),
-
-                onPressed: () => Navigator.of(ctx).pop(),
-
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      });
+          ).whenComplete(() {
+            _isShowingDuplicateDialog = false;
+          });
+        },
+      );
     }
   }
 
@@ -399,21 +572,18 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
                   if (capturedPages == null || capturedPages.isEmpty) return;
 
-                  if (mounted) {
-                    showDialog<void>(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (_) =>
-                          OcrProcessingDialog(controller: widget.controller),
-                    );
-                  }
-
+                  _isOcrDialogOpen = true;
                   try {
-                    await widget.controller.addMultiPageScan(capturedPages);
-                  } finally {
-                    if (mounted && Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
+                    if (mounted) {
+                      await runWithOcrProcessingRoute<bool>(
+                        context: context,
+                        controller: widget.controller,
+                        action: () => widget.controller.addMultiPageScan(capturedPages),
+                      );
                     }
+                  } finally {
+                    _isOcrDialogOpen = false;
+                    _drainPendingNotices();
                   }
                 },
               ),
@@ -438,9 +608,7 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                 onTap: () async {
                   Navigator.of(ctx).pop();
 
-                  await _pickAndAddFiles(
-                    allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
-                  );
+                  await _pickAndAddGalleryImages();
                 },
               ),
 
@@ -500,56 +668,59 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
     );
   }
 
-  Future<String?> _resolvePlatformFilePath(PlatformFile file) async {
-    if (file.path != null &&
-        file.path!.isNotEmpty &&
-        File(file.path!).existsSync()) {
-      return file.path!;
+  Future<void> _processQueuePaths(List<String> paths) async {
+    if (paths.isEmpty || !mounted) return;
+    if (!await validatePathFileSizes(context, paths)) return;
+
+    final totalPages = await countTotalUploadPages(paths);
+    if (totalPages > 15) {
+      if (mounted) _showPageLimitExceededDialog();
+      return;
     }
 
+    final countBefore = widget.controller.items.length;
+
+    bool added = false;
+    _isOcrDialogOpen = true;
     try {
-      if (file.xFile.path.isNotEmpty && File(file.xFile.path).existsSync()) {
-        return file.xFile.path;
+      if (mounted) {
+        added = await runWithOcrProcessingRoute<bool>(
+          context: context,
+          controller: widget.controller,
+          action: () => paths.length > 1
+              ? widget.controller.addMultipleFilesAsSingleLr(paths)
+              : widget.controller.addFilePaths([paths.first]),
+        );
       }
-    } catch (_) {}
+    } finally {
+      _isOcrDialogOpen = false;
+      _drainPendingNotices();
+    }
 
+    if (!added) return;
+
+    // Automatically open Step 2: LR & Master Verification for the uploaded file
+    final newItem = widget.controller.lastUploadedItem ??
+        (widget.controller.items.length > countBefore
+            ? widget.controller.items.last
+            : null);
+    if (mounted && newItem != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              EditBiltyScreen(item: newItem, controller: widget.controller),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickAndAddGalleryImages() async {
     try {
-      final bytes = await file.readAsBytes();
-
-      if (bytes.isNotEmpty) {
-        final tmp = await getTemporaryDirectory();
-
-        final safeName = file.name.isNotEmpty
-            ? file.name
-            : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
-
-        final localFile = File('${tmp.path}/$safeName');
-
-        await localFile.writeAsBytes(bytes, flush: true);
-
-        return localFile.path;
-      }
-    } catch (_) {}
-
-    try {
-      final bytes = await file.xFile.readAsBytes();
-
-      if (bytes.isNotEmpty) {
-        final tmp = await getTemporaryDirectory();
-
-        final safeName = file.name.isNotEmpty
-            ? file.name
-            : 'upload_${DateTime.now().millisecondsSinceEpoch}.pdf';
-
-        final localFile = File('${tmp.path}/$safeName');
-
-        await localFile.writeAsBytes(bytes, flush: true);
-
-        return localFile.path;
-      }
-    } catch (_) {}
-
-    return null;
+      final paths = await widget.controller.imageService.pickMultipleImages();
+      await _processQueuePaths(paths);
+    } catch (_) {
+      await _pickAndAddFiles(allowedExtensions: ['jpg', 'jpeg', 'png', 'webp']);
+    }
   }
 
   Future<void> _pickAndAddPdfs() async {
@@ -566,218 +737,19 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
 
       if (files.isEmpty) return;
 
-      // Validate maximum size of 10 MB per file matching Web showFileSizeValidationModal
-      for (final file in files) {
-        final size =
-            file.lengthSync() ??
-            (await file.length()) ??
-            (file.path != null && File(file.path!).existsSync()
-                ? File(file.path!).lengthSync()
-                : 0);
-
-        if (size > 10 * 1024 * 1024) {
-          if (mounted) {
-            final sizeMb = (size / (1024 * 1024)).toStringAsFixed(2);
-
-            showDialog<void>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                title: const Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.amber,
-                      size: 28,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'File Size Validation',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                  ],
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Limit Exceeded',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'File "${file.name}" ($sizeMb MB) exceeds the allowed limit of 10 MB per file. Please choose a file smaller than 10 MB.',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ],
-                ),
-                actions: [
-                  FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F172A),
-                    ),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return;
-        }
+      if (mounted && !await validatePickedFileSizes(context, files)) {
+        return;
       }
 
       final paths = <String>[];
-      for (final file in files) {
-        final path = await _resolvePlatformFilePath(file);
+      for (int i = 0; i < files.length; i++) {
+        final path = await resolvePickedPlatformFilePath(files[i], index: i);
         if (path != null && path.isNotEmpty) {
           paths.add(path);
         }
       }
 
-      if (paths.isEmpty) return;
-
-      // Validate 15-page total limit across all combined files
-      int totalPages = 0;
-      for (final path in paths) {
-        final ext = path.split('.').last.toLowerCase();
-        if (ext == 'pdf') {
-          final count = await PdfAssemblerService.countPdfPages(path);
-          totalPages += count > 0 ? count : 1;
-        } else {
-          totalPages += 1;
-        }
-      }
-      if (totalPages > 15) {
-        if (mounted) {
-          _showPageLimitExceededDialog();
-        }
-        return;
-      }
-
-      final countBefore = widget.controller.items.length;
-
-      BuildContext? processingDialogContext;
-      if (mounted) {
-        showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dCtx) {
-            processingDialogContext = dCtx;
-            return OcrProcessingDialog(controller: widget.controller);
-          },
-        );
-      }
-
-      try {
-        if (paths.length > 1) {
-          await widget.controller.addMultipleFilesAsSingleLr(paths);
-        } else {
-          await widget.controller.addFilePaths([paths.first]);
-        }
-      } finally {
-        final dCtx = processingDialogContext;
-        if (dCtx != null && dCtx.mounted && Navigator.of(dCtx).canPop()) {
-          Navigator.of(dCtx).pop();
-        } else if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      }
-
-      if (widget.controller.multipleLrsNoticePending) {
-        final msg =
-            widget.controller.multipleLrsNoticeMessage ??
-            'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.';
-        widget.controller.acknowledgeMultipleLrsNotice();
-        if (mounted) {
-          showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Row(
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.amber,
-                    size: 28,
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Multiple LRs Not Allowed',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              content: Text(msg, style: const TextStyle(fontSize: 13, height: 1.4)),
-              actions: [
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-        return;
-      }
-
-      if (widget.controller.invalidLrNoticePending) {
-        final msg =
-            widget.controller.invalidLrNoticeMessage ??
-            'Invalid LR – Please upload a valid LR document.';
-        widget.controller.acknowledgeInvalidLrNotice();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg), backgroundColor: Colors.red),
-          );
-        }
-        return;
-      }
-
-      if (widget.controller.connectionErrorNoticePending) {
-        final msg =
-            widget.controller.connectionErrorNoticeMessage ??
-            'Server connection error during extraction.';
-        widget.controller.acknowledgeConnectionErrorNotice();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg), backgroundColor: Colors.red),
-          );
-        }
-        return;
-      }
-
-      // Automatically open Step 2: LR & Master Verification for the uploaded file
-
-      if (mounted && widget.controller.items.length > countBefore) {
-        final newItem = widget.controller.items[countBefore];
-
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) =>
-                EditBiltyScreen(item: newItem, controller: widget.controller),
-          ),
-        );
-      }
+      await _processQueuePaths(paths);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

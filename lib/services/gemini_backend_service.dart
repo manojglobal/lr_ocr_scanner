@@ -37,10 +37,6 @@ class GeminiBackendService {
         error is http.ClientException;
   }
 
-  bool _isSocketConnectError(Object error) {
-    return error is SocketException || error is HandshakeException;
-  }
-
   Future<http.Response> _getWithRediscover(
     String path, {
     Map<String, String>? headers,
@@ -263,50 +259,13 @@ class GeminiBackendService {
 
 
       if (streamedResponse.statusCode != 200) {
-        String detailMsg = responseBody;
-        String? errorCode;
-        try {
-          final errJson = jsonDecode(responseBody);
-          if (errJson is Map) {
-            if (errJson.containsKey('error_code')) {
-              errorCode = errJson['error_code']?.toString();
-            }
-            if (errJson.containsKey('detail')) {
-              detailMsg = errJson['detail']?.toString() ?? '';
-            } else if (errJson.containsKey('message')) {
-              detailMsg = errJson['message']?.toString() ?? '';
-            }
-          }
-        } catch (_) {}
-
-        if (errorCode == 'PAGE_LIMIT_EXCEEDED' || detailMsg.contains('15 pages') || detailMsg.contains('Page Limit Exceeded')) {
-          return ExtractionResult.failure(
-            errorCode: 'PAGE_LIMIT_EXCEEDED',
-            errorMessage: 'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.',
-          );
-        }
-
-        if (errorCode == 'MULTIPLE_LRS' || detailMsg.contains('Multiple LR') || detailMsg.contains('Multiple LRs')) {
-          return ExtractionResult.failure(
-            errorCode: 'MULTIPLE_LRS',
-            errorMessage: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
-          );
-        }
-
-        if (streamedResponse.statusCode == 422 || errorCode == 'INVALID_LR') {
-          return ExtractionResult.failure(
-            errorCode: 'INVALID_LR',
-            errorMessage: 'Invalid LR – Please upload a valid LR document.',
-          );
-        }
-
-        return ExtractionResult.failure(
-          errorCode: errorCode,
-          errorMessage: 'Server Error (${streamedResponse.statusCode}): $detailMsg',
-        );
+        return _parseFailureResponse(streamedResponse.statusCode, responseBody);
       }
 
       final Map<String, dynamic> jsonResponse = jsonDecode(responseBody);
+      if (jsonResponse['success'] == false) {
+        return _parseFailureFromMap(200, jsonResponse, responseBody);
+      }
 
       final String documentTitle = jsonResponse['document_title'] ?? 'Handwritten Document';
 
@@ -406,7 +365,7 @@ class GeminiBackendService {
 
     } catch (e) {
 
-      if (allowRediscover && _isSocketConnectError(e)) {
+      if (allowRediscover && _isNetworkError(e)) {
         final recovered = await AppConfigService.instance.handleConnectionErrorAndRediscover();
         if (recovered) {
           return _extractHandwritingAttempt(
@@ -514,50 +473,13 @@ class GeminiBackendService {
       final responseBody = await streamedResponse.stream.bytesToString().timeout(const Duration(seconds: 60));
 
       if (streamedResponse.statusCode != 200) {
-        String detailMsg = responseBody;
-        String? errorCode;
-        try {
-          final errJson = jsonDecode(responseBody);
-          if (errJson is Map) {
-            if (errJson.containsKey('error_code')) {
-              errorCode = errJson['error_code']?.toString();
-            }
-            if (errJson.containsKey('detail')) {
-              detailMsg = errJson['detail']?.toString() ?? '';
-            } else if (errJson.containsKey('message')) {
-              detailMsg = errJson['message']?.toString() ?? '';
-            }
-          }
-        } catch (_) {}
-
-        if (errorCode == 'PAGE_LIMIT_EXCEEDED' || detailMsg.contains('15 pages') || detailMsg.contains('Page Limit Exceeded')) {
-          return ExtractionResult.failure(
-            errorCode: 'PAGE_LIMIT_EXCEEDED',
-            errorMessage: 'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.',
-          );
-        }
-
-        if (errorCode == 'MULTIPLE_LRS' || detailMsg.contains('Multiple LR') || detailMsg.contains('Multiple LRs')) {
-          return ExtractionResult.failure(
-            errorCode: 'MULTIPLE_LRS',
-            errorMessage: 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
-          );
-        }
-
-        if (streamedResponse.statusCode == 422 || errorCode == 'INVALID_LR') {
-          return ExtractionResult.failure(
-            errorCode: 'INVALID_LR',
-            errorMessage: 'Invalid LR – Please upload a valid LR document.',
-          );
-        }
-
-        return ExtractionResult.failure(
-          errorCode: errorCode,
-          errorMessage: 'Server Error (${streamedResponse.statusCode}): $detailMsg',
-        );
+        return _parseFailureResponse(streamedResponse.statusCode, responseBody);
       }
 
       final Map<String, dynamic> jsonResponse = jsonDecode(responseBody);
+      if (jsonResponse['success'] == false) {
+        return _parseFailureFromMap(200, jsonResponse, responseBody);
+      }
       final String documentTitle = jsonResponse['document_title'] ?? 'Handwritten Document';
       final Map<String, dynamic> rawData = jsonResponse['data'] ?? {};
       final Map<String, String> data = {};
@@ -588,7 +510,7 @@ class GeminiBackendService {
         tableRows: tableInfo.rows,
       );
     } catch (e) {
-      if (allowRediscover && _isSocketConnectError(e)) {
+      if (allowRediscover && _isNetworkError(e)) {
         final recovered = await AppConfigService.instance.handleConnectionErrorAndRediscover();
         if (recovered) {
           return _extractMultipleFilesAttempt(
@@ -1337,6 +1259,62 @@ class GeminiBackendService {
         if (userName != null && userName.isNotEmpty) 'user_name': userName,
       },
       sessionToken,
+    );
+  }
+
+  ExtractionResult _parseFailureResponse(int statusCode, String responseBody) {
+    try {
+      final errJson = jsonDecode(responseBody);
+      if (errJson is Map) {
+        return _parseFailureFromMap(statusCode, errJson, responseBody);
+      }
+    } catch (_) {}
+    return _parseFailureFromMap(statusCode, const {}, responseBody);
+  }
+
+  ExtractionResult _parseFailureFromMap(
+    int statusCode,
+    Map errJson,
+    String fallbackBody,
+  ) {
+    final errorCode = errJson['error_code']?.toString();
+    final msgStr = errJson['message']?.toString().trim() ?? '';
+    final detStr = errJson['detail']?.toString().trim() ?? '';
+    final detailMsg = msgStr.isNotEmpty
+        ? msgStr
+        : (detStr.isNotEmpty ? detStr : fallbackBody);
+    final lowerDetail = detailMsg.toLowerCase();
+
+    if (errorCode == 'PAGE_LIMIT_EXCEEDED' ||
+        detailMsg.contains('15 pages') ||
+        lowerDetail.contains('page limit exceeded')) {
+      return ExtractionResult.failure(
+        errorCode: 'PAGE_LIMIT_EXCEEDED',
+        errorMessage: detailMsg.isNotEmpty
+            ? detailMsg
+            : 'Maximum 15 pages are allowed per upload. Please upload documents containing 15 pages or fewer.',
+      );
+    }
+
+    if (errorCode == 'MULTIPLE_LRS' || lowerDetail.contains('multiple lr')) {
+      return ExtractionResult.failure(
+        errorCode: 'MULTIPLE_LRS',
+        errorMessage: detailMsg.isNotEmpty
+            ? detailMsg
+            : 'Multiple LR documents detected. Please upload documents belonging to only one LR at a time.',
+      );
+    }
+
+    if (statusCode == 422 || errorCode == 'INVALID_LR') {
+      return ExtractionResult.failure(
+        errorCode: 'INVALID_LR',
+        errorMessage: 'Invalid LR – Please upload a valid LR document.',
+      );
+    }
+
+    return ExtractionResult.failure(
+      errorCode: errorCode,
+      errorMessage: 'Server Error ($statusCode): $detailMsg',
     );
   }
 

@@ -121,6 +121,10 @@ class PdfAssemblerService {
     // Pages objects
     for (int i = 0; i < totalPages; i++) {
       final page = pages[i];
+      final maxDim = page.width > page.height ? page.width : page.height;
+      final double scale = maxDim > 792 ? (792.0 / maxDim) : 1.0;
+      final int pageWidth = (page.width * scale).round().clamp(1, 7920);
+      final int pageHeight = (page.height * scale).round().clamp(1, 7920);
       final pageObjId = 3 + i * 3;
       final contentObjId = 4 + i * 3;
       final imgObjId = 5 + i * 3;
@@ -132,7 +136,7 @@ class PdfAssemblerService {
         '<<\n'
         '  /Type /Page\n'
         '  /Parent 2 0 R\n'
-        '  /MediaBox [0 0 ${page.width} ${page.height}]\n'
+        '  /MediaBox [0 0 $pageWidth $pageHeight]\n'
         '  /Resources <<\n'
         '    /ProcSet [/PDF /ImageC]\n'
         '    /XObject << /$imgName $imgObjId 0 R >>\n'
@@ -144,7 +148,7 @@ class PdfAssemblerService {
       // Content Stream Object
       final contentStream = utf8.encode(
         'q\n'
-        '${page.width} 0 0 ${page.height} 0 0 cm\n'
+        '$pageWidth 0 0 $pageHeight 0 0 cm\n'
         '/$imgName Do\n'
         'Q\n',
       );

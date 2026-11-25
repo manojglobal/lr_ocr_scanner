@@ -50,6 +50,61 @@ class ImagePreprocessor {
     }
   }
 
+  /// Rotates [imagePath] upright in a background isolate when [clockwiseDegrees] is 90, 180, or 270.
+  /// Returns the rotated file path, or [imagePath] unchanged if rotation is 0 or cannot be decoded.
+  static Future<String> orientImageUprightIfNeeded(
+    String imagePath,
+    int clockwiseDegrees,
+  ) async {
+    final normalizedDeg = ((clockwiseDegrees % 360) + 360) % 360;
+    if (normalizedDeg != 90 && normalizedDeg != 180 && normalizedDeg != 270) {
+      return imagePath;
+    }
+    try {
+      final file = File(imagePath);
+      if (!await file.exists()) return imagePath;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return imagePath;
+
+      final rotatedBytes = await compute(
+        _rotateUprightBytes,
+        _RotateConfig(rawBytes: bytes, clockwiseDegrees: normalizedDeg),
+      );
+      if (rotatedBytes == null || rotatedBytes.isEmpty) return imagePath;
+
+      Directory outDir;
+      try {
+        outDir = await getTemporaryDirectory();
+      } catch (_) {
+        outDir = Directory.systemTemp;
+      }
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final rotDir = Directory('${outDir.path}/upright_$ts');
+      if (!rotDir.existsSync()) rotDir.createSync(recursive: true);
+      final rawName = imagePath.split(RegExp(r'[/\\]')).last;
+      final dotIdx = rawName.lastIndexOf('.');
+      final stem = dotIdx > 0 ? rawName.substring(0, dotIdx) : rawName;
+      final safeStem = stem.isNotEmpty ? stem : 'upright_$ts';
+      final outPath = '${rotDir.path}/$safeStem.jpg';
+      await File(outPath).writeAsBytes(rotatedBytes, flush: true);
+      return outPath;
+    } catch (_) {
+      return imagePath;
+    }
+  }
+
+  static Uint8List? _rotateUprightBytes(_RotateConfig cfg) {
+    try {
+      final decoded = img.decodeImage(cfg.rawBytes);
+      if (decoded == null) return null;
+      final baked = img.bakeOrientation(decoded);
+      final rotated = img.copyRotate(baked, angle: cfg.clockwiseDegrees);
+      return Uint8List.fromList(img.encodeJpg(rotated, quality: 92));
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Checks whether an image is predominantly orange/yellow (like handwritten transport bilties).
   static Future<bool> isOrangeYellowImage(String imagePath) async {
     try {
@@ -165,5 +220,15 @@ class _PreprocessorConfig {
     required this.rawBytes,
     required this.aggressive,
     required this.skewAngleDegrees,
+  });
+}
+
+class _RotateConfig {
+  final Uint8List rawBytes;
+  final int clockwiseDegrees;
+
+  _RotateConfig({
+    required this.rawBytes,
+    required this.clockwiseDegrees,
   });
 }

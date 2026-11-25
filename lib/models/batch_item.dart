@@ -579,6 +579,16 @@ class BatchItem {
         dataMap['is_verified'] = 'false';
       }
     }
+    if (!dataMap.containsKey('pending_verification') &&
+        (doc['pending_verification'] == true ||
+            doc['pending_verification']?.toString() == 'true')) {
+      dataMap['pending_verification'] = 'true';
+    }
+    if (!dataMap.containsKey('is_cancelled') &&
+        (doc['is_cancelled'] == true ||
+            doc['is_cancelled']?.toString() == 'true')) {
+      dataMap['is_cancelled'] = 'true';
+    }
 
     final dt = DateTime.tryParse(
           (doc['createdAt'] ?? doc['created_at'] ?? '').toString(),
