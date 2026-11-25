@@ -67,6 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _userMobile = '';
 
+  String _appVersion = '';
+
   List<Map<String, dynamic>> _persistedRecentLrs = [];
 
   Set<String> _dismissedRecentLrs = {};
@@ -187,6 +189,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
 
     _loadUserInfo();
+
+    _loadAppVersion();
 
     _loadRecentUploads();
 
@@ -1078,6 +1082,14 @@ void _checkDuplicateNotice({bool immediate = false}) {
 
     });
 
+  }
+
+  Future<void> _loadAppVersion() async {
+    final version = await AppConfigService.getAppVersion();
+    if (!mounted || version == null || version.isEmpty) return;
+    setState(() {
+      _appVersion = version;
+    });
   }
 
 
@@ -2505,12 +2517,13 @@ void _checkDuplicateNotice({bool immediate = false}) {
             backgroundColor: const Color(0xFFF1F5F9),
 
           drawer: Drawer(
-
-            child: ListView(
-
-              padding: EdgeInsets.zero,
-
+            backgroundColor: Colors.white,
+            child: Column(
               children: [
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
 
                 UserAccountsDrawerHeader(
 
@@ -2652,6 +2665,40 @@ void _checkDuplicateNotice({bool immediate = false}) {
 
               ],
 
+            ),
+
+                ),
+                if (_appVersion.isNotEmpty)
+                  Container(
+                    key: const Key('drawer_version_footer'),
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        top: BorderSide(color: Color(0xFFE5E7EB), width: 1.0),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      left: false,
+                      right: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 16,
+                        ),
+                        child: Text(
+                          'App Version $_appVersion',
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
 
           ),

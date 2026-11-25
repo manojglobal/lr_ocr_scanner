@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -759,5 +760,32 @@ class AppConfigService extends ChangeNotifier {
       return 'ws://${httpUrl.substring(7)}/ws';
     }
     return 'ws://$httpUrl/ws';
+  }
+
+  static const MethodChannel _appInfoChannel = MethodChannel('com.example.ocr_to_excel/app_info');
+  static String? _cachedAppVersion;
+
+  /// Resolves the app version string dynamically from Android PackageInfo.versionName.
+  static Future<String?> getAppVersion() async {
+    if (_cachedAppVersion != null && _cachedAppVersion!.isNotEmpty) {
+      return _cachedAppVersion;
+    }
+    try {
+      final version = await _appInfoChannel.invokeMethod<String>('getAppVersion');
+      final cleaned = version?.trim() ?? '';
+      if (cleaned.isNotEmpty) {
+        _cachedAppVersion = cleaned;
+        return cleaned;
+      }
+    } catch (_) {
+      // Gracefully ignore missing native channels in headless tests
+    }
+    return null;
+  }
+
+  /// Resets the cached app version for isolated widget/unit tests.
+  @visibleForTesting
+  static void resetAppVersionCacheForTesting() {
+    _cachedAppVersion = null;
   }
 }

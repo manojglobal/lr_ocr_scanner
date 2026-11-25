@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ocr_to_excel/services/app_config_service.dart';
 import 'package:ocr_to_excel/services/excel_service.dart';
 import 'package:ocr_to_excel/services/format_parser.dart';
 import 'package:ocr_to_excel/services/image_service.dart';
@@ -181,5 +183,103 @@ void main() {
     expect(find.text('Extracting Consignment Details'), findsOneWidget);
     expect(find.text('Mapping with BNF 52-Column Format'), findsOneWidget);
     expect(find.text('Validating Data & Preserving Blanks'), findsOneWidget);
+  });
+
+  group('Navigation drawer version footer', () {
+    const channel = MethodChannel('com.example.ocr_to_excel/app_info');
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      AppConfigService.resetAppVersionCacheForTesting();
+    });
+
+    void mockNativeVersion(String version) {
+      AppConfigService.resetAppVersionCacheForTesting();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getAppVersion') {
+          return version;
+        }
+        return null;
+      });
+    }
+
+    testWidgets('pins version footer at drawer bottom above bottom safe-area inset', (tester) async {
+      mockNativeVersion('1.0.1');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(400, 800),
+              padding: EdgeInsets.only(bottom: 34),
+            ),
+            child: HomeScreen(controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scaffoldState = tester.firstState<ScaffoldState>(find.byType(Scaffold));
+      scaffoldState.openDrawer();
+      await tester.pumpAndSettle();
+
+      // Existing drawer header and menu items remain intact
+      final drawerFinder = find.byType(Drawer);
+      expect(
+        find.descendant(
+          of: find.byType(UserAccountsDrawerHeader),
+          matching: find.text('BNF'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: drawerFinder, matching: find.text('User: Test User')), findsOneWidget);
+      expect(find.descendant(of: drawerFinder, matching: find.text('9876543210')), findsOneWidget);
+      expect(find.descendant(of: drawerFinder, matching: find.text('Home')), findsOneWidget);
+      expect(find.descendant(of: drawerFinder, matching: find.text('LR History')), findsOneWidget);
+      expect(find.descendant(of: drawerFinder, matching: find.text('LR List')), findsOneWidget);
+      expect(find.descendant(of: drawerFinder, matching: find.byKey(const Key('drawer_logout_btn'))), findsOneWidget);
+
+      // Version footer renders dynamically with styling, border, and safe-area positioning
+      final footerFinder = find.byKey(const Key('drawer_version_footer'));
+      expect(footerFinder, findsOneWidget);
+      expect(find.text('App Version 1.0.1'), findsOneWidget);
+
+      final footerContainer = tester.widget<Container>(footerFinder);
+      final decoration = footerContainer.decoration! as BoxDecoration;
+      expect(decoration.color, Colors.white);
+      expect(decoration.border, isA<Border>());
+      final topBorder = (decoration.border! as Border).top;
+      expect(topBorder.color, const Color(0xFFE5E7EB));
+      expect(topBorder.width, 1.0);
+
+      final versionText = tester.widget<Text>(find.text('App Version 1.0.1'));
+      expect(versionText.style?.color, const Color(0xFF6B7280));
+      expect(versionText.style?.fontSize, 12.5);
+      expect(versionText.style?.fontWeight, FontWeight.w500);
+
+      final drawerBox = tester.getRect(drawerFinder);
+      final logoutBox = tester.getRect(find.byKey(const Key('drawer_logout_btn')));
+      final footerBox = tester.getRect(footerFinder);
+      final textBox = tester.getRect(find.text('App Version 1.0.1'));
+      expect(footerBox.top, greaterThan(logoutBox.bottom));
+      expect(footerBox.bottom, closeTo(drawerBox.bottom, 0.1));
+      // Text stays cleanly above the 34dp bottom safe-area inset + 16dp vertical padding
+      expect(drawerBox.bottom - textBox.bottom, greaterThanOrEqualTo(50.0));
+    });
+
+    testWidgets('updates rendered version dynamically when native version changes', (tester) async {
+      mockNativeVersion('2.4.0');
+
+      await tester.pumpWidget(buildTestableWidget());
+      await tester.pumpAndSettle();
+
+      final scaffoldState = tester.firstState<ScaffoldState>(find.byType(Scaffold));
+      scaffoldState.openDrawer();
+      await tester.pumpAndSettle();
+
+      expect(find.text('App Version 2.4.0'), findsOneWidget);
+    });
   });
 }
