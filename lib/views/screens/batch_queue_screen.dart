@@ -1039,6 +1039,9 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
             .where((i) => i.isVerified && i.status != BatchItemStatus.pending && i.status != BatchItemStatus.processing)
             .toList();
         final verifiedCount = allItems.length;
+        final unexportedCount = allItems
+            .where((i) => !widget.controller.isItemExported(i))
+            .length;
 
         final filteredItems = allItems.where((item) {
 
@@ -1930,42 +1933,67 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                                             const SizedBox(width: 6),
                                           ],
 
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2,
-                                            ),
+                                          Builder(
+                                            builder: (context) {
+                                              final isExported = item.isVerified &&
+                                                  widget.controller.isItemExported(item);
+                                              final Color bgColor;
+                                              final Color borderColor;
+                                              final Color textColor;
+                                              final String statusLabel;
 
-                                            decoration: BoxDecoration(
-                                              color: item.isVerified
-                                                  ? const Color(0xFFDCFCE7)
-                                                  : const Color(0xFFFEE2E2),
+                                              if (isExported) {
+                                                // Web Parity (renderBatchTable): sky-50 / sky-200 / sky-700 + check-check + "Exported"
+                                                bgColor = const Color(0xFFF0F9FF);
+                                                borderColor = const Color(0xFFBAE6FD);
+                                                textColor = const Color(0xFF0369A1);
+                                                statusLabel = 'Exported';
+                                              } else if (item.isVerified) {
+                                                bgColor = const Color(0xFFDCFCE7);
+                                                borderColor = const Color(0xFF86EFAC);
+                                                textColor = const Color(0xFF16A34A);
+                                                statusLabel = 'Verified';
+                                              } else {
+                                                bgColor = const Color(0xFFFEE2E2);
+                                                borderColor = const Color(0xFFFCA5A5);
+                                                textColor = const Color(0xFFDC2626);
+                                                statusLabel = 'Unverified';
+                                              }
 
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-
-                                              border: Border.all(
-                                                color: item.isVerified
-                                                    ? const Color(0xFF86EFAC)
-                                                    : const Color(0xFFFCA5A5),
-                                              ),
-                                            ),
-
-                                            child: Text(
-                                              item.isVerified
-                                                  ? 'Verified'
-                                                  : 'Unverified',
-
-                                              style: TextStyle(
-                                                fontSize: 10,
-
-                                                fontWeight: FontWeight.bold,
-
-                                                color: item.isVerified
-                                                    ? const Color(0xFF16A34A)
-                                                    : const Color(0xFFDC2626),
-                                              ),
-                                            ),
+                                              return Container(
+                                                key: ValueKey('lr_status_badge_${item.id}'),
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: bgColor,
+                                                  borderRadius: BorderRadius.circular(10),
+                                                  border: Border.all(color: borderColor),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (isExported) ...[
+                                                      const Icon(
+                                                        Icons.done_all,
+                                                        size: 11,
+                                                        color: Color(0xFF0284C7),
+                                                      ),
+                                                      const SizedBox(width: 3),
+                                                    ],
+                                                    Text(
+                                                      statusLabel,
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: textColor,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
                                           ),
                                         ],
                                       ),
@@ -2275,7 +2303,11 @@ class _BatchQueueScreenState extends State<BatchQueueScreen> {
                           label: Text(
                             _isExporting
                                 ? 'Exporting...'
-                                : 'Download Excel ($verifiedCount LRs)',
+                                : (unexportedCount > 0
+                                    ? 'Download Excel ($unexportedCount LRs)'
+                                    : (verifiedCount > 0
+                                        ? 'Re-export Excel ($verifiedCount LRs)'
+                                        : 'Download Excel (0 LRs)')),
 
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,

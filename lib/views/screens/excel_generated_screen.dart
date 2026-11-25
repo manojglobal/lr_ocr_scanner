@@ -55,15 +55,18 @@ class ExcelGeneratedScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text('Export Complete', style: TextStyle(fontWeight: FontWeight.bold)),
-        automaticallyImplyLeading: false,
         actions: [
           TextButton(
             onPressed: () {
-              controller.clearQueue();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => HomeScreen(controller: controller)),
-                (route) => false,
-              );
+              // Web Parity (#excelSuccessModal Close): return to LR List / caller without deleting LRs.
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => HomeScreen(controller: controller)),
+                  (route) => false,
+                );
+              }
             },
             child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
@@ -341,12 +344,11 @@ class ExcelGeneratedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // Upload New LR
+              // Upload New LR (Web Parity startNewBatch: return to upload screen while preserving LR List)
               SizedBox(
                 width: double.infinity,
                 child: TextButton.icon(
                   onPressed: () {
-                    controller.clearQueue();
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(builder: (_) => HomeScreen(controller: controller)),
                       (route) => false,

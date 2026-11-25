@@ -17,6 +17,7 @@ import 'package:ocr_to_excel/services/master_data_service.dart';
 import 'package:ocr_to_excel/services/ocr_service.dart';
 import 'package:ocr_to_excel/services/permission_service.dart';
 import 'package:ocr_to_excel/state/batch_controller.dart';
+import 'package:ocr_to_excel/views/home_screen.dart';
 import 'package:ocr_to_excel/views/screens/batch_queue_screen.dart';
 import 'package:ocr_to_excel/views/screens/customization_driver_screen.dart';
 import 'package:ocr_to_excel/views/screens/excel_generated_screen.dart';
@@ -574,6 +575,130 @@ void main() {
 
         await tester.tap(find.text('Cancel'));
         await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 500));
+        ctrl.dispose();
+      },
+    );
+
+    testWidgets(
+      'Web Parity: Done and Upload New LR on ExcelGeneratedScreen keep LRs in LR List and update status pill to Exported (with reset on edit)',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
+
+        final httpMock = _MockHttpOverrides(
+          (method, uri, body) => {'success': true, 'data': {}, 'uploads': [], 'history': []},
+        );
+        HttpOverrides.global = httpMock;
+
+        SharedPreferences.setMockInitialValues({
+          'bnf_user_mobile': '9876543210',
+          'bnf_user_name': 'Export Parity User',
+        });
+
+        final mockGemini = _MockGeminiService();
+        final ctrl = BatchProcessingController(
+          permissionService: _StubPermissionService(),
+          imageService: _StubImageService(),
+          ocrService: _StubOcrService(),
+          parserService: FormatParserService(),
+          excelService: _StubExcelService(),
+          geminiService: mockGemini,
+        );
+        ctrl.setActiveUser('9876543210', name: 'Export Parity User');
+        await tester.pump();
+
+        final verifiedItem = _makeVerifiedItem(id: 'exp-keep-1', lrNo: 'LR-KEEP-101');
+        ctrl.addItemDirectly(verifiedItem);
+
+        await tester.pumpWidget(
+          MaterialApp(home: BatchQueueScreen(controller: ctrl)),
+        );
+        await tester.pumpAndSettle();
+
+        // Pre-download state: Verified badge + Download Excel (1 LRs)
+        expect(find.byKey(const ValueKey('lr_status_badge_exp-keep-1')), findsOneWidget);
+        expect(find.text('Verified'), findsOneWidget);
+        expect(find.text('Exported'), findsNothing);
+        expect(find.text('Download Excel (1 LRs)'), findsOneWidget);
+
+        // Download Excel -> ExcelGeneratedScreen
+        await tester.tap(find.byKey(const Key('direct_download_excel_btn')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Download (1 LRs)'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExcelGeneratedScreen), findsOneWidget);
+        expect(ctrl.items.length, 1);
+        expect(ctrl.isItemExported(ctrl.items.first), isTrue);
+
+        // Tap Done -> returns to BatchQueueScreen WITHOUT clearing LR List
+        await tester.tap(find.text('Done'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(BatchQueueScreen), findsOneWidget);
+        expect(ctrl.items.length, 1);
+        expect(ctrl.items.first.id, 'exp-keep-1');
+        expect(ctrl.isItemExported(ctrl.items.first), isTrue);
+
+        // Status pill updated to Exported and button updated to Re-export Excel (1 LRs)
+        expect(find.text('Exported'), findsOneWidget);
+        expect(find.byIcon(Icons.done_all), findsOneWidget);
+        expect(find.text('Verified'), findsNothing);
+        expect(find.text('1 Verified'), findsOneWidget);
+        expect(find.text('Total: 1 Verified LR'), findsOneWidget);
+        expect(find.text('Re-export Excel (1 LRs)'), findsOneWidget);
+
+        // Verify zero cloud delete/clear calls happened on Done
+        expect(
+          httpMock.calls.any(
+            (c) => c.uri.path.contains('delete') || c.uri.path.contains('clear-all'),
+          ),
+          isFalse,
+        );
+
+        // Editing an Exported LR reverts status pill back to Verified & Download Excel (1 LRs)
+        final editedRec = Map<String, String>.from(ctrl.items.first.record);
+        editedRec['cngr *'] = 'UPDATED CONSIGNOR';
+        ctrl.updateItem(ctrl.items.first.copyWith(record: editedRec));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Exported'), findsNothing);
+        expect(find.text('Verified'), findsOneWidget);
+        expect(find.text('Download Excel (1 LRs)'), findsOneWidget);
+
+        // Re-mark exported and test "Upload New LR" button on ExcelGeneratedScreen
+        await ctrl.markItemsAsExported(['exp-keep-1']);
+        await tester.pumpAndSettle();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExcelGeneratedScreen(
+              controller: ctrl,
+              exportResult: const {'filename': 'Keep.xlsx', 'total_lrs': 1},
+              exportedItems: ctrl.items,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Upload New LR'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Upload New LR'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(ctrl.items.length, 1);
+        expect(ctrl.isItemExported(ctrl.items.first), isTrue);
+        expect(
+          httpMock.calls.any(
+            (c) => c.uri.path.contains('delete') || c.uri.path.contains('clear-all'),
+          ),
+          isFalse,
+        );
+
         await tester.pump(const Duration(milliseconds: 500));
         ctrl.dispose();
       },
