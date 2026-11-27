@@ -3,6 +3,8 @@ import '../../models/batch_item.dart';
 import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
+import '../widgets/date_picker_field_helper.dart';
+import '../widgets/searchable_master_picker_sheet.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
 import 'edit_bilty_screen.dart';
@@ -97,8 +99,8 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
         : (directCust.isNotEmpty ? directCust : (rec['cngr *'] ?? rec['cngr'] ?? '').trim());
     _customerController = TextEditingController(text: cust);
 
-    // 2. Department: Exact preservation from ManiFest.xlsx without fallback or fake insertion
-    _departmentOptions = List<String>.from(master.getDepartmentsForCustomer(cust));
+    // 2. Department: Populate all ManiFest.xlsx departments (customer-matched first) for full search & scroll
+    _departmentOptions = List<String>.from(master.getDepartmentDropdownOptions(cust));
     final dept = rec['Depatment Name'] ?? rec['department'] ?? '';
     if (dept.isNotEmpty && _departmentOptions.contains(dept)) {
       _selectedDepartment = dept;
@@ -172,7 +174,7 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
 
   void _onCustomerChanged() {
     final newCust = _customerController.text.trim();
-    final newDepts = MasterDataService.instance.getDepartmentsForCustomer(newCust);
+    final newDepts = MasterDataService.instance.getDepartmentDropdownOptions(newCust);
     if (newCust != _lastCustomerText) {
       _lastCustomerText = newCust;
       if (newCust.isNotEmpty) {
@@ -786,20 +788,13 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                         ),
                         const SizedBox(height: 14),
                         _buildLabel('Department'),
-                        DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          initialValue: _departmentOptions.contains(_selectedDepartment) ? _selectedDepartment : null,
-                          items: _departmentOptions
-                              .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13))))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedDepartment = val);
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Select Department from ManiFest',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                          ),
+                        _buildSearchableMasterSelector(
+                          pickerFieldKey: 'custom_department',
+                          title: 'Select Department (${_departmentOptions.length})',
+                          selectedValue: _departmentOptions.contains(_selectedDepartment) ? _selectedDepartment : '',
+                          hintText: 'Search or Select Department from ManiFest',
+                          options: _departmentOptions,
+                          onSelected: (val) => setState(() => _selectedDepartment = val),
                         ),
                       ],
                     ),
@@ -813,47 +808,14 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                         _buildLabel('Counter *', showError: _hasValidated && _selectedCounter.trim().isEmpty),
                         KeyedSubtree(
                           key: _counterKey,
-                          child: Builder(
-                            builder: (context) {
-                              final isCounterErr = _hasValidated && _selectedCounter.trim().isEmpty;
-                              return DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                initialValue: _counterOptions.contains(_selectedCounter) ? _selectedCounter : null,
-                                items: _counterOptions
-                                    .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
-                                    .toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedCounter = val);
-                                },
-                                decoration: InputDecoration(
-                                  hintText: 'Select Counter from Master',
-                                  filled: true,
-                                  fillColor: isCounterErr ? const Color(0xFFFEF2F2) : Colors.white,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(
-                                      color: isCounterErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
-                                      width: isCounterErr ? 1.2 : 1.0,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(
-                                      color: isCounterErr ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
-                                      width: isCounterErr ? 1.2 : 1.0,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(
-                                      color: isCounterErr ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                ),
-                              );
-                            },
+                          child: _buildSearchableMasterSelector(
+                            pickerFieldKey: 'custom_counter',
+                            title: 'Select Counter (${_counterOptions.length})',
+                            selectedValue: _counterOptions.contains(_selectedCounter) ? _selectedCounter : '',
+                            hintText: 'Search or Select Counter from Master',
+                            options: _counterOptions,
+                            showError: _hasValidated && _selectedCounter.trim().isEmpty,
+                            onSelected: (val) => setState(() => _selectedCounter = val),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -971,32 +933,13 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                         _buildLabel('Product Type *'),
                         KeyedSubtree(
                           key: _productTypeKey,
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            initialValue: _selectedProductType,
-                            items: _productTypeOptions
-                                .map((p) => DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 13))))
-                                .toList(),
-                            onChanged: (val) {
-                              if (val != null) setState(() => _selectedProductType = val);
-                            },
-                            decoration: InputDecoration(
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.0),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            ),
+                          child: _buildSearchableMasterSelector(
+                            pickerFieldKey: 'custom_product_type',
+                            title: 'Select Product Type (${_productTypeOptions.length})',
+                            selectedValue: _selectedProductType,
+                            hintText: 'Search or Select Product Type',
+                            options: _productTypeOptions,
+                            onSelected: (val) => setState(() => _selectedProductType = val),
                           ),
                         ),
                       ],
@@ -1187,14 +1130,23 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
                                   fontStyle: FontStyle.normal,
                                 ),
                                 decoration: InputDecoration(
-                                  hintText: 'DD/MM/YYYY',
+                                  hintText: 'Valid Up To',
                                   hintStyle: const TextStyle(
                                     color: Color(0xFF94A3B8),
                                     fontSize: 13,
                                     fontStyle: FontStyle.italic,
                                     fontWeight: FontWeight.normal,
                                   ),
-                                  suffixIcon: const Icon(Icons.calendar_today, size: 18, color: Colors.blueGrey),
+                                  suffixIcon: IconButton(
+                                    key: const Key('custom_license_valid_picker_btn'),
+                                    icon: const Icon(Icons.calendar_today, size: 18, color: Colors.blueGrey),
+                                    tooltip: 'Select date',
+                                    onPressed: () => pickDateForController(
+                                      context,
+                                      _licenseValidController,
+                                      onDatePicked: _onFieldChanged,
+                                    ),
+                                  ),
                                   filled: true,
                                   fillColor: isValErr ? const Color(0xFFFEF2F2) : Colors.white,
                                   border: OutlineInputBorder(
@@ -1299,6 +1251,85 @@ class _CustomizationDriverScreenState extends State<CustomizationDriverScreen> {
               currentStep: 2,
               controller: widget.controller,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchableMasterSelector({
+    required String pickerFieldKey,
+    required String title,
+    required String selectedValue,
+    required String hintText,
+    required List<String> options,
+    required ValueChanged<String> onSelected,
+    bool showError = false,
+  }) {
+    final hasValue = selectedValue.isNotEmpty;
+    return InkWell(
+      key: Key('selector_$pickerFieldKey'),
+      borderRadius: BorderRadius.circular(10),
+      onTap: () async {
+        final chosen = await showSearchableMasterPicker(
+          context,
+          fieldKey: pickerFieldKey,
+          title: title,
+          options: options,
+          selectedValue: hasValue ? selectedValue : null,
+        );
+        if (chosen != null && mounted) {
+          onSelected(chosen);
+        }
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: showError ? const Color(0xFFFEF2F2) : Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: showError ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+              width: showError ? 1.2 : 1.0,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: showError ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1),
+              width: showError ? 1.2 : 1.0,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: showError ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
+              width: 1.5,
+            ),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                hasValue ? selectedValue : hintText,
+                style: hasValue
+                    ? const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0F172A),
+                      )
+                    : const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF94A3B8),
+                        fontStyle: FontStyle.italic,
+                      ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.search, size: 18, color: Color(0xFF0284C7)),
           ],
         ),
       ),

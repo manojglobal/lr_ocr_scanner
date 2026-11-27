@@ -1549,13 +1549,15 @@ bool _duplicateNoticePending = false;
     Map<String, String> data, {
     bool isOrangeYellow = false,
     String rawText = '',
+    String fileName = '',
   }) {
     if (isOrangeYellow) {
       data['BNF LR No'] = '';
     }
 
-    // 1. Web Unicharm -> "Global Marketing" Customer default
+    // 1. Web Unicharm -> "Global Marketing" & Patanjali -> "Patanjali Parivahan Private Limited" Customer defaults
     MasterDataService.normalizeUnicharmCustomer(data, rawText: rawText);
+    MasterDataService.normalizePatanjaliCustomer(data, rawText: rawText, fileName: fileName);
 
     // 2. Ensure driver details remain empty if absent in OCR (driver_master auto-fill disabled)
     for (final drvKey in ['Driver Name *', 'Mobile no   *', 'Liscense No *', 'Valid Up to *']) {
@@ -1829,10 +1831,10 @@ bool _duplicateNoticePending = false;
       }
 
       final rec = Map<String, String>.from(result.data);
-      _enrichExtractedRecord(rec, rawText: result.rawText);
+      final primaryFn = permanentPaths.first.split(RegExp(r'[/\\]')).last;
+      _enrichExtractedRecord(rec, rawText: result.rawText, fileName: primaryFn);
 
       final docId = _uuid.v4();
-      final primaryFn = permanentPaths.first.split(RegExp(r'[/\\]')).last;
       final displayName = '$primaryFn (+${permanentPaths.length - 1} files)';
 
       // Replace any matching stale unverified items cleanly before inserting
@@ -2282,6 +2284,7 @@ bool _duplicateNoticePending = false;
             parseResult.data,
             isOrangeYellow: isOrangeYellow,
             rawText: rawOcrText,
+            fileName: item.fileName,
           );
 
           _removeMatchingUnverifiedItems(

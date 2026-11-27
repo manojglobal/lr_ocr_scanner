@@ -23,6 +23,11 @@ class MasterDataService {
 
   static final RegExp unicharmRegex = RegExp(r'(?:unicharm|uvicharm|vuicharm|micharm)', caseSensitive: false);
   static const String webUnicharmDefaultCustomer = 'Global Marketing';
+  static final RegExp patanjaliMarkerRegex = RegExp(
+    r'pat[aehi]?n[gj][aeil1oy]{1,5}|ruchi\s*soya|\brsil\b',
+    caseSensitive: false,
+  );
+  static const String defaultPatanjaliCustomer = 'Patanjali Parivahan Private Limited';
 
   static const Map<String, String> _knownBrandGstMap = {
     'patanjali': '07AAFCP1505P2Z8',
@@ -484,6 +489,24 @@ class MasterDataService {
     return getAllDepartments();
   }
 
+  /// Returns all unique departments from ManiFest.xlsx for dropdown browsing/search,
+  /// prioritizing any departments matching [customer] first so customer relevance is kept.
+  List<String> getDepartmentDropdownOptions([String customer = '']) {
+    final all = getAllDepartments();
+    if (customer.trim().isEmpty) return all;
+    final preferred = getDepartmentsForCustomer(customer);
+    if (preferred.length == all.length) return all;
+    final seen = <String>{};
+    final ordered = <String>[];
+    for (final d in preferred) {
+      if (seen.add(d)) ordered.add(d);
+    }
+    for (final d in all) {
+      if (seen.add(d)) ordered.add(d);
+    }
+    return List<String>.unmodifiable(ordered);
+  }
+
   /// Strictly validates Department value against ManiFest.xlsx.
   /// Preserves exact casing, spaces, and spelling.
   bool isDepartmentValid(String dept, [String? customer]) {
@@ -718,6 +741,81 @@ class MasterDataService {
   /// Sets Party GST map in memory (primarily for tests).
   void setPartyGstMapForTesting(Map<String, String> gstMap) {
     _partyGstMap = Map<String, String>.from(gstMap);
+  }
+
+  static bool _isEditDistanceLe2(String a, String b) {
+    if ((a.length - b.length).abs() > 2) return false;
+    var prev = List<int>.generate(b.length + 1, (j) => j);
+    for (var i = 0; i < a.length; i++) {
+      final cur = List<int>.filled(b.length + 1, 0);
+      cur[0] = i + 1;
+      var rowMin = cur[0];
+      for (var j = 1; j <= b.length; j++) {
+        final cost = a.codeUnitAt(i) == b.codeUnitAt(j - 1) ? 0 : 1;
+        final val = [
+          cur[j - 1] + 1,
+          prev[j] + 1,
+          prev[j - 1] + cost,
+        ].reduce((x, y) => x < y ? x : y);
+        cur[j] = val;
+        if (val < rowMin) rowMin = val;
+      }
+      if (rowMin > 2) return false;
+      prev = cur;
+    }
+    return prev[b.length] <= 2;
+  }
+
+  /// Detects Patanjali company names, OCR spelling mistakes (e.g. Patanjli/Pathanjali), and RSIL/Ruchi Soya aliases.
+  static bool containsPatanjaliMarker(String? val) {
+    final s = (val ?? '').trim();
+    if (s.isEmpty) return false;
+    if (patanjaliMarkerRegex.hasMatch(s)) return true;
+    for (final m in RegExp(r'[a-zA-Z0-9]+').allMatches(s.toLowerCase())) {
+      final alpha = m.group(0)!.replaceAll('1', 'l').replaceAll('0', 'o');
+      if (alpha.length >= 7 && alpha.startsWith('p') && _isEditDistanceLe2(alpha, 'patanjali')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Applies default Customer ("Patanjali Parivahan Private Limited") for Patanjali LRs on upload without modifying Consignor.
+  static bool normalizePatanjaliCustomer(
+    Map<String, String> data, {
+    String rawText = '',
+    String fileName = '',
+  }) {
+    bool isPatanjali = containsPatanjaliMarker(rawText) || containsPatanjaliMarker(fileName);
+    if (!isPatanjali) {
+      for (final key in [
+        'Customer Name *', 'Customer Name', 'Customer', 'customer', 'customer_name',
+        'cngr *', 'cngr', 'consignor', 'cnge *', 'cnge', 'consignee', 'Depatment Name', 'department',
+      ]) {
+        if (containsPatanjaliMarker(data[key])) {
+          isPatanjali = true;
+          break;
+        }
+      }
+    }
+    if (!isPatanjali) return false;
+
+    final currentCust = (data['Customer Name *'] ??
+            data['Customer Name'] ??
+            data['Customer'] ??
+            data['customer'] ??
+            data['customer_name'] ??
+            '')
+        .trim();
+    if (currentCust.isEmpty || containsPatanjaliMarker(currentCust)) {
+      data['Customer Name *'] = defaultPatanjaliCustomer;
+      data['Customer Name'] = defaultPatanjaliCustomer;
+      data['Customer'] = defaultPatanjaliCustomer;
+      data['customer'] = defaultPatanjaliCustomer;
+      data['customer_name'] = defaultPatanjaliCustomer;
+      return true;
+    }
+    return false;
   }
 
   /// Applies Web Unicharm Customer default rule ("Global Marketing") without affecting other customers.

@@ -878,11 +878,11 @@
 
                   <input type="text" id="edit_grdt" placeholder="DD-MM-YYYY" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white pr-8 transition" />
 
-                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="document.getElementById('edit_grdt_picker')?.showPicker?.() || document.getElementById('edit_grdt_picker')?.focus()">
+                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="openHybridDatePickerWeb('edit_grdt', 'edit_grdt_picker')">
 
                     <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
 
-                    <input type="date" id="edit_grdt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); const inp = document.getElementById('edit_grdt'); if(inp){ inp.value = `${p[2]}-${p[1]}-${p[0]}`; inp.dispatchEvent(new Event('input', { bubbles: true })); } if(typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); }" />
+                    <input type="date" id="edit_grdt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" />
 
                   </div>
 
@@ -898,11 +898,11 @@
 
                   <input type="text" id="edit_ewaybilldt" placeholder="DD-MM-YYYY" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white pr-8 transition" />
 
-                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="document.getElementById('edit_ewaybilldt_picker')?.showPicker?.() || document.getElementById('edit_ewaybilldt_picker')?.focus()">
+                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="openHybridDatePickerWeb('edit_ewaybilldt', 'edit_ewaybilldt_picker')">
 
                     <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
 
-                    <input type="date" id="edit_ewaybilldt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" onchange="if(this.value){ const p = this.value.split('-'); const inp = document.getElementById('edit_ewaybilldt'); if(inp){ inp.value = `${p[2]}-${p[1]}-${p[0]}`; inp.dispatchEvent(new Event('input', { bubbles: true })); } if(typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); }" />
+                    <input type="date" id="edit_ewaybilldt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" />
 
                   </div>
 
@@ -1124,7 +1124,19 @@
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">E-Way Bill Valid Upto</label>
 
-                <input type="text" id="edit_validupto" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-sky-500 focus:bg-white transition" />
+                <div class="relative">
+
+                  <input type="text" id="edit_validupto" placeholder="DD-MM-YYYY" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+
+                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="openHybridDatePickerWeb('edit_validupto', 'edit_validupto_picker')">
+
+                    <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+
+                    <input type="date" id="edit_validupto_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" />
+
+                  </div>
+
+                </div>
 
               </div>
 
@@ -1140,7 +1152,19 @@
 
                 <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Invoice Date</label>
 
-                <input type="text" id="edit_invdt" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-sky-500 focus:bg-white transition" />
+                <div class="relative">
+
+                  <input type="text" id="edit_invdt" placeholder="DD-MM-YYYY" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-800 focus:border-sky-500 focus:bg-white transition" />
+
+                  <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="openHybridDatePickerWeb('edit_invdt', 'edit_invdt_picker')">
+
+                    <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+
+                    <input type="date" id="edit_invdt_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" />
+
+                  </div>
+
+                </div>
 
               </div>
 
@@ -1340,27 +1364,43 @@
 
                 </div>
 
-                <div>
+                <div class="relative">
 
                   <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Department Name</label>
 
-                  <select id="custom_dept" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs">
+                  <div class="relative">
 
-                    <option value="">-- Select Department --</option>
+                    <input type="text" id="custom_dept" placeholder="Search or Select Department..." autocomplete="off" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs" />
 
-                  </select>
+                    <button type="button" id="btn_toggle_dept" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" title="Toggle department options">
+
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+
+                    </button>
+
+                  </div>
+
+                  <div id="dept_dropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-50 divide-y divide-slate-100 text-xs"></div>
 
                 </div>
 
-                <div>
+                <div class="relative">
 
                   <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Counter *</label>
 
-                  <select id="custom_counter" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs">
+                  <div class="relative">
 
-                    <option value="">-- Select Counter from Master --</option>
+                    <input type="text" id="custom_counter" placeholder="Search or Select Counter..." autocomplete="off" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs" />
 
-                  </select>
+                    <button type="button" id="btn_toggle_counter" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" title="Toggle counter options">
+
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+
+                    </button>
+
+                  </div>
+
+                  <div id="counter_dropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-50 divide-y divide-slate-100 text-xs"></div>
 
                 </div>
 
@@ -1390,23 +1430,23 @@
 
                 </div>
 
-                <div class="sm:col-span-2">
+                <div class="sm:col-span-2 relative">
 
                   <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Product Type *</label>
 
-                  <select id="custom_product_type" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs">
+                  <div class="relative">
 
-                    <option value="Surface-FTL" selected>Surface-FTL</option>
+                    <input type="text" id="custom_product_type" value="Surface-FTL" placeholder="Search or Select Product Type..." autocomplete="off" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs" />
 
-                    <option value="Surface-PTL">Surface-PTL</option>
+                    <button type="button" id="btn_toggle_product_type" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1" title="Toggle product type options">
 
-                    <option value="Global-TT">Global-TT</option>
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
 
-                    <option value="Global-MT">Global-MT</option>
+                    </button>
 
-                    <option value="AIR">AIR</option>
+                  </div>
 
-                  </select>
+                  <div id="product_type_dropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-50 divide-y divide-slate-100 text-xs"></div>
 
                 </div>
 
@@ -1460,7 +1500,19 @@
 
                   <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Valid Up to *</label>
 
-                  <input type="text" id="custom_license_valid" placeholder="DD/MM/YYYY" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs" />
+                  <div class="relative">
+
+                    <input type="text" id="custom_license_valid" placeholder="Valid Up To" class="w-full px-2.5 py-1.5 pr-8 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 focus:border-sky-500 shadow-xs" />
+
+                    <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center cursor-pointer text-slate-400 hover:text-sky-600" onclick="openHybridDatePickerWeb('custom_license_valid', 'custom_license_valid_picker')">
+
+                      <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+
+                      <input type="date" id="custom_license_valid_picker" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto" />
+
+                    </div>
+
+                  </div>
 
                 </div>
 
@@ -9018,6 +9070,74 @@
 
     const UNICHARM_WEB_REGEX = /(?:unicharm|uvicharm|vuicharm|micharm)/i;
     const WEB_UNICHARM_DEFAULT_CUSTOMER = 'Global Marketing';
+    const PATANJALI_WEB_REGEX = /pat[aehi]?n[gj][aeil1oy]{1,5}|ruchi\s*soya|\brsil\b/i;
+    const WEB_PATANJALI_DEFAULT_CUSTOMER = 'Patanjali Parivahan Private Limited';
+
+    function editDistanceLeTwoWeb(a, b) {
+      if (Math.abs(a.length - b.length) > 2) return false;
+      let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+      for (let i = 0; i < a.length; i++) {
+        const cur = new Array(b.length + 1).fill(0);
+        cur[0] = i + 1;
+        let rowMin = cur[0];
+        for (let j = 1; j <= b.length; j++) {
+          const cost = a.charCodeAt(i) === b.charCodeAt(j - 1) ? 0 : 1;
+          const v = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+          cur[j] = v;
+          if (v < rowMin) rowMin = v;
+        }
+        if (rowMin > 2) return false;
+        prev = cur;
+      }
+      return prev[b.length] <= 2;
+    }
+
+    function containsPatanjaliMarkerWeb(val) {
+      const s = String(val || '').trim();
+      if (!s) return false;
+      if (PATANJALI_WEB_REGEX.test(s)) return true;
+      const tokens = s.toLowerCase().match(/[a-z0-9]+/g) || [];
+      for (const tok of tokens) {
+        const alpha = tok.replace(/1/g, 'l').replace(/0/g, 'o');
+        if (alpha.length >= 7 && alpha.startsWith('p') && editDistanceLeTwoWeb(alpha, 'patanjali')) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function normalizePatanjaliCustomerWeb(data, rawText = '', filename = '') {
+      if (!data || typeof data !== 'object') return false;
+      const isPatanjali = containsPatanjaliMarkerWeb(rawText) || containsPatanjaliMarkerWeb(filename) || [
+        data['Customer Name *'],
+        data['Customer Name'],
+        data['Customer'],
+        data['customer'],
+        data['customer_name'],
+        data['cngr *'],
+        data['cngr'],
+        data['consignor'],
+        data['cnge *'],
+        data['cnge'],
+        data['consignee'],
+        data['Depatment Name'],
+        data['department'],
+      ].some(v => containsPatanjaliMarkerWeb(v));
+      if (!isPatanjali) return false;
+
+      const currentCust = String(
+        data['Customer Name *'] || data['Customer Name'] || data['Customer'] || data['customer'] || data['customer_name'] || ''
+      ).trim();
+      if (!currentCust || containsPatanjaliMarkerWeb(currentCust)) {
+        data['Customer Name *'] = WEB_PATANJALI_DEFAULT_CUSTOMER;
+        data['Customer Name'] = WEB_PATANJALI_DEFAULT_CUSTOMER;
+        data['Customer'] = WEB_PATANJALI_DEFAULT_CUSTOMER;
+        data['customer'] = WEB_PATANJALI_DEFAULT_CUSTOMER;
+        data['customer_name'] = WEB_PATANJALI_DEFAULT_CUSTOMER;
+        return true;
+      }
+      return false;
+    }
 
     function normalizeUnicharmCustomerWeb(data, rawText = '') {
       if (!data || typeof data !== 'object') return false;
@@ -9221,6 +9341,7 @@
       }
 
       normalizeUnicharmCustomerWeb(data, text);
+      normalizePatanjaliCustomerWeb(data, text, filename);
 
 
 
@@ -9845,6 +9966,7 @@
       result.data['freight'] = '';
 
       normalizeUnicharmCustomerWeb(result.data);
+      normalizePatanjaliCustomerWeb(result.data, result.raw_text || '', result.filename || '');
 
       const prodTypeOptions = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
       const rawPCode = (result.data['productcode'] || result.data['Product Code'] || '').trim();
@@ -9924,7 +10046,11 @@
 
     let masterCustomersMapping = {};
 
+    let masterDepartmentOptionsWeb = [];
+
     let masterCountersList = [];
+
+    const WEB_PRODUCT_TYPE_OPTIONS = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
 
     let masterVehicleTypes = [
       "32 FT Open",
@@ -10326,16 +10452,13 @@
 
           const selCounter = document.getElementById('custom_counter');
 
-          if (selCounter) {
-
-            const currentCounter = selCounter.value;
-
-            selCounter.innerHTML = '<option value="">-- Select Counter from Master --</option>' +
-
-              masterCountersList.map(cnt => `<option value="${cnt}">${cnt}</option>`).join('');
-
-            if (currentCounter) selCounter.value = currentCounter;
-
+          if (selCounter && selCounter.value && !masterCountersList.includes(selCounter.value)) {
+            const ciMatch = masterCountersList.find(cnt => cnt.trim().toLowerCase() === selCounter.value.trim().toLowerCase());
+            if (ciMatch) selCounter.value = ciMatch;
+          }
+          const counterDd = document.getElementById('counter_dropdown');
+          if (counterDd && !counterDd.classList.contains('hidden')) {
+            renderCounterDropdownWeb(selCounter ? selCounter.value : '', false);
           }
 
         }
@@ -10535,6 +10658,227 @@
       if (dd) dd.classList.add('hidden');
     }
 
+    function getCounterOptionsWeb() {
+      if (Array.isArray(masterCountersList) && masterCountersList.length > 0) return masterCountersList;
+      return (masterBookingCounterRecords || []).map(r => r.counter_name || r.counter).filter(Boolean);
+    }
+
+    function renderSearchableDropdownWeb({ dropdownId, inputId, itemClass, options, query = '', isTyping = false, maxItems = 50, emptyText = 'No matching options found', onSelect }) {
+      const dd = document.getElementById(dropdownId);
+      if (!dd) return;
+      const list = Array.isArray(options) ? options : [];
+      const q = (query || '').trim().toLowerCase();
+      let filtered = q ? list.filter(item => String(item).toLowerCase().includes(q)) : list;
+      if (!isTyping && filtered.length === 0 && list.length > 0) {
+        filtered = list;
+      }
+      const displayItems = filtered.slice(0, maxItems);
+      const inputEl = document.getElementById(inputId);
+      const activeVal = inputEl ? inputEl.value : '';
+
+      if (displayItems.length === 0) {
+        dd.innerHTML = `<div class="px-3 py-2 text-slate-400 italic text-[11px] text-center">${escapeHtmlStr(emptyText)}</div>`;
+      } else {
+        dd.innerHTML = displayItems.map((item, idx) => {
+          const isSelected = activeVal && activeVal === item;
+          return `<div class="${itemClass} px-3 py-1.5 hover:bg-sky-50 hover:text-sky-700 cursor-pointer select-none transition-colors ${isSelected ? 'bg-sky-50 text-sky-700 font-semibold' : 'text-slate-700'}" data-index="${idx}" data-val="${escapeHtmlStr(item)}">${escapeHtmlStr(item)}</div>`;
+        }).join('');
+
+        dd.querySelectorAll(`.${itemClass}`).forEach(el => {
+          el.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            onSelect(el.getAttribute('data-val'));
+          });
+        });
+      }
+      dd.classList.remove('hidden');
+    }
+
+    function selectSearchableOptionWeb(inputId, dropdownId, val, onAfterSelect = null) {
+      const input = document.getElementById(inputId);
+      if (input) {
+        input.value = val;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const dd = document.getElementById(dropdownId);
+      if (dd) dd.classList.add('hidden');
+      if (typeof onAfterSelect === 'function') onAfterSelect(val);
+    }
+
+    function renderDepartmentDropdownWeb(query = '', isTyping = false) {
+      const custVal = document.getElementById('custom_customer')?.value.trim() || '';
+      const opts = masterDepartmentOptionsWeb.length > 0 ? masterDepartmentOptionsWeb : getDepartmentDropdownOptionsWeb(custVal);
+      renderSearchableDropdownWeb({
+        dropdownId: 'dept_dropdown',
+        inputId: 'custom_dept',
+        itemClass: 'dept-item',
+        options: opts,
+        query,
+        isTyping,
+        maxItems: Math.max(opts.length, 200),
+        emptyText: 'No matching departments found',
+        onSelect: (val) => selectDepartmentWeb(val),
+      });
+    }
+
+    function selectDepartmentWeb(val) {
+      selectSearchableOptionWeb('custom_dept', 'dept_dropdown', val, () => {
+        if (activeItem && activeItem.data) {
+          activeItem.data['Depatment Name'] = val;
+          activeItem.data['department'] = val;
+        }
+      });
+    }
+
+    function renderCounterDropdownWeb(query = '', isTyping = false) {
+      const cntOpts = getCounterOptionsWeb();
+      renderSearchableDropdownWeb({
+        dropdownId: 'counter_dropdown',
+        inputId: 'custom_counter',
+        itemClass: 'counter-item',
+        options: cntOpts,
+        query,
+        isTyping,
+        maxItems: Math.max(cntOpts.length, 200),
+        emptyText: 'No matching counters found',
+        onSelect: (val) => selectCounterWeb(val),
+      });
+    }
+
+    function selectCounterWeb(val) {
+      selectSearchableOptionWeb('custom_counter', 'counter_dropdown', val, () => {
+        if (activeItem && activeItem.data) {
+          activeItem.data['Counter'] = val;
+          activeItem.data['Counter name'] = val;
+          activeItem.data['counter'] = val;
+          const mappedBr = getBranchNameForCounterWeb(val);
+          activeItem.data['Branch'] = mappedBr;
+          activeItem.data['branchrefcode'] = mappedBr;
+        }
+      });
+    }
+
+    function renderProductTypeDropdownWeb(query = '', isTyping = false) {
+      renderSearchableDropdownWeb({
+        dropdownId: 'product_type_dropdown',
+        inputId: 'custom_product_type',
+        itemClass: 'product-type-item',
+        options: WEB_PRODUCT_TYPE_OPTIONS,
+        query,
+        isTyping,
+        maxItems: 20,
+        emptyText: 'No matching product types found',
+        onSelect: (val) => selectProductTypeWeb(val),
+      });
+    }
+
+    function selectProductTypeWeb(val) {
+      selectSearchableOptionWeb('custom_product_type', 'product_type_dropdown', val, () => {
+        if (activeItem && activeItem.data) {
+          activeItem.data['product_type'] = val;
+          activeItem.data['Product Type'] = val;
+        }
+      });
+    }
+
+    function bindSearchableDropdownWeb({ inputId, toggleId, dropdownId, renderFn, selectFn, getOptions }) {
+      const inp = document.getElementById(inputId);
+      const toggle = document.getElementById(toggleId);
+      const openAllOrFiltered = () => {
+        const opts = getOptions();
+        const cur = inp ? inp.value : '';
+        const isExact = opts.some(o => o === cur);
+        renderFn(isExact ? '' : cur, false);
+      };
+      if (inp && !inp._searchBound) {
+        inp._searchBound = true;
+        inp.addEventListener('click', openAllOrFiltered);
+        inp.addEventListener('focus', openAllOrFiltered);
+        inp.addEventListener('input', () => renderFn(inp.value, true));
+        inp.addEventListener('keydown', (e) => handleDropdownKeynav(e, dropdownId, selectFn));
+      }
+      if (toggle && !toggle._searchBound) {
+        toggle._searchBound = true;
+        toggle.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const dd = document.getElementById(dropdownId);
+          if (dd && !dd.classList.contains('hidden')) {
+            dd.classList.add('hidden');
+          } else {
+            renderFn('', false);
+            if (inp) {
+              inp.focus();
+              inp.select();
+            }
+          }
+        });
+      }
+    }
+
+    function toIsoDateForPickerWeb(val) {
+      const formatted = formatDdMmYyyyWeb(val);
+      const m = formatted.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+    }
+
+    function syncHybridPickerValueWeb(textInputId, pickerInputId) {
+      const textEl = document.getElementById(textInputId);
+      const pickerEl = document.getElementById(pickerInputId);
+      if (!textEl || !pickerEl) return;
+      const iso = toIsoDateForPickerWeb(textEl.value);
+      pickerEl.value = iso;
+    }
+
+    function openHybridDatePickerWeb(textInputId, pickerInputId) {
+      syncHybridPickerValueWeb(textInputId, pickerInputId);
+      const pickerEl = document.getElementById(pickerInputId);
+      if (!pickerEl) return;
+      if (typeof pickerEl.showPicker === 'function') {
+        try {
+          pickerEl.showPicker();
+          return;
+        } catch (_) {}
+      }
+      pickerEl.focus();
+    }
+
+    function initHybridDatePickersWeb() {
+      const pairs = [
+        { textId: 'edit_grdt', pickerId: 'edit_grdt_picker', onAfterChange: () => { if (typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); } },
+        { textId: 'edit_ewaybilldt', pickerId: 'edit_ewaybilldt_picker', onAfterChange: () => { if (typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); } },
+        { textId: 'edit_validupto', pickerId: 'edit_validupto_picker', onAfterChange: () => { if (typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); } },
+        { textId: 'edit_invdt', pickerId: 'edit_invdt_picker', onAfterChange: () => { if (typeof syncEditFormToActiveItem === 'function') syncEditFormToActiveItem(); } },
+        { textId: 'custom_license_valid', pickerId: 'custom_license_valid_picker', onAfterChange: () => {
+          const el = document.getElementById('custom_license_valid');
+          if (el && activeItem && activeItem.data) {
+            activeItem.data['Valid Up to *'] = el.value.trim();
+            activeItem.data['valid_upto'] = el.value.trim();
+          }
+        } },
+      ];
+      pairs.forEach(({ textId, pickerId, onAfterChange }) => {
+        const textEl = document.getElementById(textId);
+        const pickerEl = document.getElementById(pickerId);
+        if (!textEl || !pickerEl || pickerEl.dataset.hybridBound) return;
+        pickerEl.dataset.hybridBound = 'true';
+        pickerEl.addEventListener('mousedown', () => syncHybridPickerValueWeb(textId, pickerId));
+        pickerEl.addEventListener('focus', () => syncHybridPickerValueWeb(textId, pickerId));
+        pickerEl.addEventListener('change', () => {
+          if (pickerEl.value) {
+            const p = pickerEl.value.split('-');
+            if (p.length === 3) {
+              textEl.value = `${p[2]}-${p[1]}-${p[0]}`;
+              textEl.dispatchEvent(new Event('input', { bubbles: true }));
+              textEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+          if (typeof onAfterChange === 'function') onAfterChange();
+        });
+      });
+    }
+
     function initSearchableDropdownsWeb() {
       const vehInput = document.getElementById('edit_vehtype');
       const vehToggle = document.getElementById('btn_toggle_vehtype');
@@ -10632,6 +10976,35 @@
         });
       }
 
+      bindSearchableDropdownWeb({
+        inputId: 'custom_dept',
+        toggleId: 'btn_toggle_dept',
+        dropdownId: 'dept_dropdown',
+        renderFn: renderDepartmentDropdownWeb,
+        selectFn: selectDepartmentWeb,
+        getOptions: () => (masterDepartmentOptionsWeb.length > 0 ? masterDepartmentOptionsWeb : getDepartmentDropdownOptionsWeb(document.getElementById('custom_customer')?.value.trim() || '')),
+      });
+
+      bindSearchableDropdownWeb({
+        inputId: 'custom_counter',
+        toggleId: 'btn_toggle_counter',
+        dropdownId: 'counter_dropdown',
+        renderFn: renderCounterDropdownWeb,
+        selectFn: selectCounterWeb,
+        getOptions: getCounterOptionsWeb,
+      });
+
+      bindSearchableDropdownWeb({
+        inputId: 'custom_product_type',
+        toggleId: 'btn_toggle_product_type',
+        dropdownId: 'product_type_dropdown',
+        renderFn: renderProductTypeDropdownWeb,
+        selectFn: selectProductTypeWeb,
+        getOptions: () => WEB_PRODUCT_TYPE_OPTIONS,
+      });
+
+      initHybridDatePickersWeb();
+
       if (!window._dropdownOutsideClickBound) {
         window._dropdownOutsideClickBound = true;
         document.addEventListener('click', (e) => {
@@ -10640,6 +11013,15 @@
           }
           if (!e.target.closest('#edit_goods') && !e.target.closest('#btn_toggle_goods') && !e.target.closest('#goods_dropdown')) {
             hideGoodsDropdown();
+          }
+          if (!e.target.closest('#custom_dept') && !e.target.closest('#btn_toggle_dept') && !e.target.closest('#dept_dropdown')) {
+            document.getElementById('dept_dropdown')?.classList.add('hidden');
+          }
+          if (!e.target.closest('#custom_counter') && !e.target.closest('#btn_toggle_counter') && !e.target.closest('#counter_dropdown')) {
+            document.getElementById('counter_dropdown')?.classList.add('hidden');
+          }
+          if (!e.target.closest('#custom_product_type') && !e.target.closest('#btn_toggle_product_type') && !e.target.closest('#product_type_dropdown')) {
+            document.getElementById('product_type_dropdown')?.classList.add('hidden');
           }
         });
       }
@@ -10726,6 +11108,8 @@
       { id: 'custom_veh_category', label: 'Vehicle Category *', required: true },
 
       { id: 'custom_freight', label: 'Freight Charge *', required: true },
+
+      { id: 'custom_product_type', label: 'Product Type *', required: true },
 
       { id: 'custom_driver_name', label: 'Driver Name *', required: true },
 
@@ -12614,6 +12998,8 @@
 
       highlightEmptyCustomizationFields();
 
+      if (typeof initSearchableDropdownsWeb === 'function') initSearchableDropdownsWeb();
+
     }
 
 
@@ -12628,7 +13014,7 @@
 
           if (Array.isArray(list)) {
 
-            list.forEach(d => { if (d && String(d).trim()) set.add(String(d).trim()); });
+            list.forEach(d => { if (d && String(d).trim()) set.add(String(d)); });
 
           }
 
@@ -12670,58 +13056,78 @@
 
 
 
+    function getDepartmentDropdownOptionsWeb(customerName) {
+
+      const all = getAllMasterDepartmentsWeb();
+
+      const cleanCust = (customerName || '').trim().toUpperCase();
+
+      if (!cleanCust) return all;
+
+      const preferred = getDepartmentsForCustomerWeb(customerName);
+
+      if (preferred.length === all.length) return all;
+
+      const seen = new Set();
+
+      const ordered = [];
+
+      preferred.forEach(d => {
+
+        if (d && String(d).trim() && !seen.has(d)) {
+
+          seen.add(d);
+
+          ordered.push(d);
+
+        }
+
+      });
+
+      all.forEach(d => {
+
+        if (!seen.has(d)) {
+
+          seen.add(d);
+
+          ordered.push(d);
+
+        }
+
+      });
+
+      return ordered;
+
+    }
+
+
+
     function onCustomerSelectedWeb(targetDeptToPreserve = null) {
 
       const custInput = document.getElementById('custom_customer');
 
       const custVal = custInput ? custInput.value.trim() : '';
 
-      const deptSelect = document.getElementById('custom_dept');
+      const deptInput = document.getElementById('custom_dept');
 
-      if (!deptSelect) return;
+      if (!deptInput) return;
 
+      const currentSelected = (targetDeptToPreserve !== null) ? targetDeptToPreserve : deptInput.value;
 
+      const depts = getDepartmentDropdownOptionsWeb(custVal);
 
-      const currentSelected = (targetDeptToPreserve !== null) ? targetDeptToPreserve : deptSelect.value;
-
-      const depts = getDepartmentsForCustomerWeb(custVal);
-
-
-
-      deptSelect.innerHTML = '<option value="">-- Select Department --</option>';
-
-      depts.forEach(d => {
-
-        const opt = document.createElement('option');
-
-        opt.value = d;
-
-        opt.innerText = d;
-
-        deptSelect.appendChild(opt);
-
-      });
-
-
+      masterDepartmentOptionsWeb = depts;
 
       // Handle department selection preserving exact ManiFest.xlsx value without fallback
-      if (currentSelected) {
-        let found = false;
-        for (let i = 0; i < deptSelect.options.length; i++) {
-          if (deptSelect.options[i].value === currentSelected) {
-            deptSelect.selectedIndex = i;
-            deptSelect.value = deptSelect.options[i].value;
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          deptSelect.selectedIndex = 0;
-          deptSelect.value = '';
-        }
+      if (currentSelected && depts.includes(currentSelected)) {
+        deptInput.value = currentSelected;
       } else {
-        deptSelect.selectedIndex = 0;
-        deptSelect.value = '';
+        deptInput.value = '';
+      }
+
+      const deptDd = document.getElementById('dept_dropdown');
+      if (deptDd && !deptDd.classList.contains('hidden')) {
+        renderDepartmentDropdownWeb('', false);
       }
 
 
@@ -12781,24 +13187,8 @@
       const counterEl = document.getElementById('custom_counter');
       if (counterEl) {
         const targetCounter = d['Counter'] || d['Counter name'] || d['counter'] || d['Countername'] || '';
-        if (targetCounter) {
-          let found = false;
-          for (let i = 0; i < counterEl.options.length; i++) {
-            if (counterEl.options[i].value === targetCounter) {
-              counterEl.selectedIndex = i;
-              counterEl.value = counterEl.options[i].value;
-              found = true;
-              break;
-            }
-          }
-          if (!found) {
-            counterEl.selectedIndex = 0;
-            counterEl.value = '';
-          }
-        } else {
-          counterEl.selectedIndex = 0;
-          counterEl.value = '';
-        }
+        const counterOpts = getCounterOptionsWeb();
+        counterEl.value = (targetCounter && counterOpts.includes(targetCounter)) ? targetCounter : '';
       }
 
       // Master Data -> Freight: Keep empty by default; do not display 0 or automatic values
@@ -12811,9 +13201,8 @@
       // Master Data -> Product Type (separate from productcode)
       const prodTypeEl = document.getElementById('custom_product_type');
       if (prodTypeEl) {
-        const allowedProdTypes = ['Surface-FTL', 'Surface-PTL', 'Global-TT', 'Global-MT', 'AIR'];
         const existingProd = d['product_type'] || d['Product Type'] || '';
-        if (allowedProdTypes.includes(existingProd)) {
+        if (WEB_PRODUCT_TYPE_OPTIONS.includes(existingProd)) {
           prodTypeEl.value = existingProd;
         } else {
           prodTypeEl.value = 'Surface-FTL';
@@ -13228,20 +13617,15 @@
         return;
       }
 
-      // Strict validation for Department against ManiFest.xlsx
+      // Strict validation for Department against ManiFest.xlsx (matching Android isDepartmentValid)
       if (deptVal && typeof masterCustomersMapping !== 'undefined' && masterCustomersMapping) {
-        let allowedDepts = [];
-        const matchedCustKey = editCustomer
-          ? Object.keys(masterCustomersMapping).find(k => k.trim().toUpperCase() === editCustomer.trim().toUpperCase())
-          : null;
-        if (matchedCustKey && Array.isArray(masterCustomersMapping[matchedCustKey])) {
-          allowedDepts = masterCustomersMapping[matchedCustKey];
-        } else {
-          for (const k in masterCustomersMapping) {
-            allowedDepts = allowedDepts.concat(masterCustomersMapping[k]);
+        const allowedDepts = [];
+        for (const k in masterCustomersMapping) {
+          if (Array.isArray(masterCustomersMapping[k])) {
+            allowedDepts.push(...masterCustomersMapping[k]);
           }
         }
-        if (!allowedDepts.includes(deptVal)) {
+        if (allowedDepts.length > 0 && !allowedDepts.includes(deptVal)) {
           showUploadLrValidationModal(`Validation Error: Department "${deptVal}" is not recognized in ManiFest.xlsx.`);
           return;
         }
@@ -13253,6 +13637,13 @@
           showUploadLrValidationModal(`Validation Error: Counter "${counterVal}" is not recognized in BookingCounterMast.xlsx.`);
           return;
         }
+      }
+
+      // Strict validation for Product Type
+      if (!WEB_PRODUCT_TYPE_OPTIONS.includes(prodTypeVal)) {
+        showUploadLrValidationModal(`Validation Error: Product Type "${prodTypeVal}" must be selected from allowed master options.`);
+        document.getElementById('custom_product_type')?.focus();
+        return;
       }
 
       const drvNameVal = document.getElementById('custom_driver_name')?.value.trim() || activeItem.data['Driver Name *'] || activeItem.data['driver_name'] || '';

@@ -400,7 +400,7 @@ B. PATANJALI (COMPANY NAME)
 1. Present:
 - "grdt": Consignment booking date printed in 'Bkg. Date' box (strictly DD/MM/YYYY, e.g., 05/02/2026, 09/10/2026).
 - "stockdt": Consignment entry date (matches grdt).
-- "Customer Name *": "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)" or "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)".
+- "Customer Name *": "Patanjali Parivahan Private Limited" (always default Customer Name for Patanjali LRs to "Patanjali Parivahan Private Limited").
 - "custrefcode": Billing customer/party code (e.g., "BL653", "BL652", or default "CM001").
 - "branchrefcode" / "Counter name": Center or branch code printed above title (e.g., "INDORE", "KOLKATA").
 - "orgrefcode": Origin station / city printed in 'From City' box (e.g., "INDORE", "KARNPURA SSRM").
@@ -761,7 +761,7 @@ Inspect ALL pages thoroughly and map the data strictly into the 49 target column
 1. Present:
 - "grdt": Consignment booking date printed in 'Bkg. Date' box (strictly DD/MM/YYYY, e.g., 05/02/2026, 09/10/2026).
 - "stockdt": Consignment entry date (matches grdt).
-- "Customer Name *": "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)" or "PATANJALI FOODS LTD BISCUIT (Formerly RSIL)".
+- "Customer Name *": "Patanjali Parivahan Private Limited" (always default Customer Name for Patanjali LRs to "Patanjali Parivahan Private Limited").
 - "custrefcode": Billing customer/party code (e.g., "BL653", "BL652", or default "CM001").
 - "branchrefcode" / "Counter name": Center or branch code printed above title (e.g., "INDORE", "KOLKATA").
 - "orgrefcode": Origin station / city printed in 'From City' box (e.g., "INDORE", "KARNPURA SSRM").
@@ -2181,6 +2181,86 @@ def _apply_web_unicharm_customer_default(data: dict[str, Any], prompt_type: str 
     return False
 
 
+PATANJALI_DEFAULT_CUSTOMER = "Patanjali Parivahan Private Limited"
+_PATANJALI_MARKER_RE = re.compile(
+    r"pat[aehi]?n[gj][aeil1oy]{1,5}|ruchi\s*soya|\brsil\b",
+    re.IGNORECASE,
+)
+
+
+def _edit_distance_le_two(a: str, b: str) -> bool:
+    if abs(len(a) - len(b)) > 2:
+        return False
+    prev = list(range(len(b) + 1))
+    for ca in a:
+        cur = [prev[0] + 1]
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            cur.append(min(cur[-1] + 1, prev[j] + 1, prev[j - 1] + cost))
+        if min(cur) > 2:
+            return False
+        prev = cur
+    return prev[-1] <= 2
+
+
+def _contains_patanjali_marker(val: Any) -> bool:
+    s = str(val or "").strip()
+    if not s:
+        return False
+    if _PATANJALI_MARKER_RE.search(s):
+        return True
+    for tok in re.findall(r"[a-zA-Z0-9]+", s.lower()):
+        alpha = tok.replace("1", "l").replace("0", "o")
+        if len(alpha) >= 7 and alpha.startswith("p") and _edit_distance_le_two(alpha, "patanjali"):
+            return True
+    return False
+
+
+def _is_patanjali_document(
+    data: dict[str, Any],
+    prompt_type: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    if prompt_type == "Patanjali OCR":
+        return True
+    if filename and _contains_patanjali_marker(filename):
+        return True
+    if not isinstance(data, dict):
+        return False
+    return any(
+        _contains_patanjali_marker(data.get(k))
+        for k in (
+            "Customer Name *", "Customer Name", "Customer", "customer", "customer_name",
+            "cngr *", "cngr", "consignor", "cnge *", "cnge", "consignee", "Depatment Name", "department",
+        )
+    )
+
+
+def _apply_patanjali_customer_default(
+    data: dict[str, Any],
+    prompt_type: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Defaults Customer to 'Patanjali Parivahan Private Limited' for Patanjali LRs without modifying Consignor."""
+    if not isinstance(data, dict) or not _is_patanjali_document(
+        data, prompt_type=prompt_type, filename=filename
+    ):
+        return False
+    current_cust = str(
+        data.get("Customer Name *")
+        or data.get("Customer Name")
+        or data.get("Customer")
+        or data.get("customer")
+        or data.get("customer_name")
+        or ""
+    ).strip()
+    if not current_cust or _contains_patanjali_marker(current_cust):
+        for cust_key in ("Customer Name *", "Customer Name", "Customer", "customer", "customer_name"):
+            data[cust_key] = PATANJALI_DEFAULT_CUSTOMER
+        return True
+    return False
+
+
 def canonicalize_extracted_data(data_dict: dict, web_mode: bool = False) -> dict:
     """
     Normalizes extracted OCR fields from any prompt or document format into
@@ -2303,8 +2383,8 @@ def canonicalize_extracted_data(data_dict: dict, web_mode: bool = False) -> dict
             raw_cust = "Himalaya Wellness Company"
         elif any(w in cngr_low or w in cnge_low for w in UNICHARM_MARKERS):
             raw_cust = WEB_UNICHARM_DEFAULT_CUSTOMER if web_mode else "UNICHARM INDIA PVT. LTD."
-        elif "patanjali" in cngr_low or "patanjali" in cnge_low:
-            raw_cust = "PATANJALI FOODS LTD (OIL & SOYA) (Formerly RSIL)"
+        elif _contains_patanjali_marker(cngr_low) or _contains_patanjali_marker(cnge_low):
+            raw_cust = PATANJALI_DEFAULT_CUSTOMER
         elif any(w in cngr_low or w in cnge_low for w in ["gold plus", "gold_plus", "goldplus"]):
             raw_cust = "GOLD PLUS FLOAT GLASS PRIVATE LIMITED"
         elif raw_cngr:
@@ -2315,6 +2395,7 @@ def canonicalize_extracted_data(data_dict: dict, web_mode: bool = False) -> dict
         data_dict["customer"] = raw_cust
     if web_mode:
         _apply_web_unicharm_customer_default(data_dict)
+    _apply_patanjali_customer_default(data_dict)
 
     # 8. Consignor GSTIN & Consignee GSTIN
     raw_cngr_gst = get_val("cngrgstno *", "cngrgstno", "consignor gst", "consignor gstin", "cngr gst", "sender gst")
@@ -2628,7 +2709,7 @@ def _detect_customer_prompt_from_text(
     """Selects customer-specific OCR prompt when unambiguous keywords appear in text."""
     if not txt_low or prompt_type == "Custom":
         return active_prompt, prompt_type
-    if "patanjali" in txt_low:
+    if _contains_patanjali_marker(txt_low):
         return DEFAULT_PATANJALI_OCR_PROMPT, "Patanjali OCR"
     if any(w in txt_low for w in ("unicharm", "uvicharm", "vuicharm", "micharm")):
         return DEFAULT_UNICHARM_OCR_PROMPT, "Unicharm OCR"
@@ -2777,7 +2858,7 @@ def _preprocess_uploads_sync(
     if isinstance(custom_prompt, str) and custom_prompt.strip():
         active_prompt = custom_prompt.strip()
         prompt_type = "Custom"
-    elif "patanjali" in lower_filename:
+    elif _contains_patanjali_marker(lower_filename):
         active_prompt = DEFAULT_PATANJALI_OCR_PROMPT
         prompt_type = "Patanjali OCR"
     elif any(w in lower_filename for w in ["unicharm", "uvicharm", "vuicharm", "micharm"]):
@@ -3610,6 +3691,9 @@ async def extract_handwriting(
                 data_dict["dlvtype"] = "D"
             if not data_dict.get("Vehicle Type *"):
                 data_dict["Vehicle Type *"] = "Market"
+
+        if _is_patanjali_document(data_dict, prompt_type=prompt_type, filename=primary_filename):
+            _apply_patanjali_customer_default(data_dict, prompt_type=prompt_type, filename=primary_filename)
 
         data_dict["igst"] = "0.00"
         if not data_dict.get("cgst"):

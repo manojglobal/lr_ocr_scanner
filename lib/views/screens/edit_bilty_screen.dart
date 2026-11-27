@@ -6,6 +6,8 @@ import '../../models/batch_item.dart';
 import '../../services/master_data_service.dart';
 import '../../state/batch_controller.dart';
 import '../widgets/billing_image_viewer.dart';
+import '../widgets/date_picker_field_helper.dart';
+import '../widgets/searchable_master_picker_sheet.dart';
 import '../widgets/step_indicator_bar.dart';
 import 'batch_queue_screen.dart';
 import 'customization_driver_screen.dart';
@@ -259,18 +261,12 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
     }
 
     if (!mounted) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => _SearchableMasterPickerSheet(
-        fieldKey: key,
-        title: title,
-        options: options,
-      ),
+    final selected = await showSearchableMasterPicker(
+      context,
+      fieldKey: key,
+      title: title,
+      options: options,
+      selectedValue: ctrl.text.trim().isNotEmpty ? ctrl.text.trim() : null,
     );
     if (selected != null && mounted) {
       ctrl.text = selected;
@@ -1088,35 +1084,10 @@ class _EditBiltyScreenState extends State<EditBiltyScreen> with SingleTickerProv
                             suffixIcon: isDate
                                 ? IconButton(
                                     icon: const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey),
-                                    onPressed: () async {
-                                      final now = DateTime.now();
-                                      DateTime? initial;
-                                      final txt = ctrl.text.trim();
-                                      final parts = txt.split(RegExp(r'[\/\-\.]'));
-                                      if (parts.length == 3) {
-                                        final d = int.tryParse(parts[0]);
-                                        final m = int.tryParse(parts[1]);
-                                        final y = int.tryParse(parts[2]);
-                                        if (d != null && m != null && y != null) {
-                                          final fullY = y < 100 ? 2000 + y : y;
-                                          initial = DateTime(fullY, m, d);
-                                        }
-                                      }
-                                      final picked = await showDatePicker(
-                                        context: context,
-                                        initialDate: initial ?? now,
-                                        firstDate: DateTime(2000),
-                                        lastDate: DateTime(2100),
-                                      );
-                                      if (picked != null) {
-                                        final dd = picked.day.toString().padLeft(2, '0');
-                                        final mm = picked.month.toString().padLeft(2, '0');
-                                        final yyyy = picked.year.toString();
-                                        ctrl.text = '$dd-$mm-$yyyy';
-                                      }
-                                      },
-                                    )
-                                  : (isMasterPicker
+                                    tooltip: 'Select date',
+                                    onPressed: () => pickDateForController(context, ctrl),
+                                  )
+                                : (isMasterPicker
                                       ? IconButton(
                                           key: Key('picker_btn_$key'),
                                           icon: const Icon(Icons.arrow_drop_down_circle_outlined, size: 18, color: Color(0xFF0284C7)),
@@ -1345,123 +1316,4 @@ Future<bool> showCancelVerificationConfirmation(BuildContext context) async {
     },
   );
   return result ?? false;
-}
-
-class _SearchableMasterPickerSheet extends StatefulWidget {
-  final String fieldKey;
-  final String title;
-  final List<String> options;
-
-  const _SearchableMasterPickerSheet({
-    required this.fieldKey,
-    required this.title,
-    required this.options,
-  });
-
-  @override
-  State<_SearchableMasterPickerSheet> createState() => _SearchableMasterPickerSheetState();
-}
-
-class _SearchableMasterPickerSheetState extends State<_SearchableMasterPickerSheet> {
-  final TextEditingController _searchCtrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final q = _searchCtrl.text.trim().toLowerCase();
-    final filtered = q.isEmpty
-        ? widget.options.take(100).toList()
-        : widget.options.where((o) => o.toLowerCase().contains(q)).take(100).toList();
-    final mq = MediaQuery.of(context);
-    final sheetHeight = (mq.size.height * 0.65).clamp(260.0, 560.0);
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
-      child: SizedBox(
-        height: sheetHeight,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFCBD5E1),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                key: Key('picker_search_${widget.fieldKey}'),
-                controller: _searchCtrl,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Search...',
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          widget.options.isEmpty
-                              ? 'No master options loaded yet. Connect to server or type directly.'
-                              : 'No matching entries found',
-                          style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                      itemBuilder: (_, idx) {
-                        final itemText = filtered[idx];
-                        return ListTile(
-                          dense: true,
-                          title: Text(itemText, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A))),
-                          onTap: () => Navigator.of(context).pop(itemText),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
